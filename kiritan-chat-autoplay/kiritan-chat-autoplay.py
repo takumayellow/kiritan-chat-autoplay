@@ -83,23 +83,35 @@ def bring_powershell_front():
     win32gui.EnumWindows(_cb, None)
 
 # ---------------- 再生関数（CLI -play） ----------------
+import subprocess
+
 def speak(text: str, speed: float):
     """
-    SeikaSay2.exe の -play で直接再生。
-    GUI 自動操作は一切せず、再生完了を待ってからフォーカス復帰。
+    SeikaSay2.exe -play を非同期に起動し、終了まで待つ。
+    CTRL+C などで中断しても PowerShell が終了しないようにする。
     """
     cmd = [
         SEIKA_CLI,
         "-cid",   str(CID_KIRITAN),
         "-speed", str(speed),
-        "-play",              # 直接再生
+        "-play",              # 再生
         "-nc",                # コンソール出力抑制
         "-t",    text
     ]
-    # ブロッキングで再生完了を待つ
-    subprocess.run(cmd, check=False)
-    # 再生後に PowerShell を前面へ
-    bring_powershell_front()
+    try:
+        # CREATE_NO_WINDOW フラグを付けると新しいコンソールを開かない
+        proc = subprocess.Popen(
+            cmd,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        proc.wait()
+    except KeyboardInterrupt:
+        # 再生中に Ctrl+C で中断してもスクリプトを終了しない
+        proc.terminate()
+        print("◆ 音声再生を中断しました。続けて入力できます。")
+    finally:
+        # 再生終了後に PowerShell を前面へ
+        bring_powershell_front()
 
 # ---------------- メインループ ----------------
 def main():
