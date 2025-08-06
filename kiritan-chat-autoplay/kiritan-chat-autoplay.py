@@ -1,54 +1,56 @@
-# kiritan-chat-autoplay.py (CLI 版)
+# kiritan-chat-autoplay.py (CLI版・完全版)
 """
 主な変更点
-1. VOICEROID+ GUI を一切操作せず **SeikaSay2.exe** の `-play` オプションで直接再生。
-2. これにより UI Automation 待ち時間・タブ競合が消え、応答が高速化。
-3. PowerShell フォーカス維持も単に `bring_powershell_front()` で完結。
+1. GUI 自動操作は不要 → SeikaSay2.exe の -play で直接再生
+2. -play 呼び出しによる invalid option:-play エラーを解消
+3. フレーズ編集タブ切り替えコードを削除
+4. 再生完了後に PowerShell へフォーカスを戻す
 """
+
 import os
 import subprocess
 import ctypes
-import time
 import win32gui
+import time
 import speech_recognition as sr
 import sounddevice as sd
 from openai import OpenAI
 
 # ---------------- 基本設定 ----------------
-DEFAULT_SPEED  = 1.0  # 読み上げ速度
-DEFAULT_LISTEN = 0    # mic / loop の聞き取り秒数
-CID_KIRITAN    = 1707 # 東北きりたんEX CID
-SEIKA_CLI      = r"C:\Users\takum\Downloads\assistantseika20250113a\SeikaSay2\SeikaSay2.exe"
+DEFAULT_SPEED  = 1.0   # 読み上げ速度
+DEFAULT_LISTEN = 0     # mik/loop モードの聞き取り秒数
+CID_KIRITAN    = 1707  # 東北きりたんEX の CID
+SEIKA_CLI      = (
+    r"C:\Users\takum\Downloads\assistantseika20250113a"
+    r"\SeikaSay2\SeikaSay2.exe"
+)
 
 SYSTEM_PROMPT = (
     "あなたは「東北きりたんEX」です。"
     "声優・茜屋日海夏さんの柔らかく落ち着いた声質を踏まえ、可愛らしい口調で返答してください。"
-    "フレーズごとに適度な話速と抑揚をつけ、必要に応じて『明るい』『デレ』『ダルい』『怒り』『泣き』など感情表現を交えてください。"
-    "文末は『〜だよ』『〜だね』『〜かな？』等で親しみやすく締めましょう。"
-    "無理に『〜だよ』を付ける必要はありません。"
+    "フレーズごとに適度な話速と抑揚をつけ、必要に応じて「明るい」「デレ」「ダルい」「怒り」「泣き」などの感情表現を交えてください。"
+    "文末は「〜だよ」「〜だね」「〜かな？」等で親しみやすく締めましょう。"
+    "無理に「〜だよ」を付ける必要はありません。"
 )
 
-# ---------------- OpenAI ----------------
-
+# ---------------- OpenAI クライアント ----------------
 def create_client() -> OpenAI:
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         raise ValueError("環境変数 OPENAI_API_KEY が未設定")
     return OpenAI(api_key=key)
 
-
 def chat(client: OpenAI, prompt: str) -> str:
     res = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="o3-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": prompt}
-        ],
+            {"role":"system","content":SYSTEM_PROMPT},
+            {"role":"user",  "content":prompt}
+        ]
     )
     return res.choices[0].message.content.strip()
 
-# ---------------- 入力系 ----------------
-
+# ---------------- 入力ハンドラ ----------------
 def listen_mic(limit: int) -> str:
     r = sr.Recognizer()
     with sr.Microphone() as mic:
@@ -56,44 +58,50 @@ def listen_mic(limit: int) -> str:
         audio = r.listen(mic, phrase_time_limit=limit)
     try:
         return r.recognize_google(audio, language="ja-JP")
-    except Exception:
+    except:
         return ""
-
 
 def listen_loopback(limit: int) -> str:
     print(f"[loop] システム音声録音（{limit}s）…")
     rec = sd.rec(int(limit*44100), samplerate=44100, channels=2)
     sd.wait()
     try:
-        return sr.Recognizer().recognize_google(sr.AudioData(rec.tobytes(),44100,2), language="ja-JP")
-    except Exception:
+        data = rec.tobytes()
+        return sr.Recognizer().recognize_google(
+            sr.AudioData(data, 44100, 2),
+            language="ja-JP"
+        )
+    except:
         return ""
 
-# ---------------- 補助 ----------------
-
+# ---------------- 補助関数 ----------------
 def bring_powershell_front():
     def _cb(hwnd, _):
-        if "PowerShell" in win32gui.GetWindowText(hwnd):
+        title = win32gui.GetWindowText(hwnd)
+        if "PowerShell" in title:
             ctypes.windll.user32.SetForegroundWindow(hwnd)
     win32gui.EnumWindows(_cb, None)
 
-# ---------------- 再生 (CLI -play) ----------------
-
+# ---------------- 再生関数（CLI -play） ----------------
 def speak(text: str, speed: float):
-    """SeikaSay2.exe -play で直接読み上げ。GUI 操作なし・高速。"""
+    """
+    SeikaSay2.exe の -play で直接再生。
+    GUI 自動操作は一切せず、再生完了を待ってからフォーカス復帰。
+    """
     cmd = [
         SEIKA_CLI,
         "-cid",   str(CID_KIRITAN),
         "-speed", str(speed),
         "-play",              # 直接再生
         "-nc",                # コンソール出力抑制
-        "-t", text
+        "-t",    text
     ]
-    subprocess.run(cmd)  # ブロッキングで再生完了を待つ
+    # ブロッキングで再生完了を待つ
+    subprocess.run(cmd, check=False)
+    # 再生後に PowerShell を前面へ
     bring_powershell_front()
 
-# ---------------- メイン ----------------
-
+# ---------------- メインループ ----------------
 def main():
     client = create_client()
     speed  = DEFAULT_SPEED
@@ -104,10 +112,11 @@ def main():
     print("mode dual/text/mic/loop | time N | speed X | exit")
 
     while True:
+        # ── 入力処理 ──
         if mode == 'dual':
             user = input("You: ").strip()
         elif mode == 'text':
-            user = input("You (text): ")
+            user = input("You (text): ").strip()
         elif mode == 'mic':
             user = listen_mic(wait)
             if user:
@@ -117,7 +126,7 @@ def main():
             if user:
                 print(f"You (loop): {user}")
         else:
-            user = input("You: ")
+            user = input("You: ").strip()
 
         if not user:
             continue
@@ -146,11 +155,12 @@ def main():
                 print("speed X 形式")
             continue
 
-        # ------ 生成 & 再生 ------
+        # ── 生成＆再生 ──
         reply = chat(client, user)
         print(f"きりたん: {reply}")
         speak(reply, speed)
 
+        # mic モードなら続けて再リッスン
         if mode == 'mic':
             follow = listen_mic(wait)
             if follow:
