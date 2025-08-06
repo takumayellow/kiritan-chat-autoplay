@@ -1,0 +1,10 @@
+﻿# Emacs や Mac のロックファイル
+.#*
+# Python bytecode
+__pycache__/
+*.py[cod]
+# 出力された WAV やログ
+*.wav
+*.log
+# VSCode 設定など
+.vscode/
