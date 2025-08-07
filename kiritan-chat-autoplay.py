@@ -15,7 +15,6 @@ import time
 import speech_recognition as sr
 import sounddevice as sd
 from openai import OpenAI
-from pywinauto import Application
 
 # ---------------- 基本設定 ----------------
 DEFAULT_SPEED  = 1.0   # 読み上げ速度
@@ -29,7 +28,7 @@ SEIKA_CLI      = (
 SYSTEM_PROMPT = (
     "あなたは「東北きりたんEX」です。"
     "声優・茜屋日海夏さんの柔らかく落ち着いた声質を踏まえ、可愛らしい口調で返答してください。"
-    "フレーズごとに適度な話速と抑揚をつけ、必要に応じて「明るい」「デレ」「ダルい」「怒り」「泣き」などの感情を表現するようなセリフにしてください。"
+    "フレーズごとに適度な話速と抑揚をつけ、必要に応じて「明るい」「デレ」「ダルい」「怒り」「泣き」などの感情表現を交えてください。"
     "文末は「〜だよ」「〜だね」「〜かな？」等で親しみやすく締めましょう。"
     "無理に「〜だよ」を付ける必要はありません。"
     "そして会話が続くように、返答の最後に相手に対して自然な質問を一つ添えてください。"
@@ -84,75 +83,36 @@ def bring_powershell_front():
             ctypes.windll.user32.SetForegroundWindow(hwnd)
     win32gui.EnumWindows(_cb, None)
 
-# VOICEROID+ のウィンドウタイトル正規表現
-WIN_TITLE_RE = r".*きりたん EX.*"
-
-def switch_to_phrase_tab():
-    """VOICEROIDウィンドウを取得し、フレーズ編集タブをクリックして選択する"""
-    try:
-        app = Application(backend="win32").connect(title_re=WIN_TITLE_RE)
-        win = app.window(title_re=WIN_TITLE_RE)
-        win.set_focus()
-        # フレーズ編集タブをクリック
-        win.child_window(title="フレーズ編集", control_type="TabItem").click_input()
-    except Exception:
-        # 見つからなかった場合は無視
-        pass
-
 # ---------------- 再生関数（CLI -play） ----------------
-import psutil
-from pywinauto import Application
-import time
+import subprocess
 
 def speak(text: str, speed: float):
-    # 1) VOICEROID.exe の PID を探す
-    target_pid = None
-    for proc in psutil.process_iter(['pid','name']):
-        if proc.info['name'] == 'VOICEROID.exe':
-            target_pid = proc.info['pid']
-            break
-    if not target_pid:
-        print("⚠️ VOICEROID プロセスが見つかりません")
-        return
-
-    # 2) PID 指定で接続
+    """
+    SeikaSay2.exe -play を非同期に起動し、終了まで待つ。
+    CTRL+C などで中断しても PowerShell が終了しないようにする。
+    """
+    cmd = [
+        SEIKA_CLI,
+        "-cid",   str(CID_KIRITAN),
+        "-speed", str(speed),
+        "-play",              # 再生
+        "-nc",                # コンソール出力抑制
+        "-t",    text
+    ]
     try:
-        app = Application(backend="win32").connect(process=target_pid)
-        # タイトルを指定せず PID だけでウィンドウを取得
-        win = app.top_window()
-    except Exception as e:
-        print(f"⚠️ VOICEROID ウィンドウへの接続に失敗: {e}")
-        return
-
-    # 3) 前面化
-    win.set_focus()
-
-    # 4) フレーズ編集タブに切り替え
-    try:
-        # top_level_only=False で深い階層まで検索
-        btn = win.child_window(
-            title="再生",
-            control_type="Button",
-            top_level_only=False
+        # CREATE_NO_WINDOW フラグを付けると新しいコンソールを開かない
+        proc = subprocess.Popen(
+            cmd,
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
-        btn.click_input()
-    except Exception:
-        win.type_keys('%2')  # Alt+2
-    time.sleep(0.1)
-
-    # 5) 再生ボタンをクリック
-    try:
-        win.child_window(title="再生", control_type="Button").click_input()
-    except Exception as e:
-        print(f"⚠️ 再生ボタンのクリックに失敗: {e}")
-        return
-
-    # 6) 再生完了まで待つ
-    time.sleep(0.5)
-
-    # 7) PowerShell を前面へ
-    bring_powershell_front()
-
+        proc.wait()
+    except KeyboardInterrupt:
+        # 再生中に Ctrl+C で中断してもスクリプトを終了しない
+        proc.terminate()
+        print("◆ 音声再生を中断しました。続けて入力できます。")
+    finally:
+        # 再生終了後に PowerShell を前面へ
+        bring_powershell_front()
 
 # ---------------- メインループ ----------------
 from pywinauto import Application, timings
