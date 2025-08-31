@@ -1,15 +1,14 @@
 ﻿# -*- coding: utf-8 -*-
 """
-kiritan_chat_gui.py
-AssistantSeikaに依存せず、VOICEROID＋ 東北きりたん EX のGUIを直接操作して再生する版。
-- OpenAI応答生成（失敗時はユーザ入力をそのまま返すフォールバック）
-- 起動時＆再生後に「フレーズ編集」タブへ確実に復帰（select→invoke→click_input）
-- 大きいテキストエリア( Edit )を自動検出して内容を差し替え
-- 「再生」ボタンを検出してクリック（見つからない場合は F5 → Space をフォールバック送信）
-- コンソールを最前面復帰（pywin32 が無い場合は黙ってスキップ）
+kiritan_chat_gui.py  (robust)
+- AssistantSeika 非依存。VOICEROID＋ 東北きりたん EX を GUI 操作して読み上げ
+- ウィンドウ検出を強化（複数パターン + フォールバック走査 + wrapper_object 固定）
+- クリック対象ボタンの探索を強化（名前/記号/部分一致 + F5/Space フォールバック）
+- ループ毎にウィンドウを再取得（タイトル変化/再起動に追従）
 """
 
-import os, sys, time, textwrap
+import os, sys, time
+from typing import Optional
 
 # ---------- OpenAI ----------
 try:
@@ -28,7 +27,6 @@ OPENAI_MODEL_FALLBACKS = [
 def chat_once(prompt: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key or OpenAI is None:
-        # オフライン/キー未設定でも動作確認できるように
         return prompt
     client = OpenAI(api_key=api_key)
     last_err = None
@@ -48,28 +46,60 @@ def chat_once(prompt: str) -> str:
     return f"（応答生成に失敗: {last_err}）"
 
 # ---------- GUI helpers ----------
+from pywinauto import timings
+timings.after_clickinput_wait = 0.05
+timings.Timings.window_find_timeout = 5.0
+
 def _desktop_uia():
     from pywinauto import Desktop
     return Desktop(backend="uia")
 
-def _find_voiceroid_window(timeout=5.0):
-    """VOICEROID＋ 東北きりたん EX を探す（フル幅プラスに注意）"""
-    import re
+def _wrap(spec):
+    """WindowSpecification -> wrapper_object (安定化)"""
+    try:
+        spec.wait("exists ready", timeout=1.5)
+        return spec.wrapper_object()
+    except Exception:
+        return None
+
+def _find_voiceroid_window(timeout: float = 8.0):
+    """
+    複数パターン＋全体走査で探す。
+    タイトルは環境差が大きいので緩めに。
+    """
+    patterns = [
+        r"^VOICEROID＋.*きりたん.*EX$",     # 正式（全角＋）
+        r"^VOICEROID\+.*きりたん.*EX$",     # 半角+
+        r"^VOICEROID.*きりたん.*EX$",       # ゆるめ
+        r"^VOICEROID.*東北.*きりたん.*$",   # ゆるめ（EXなし）
+        r"VOICEROID.*きりたん",             # 最後の砦
+    ]
     desk = _desktop_uia()
-    title_re = r"^VOICEROID＋.*東北きりたん.*EX$"
     t0 = time.time()
     while time.time() - t0 < timeout:
+        # 1) 正規表現パターンで試行
+        for pat in patterns:
+            try:
+                spec = desk.window(title_re=pat, top_level_only=True)
+                w = _wrap(spec)
+                if w:
+                    return w
+            except Exception:
+                pass
+        # 2) 全トップを走査してタイトルで判定（フォールバック）
         try:
-            win = desk.window(title_re=title_re)
-            if win.exists(timeout=0.7):
-                return win
+            for spec in desk.windows():
+                title = (spec.window_text() or "").strip()
+                if "VOICEROID" in title and ("きりたん" in title or "Kiritan" in title or "東北" in title):
+                    w = _wrap(spec)
+                    if w:
+                        return w
         except Exception:
             pass
         time.sleep(0.3)
     return None
 
 def ensure_phrase_tab(win, tries=3, interval=0.4):
-    """タブを『フレーズ編集』へ戻す（select→invoke→click_input）"""
     for _ in range(tries):
         try:
             target = None
@@ -79,7 +109,6 @@ def ensure_phrase_tab(win, tries=3, interval=0.4):
                     target = t; break
             if not target:
                 time.sleep(interval); continue
-
             ok = False
             for action in ("select", "invoke", "click_input"):
                 try:
@@ -95,61 +124,68 @@ def ensure_phrase_tab(win, tries=3, interval=0.4):
         time.sleep(interval)
 
 def set_phrase_text(win, text: str) -> bool:
-    """最大面積の Edit を本文エリアとみなして差し替える"""
     edits = [e for e in win.descendants(control_type="Edit") if e.is_enabled() and e.is_visible()]
     if not edits:
         return False
 
     def area(ctrl):
         r = ctrl.rectangle()
-        return max(1, r.width() * r.height())
+        try:
+            return max(1, r.width() * r.height())
+        except Exception:
+            return 1
 
     edits.sort(key=area, reverse=True)
 
-    # 1) APIあり（UIAで実装されていれば速い）
-    for e in edits[:3]:
+    # 1) ValuePattern 系（速い）
+    for e in edits[:4]:
         try:
             e.set_edit_text(text)
             return True
         except Exception:
             pass
 
-    # 2) フォールバック：キー送信
+    # 2) キー送信のフォールバック
     try:
         from pywinauto.keyboard import send_keys
         win.set_focus()
         send_keys("^a{BACKSPACE}", pause=0.02)
-        # 日本語と記号を含むので with_spaces + 低速化
         send_keys(text, with_spaces=True, pause=0.01)
         return True
     except Exception:
         return False
 
 def click_play(win) -> bool:
-    """『再生』らしきボタンを押す。無ければ F5→Space を順に送る"""
-    # 1) ボタン名探索
-    for b in win.descendants(control_type="Button"):
-        name = (b.window_text() or "").strip()
-        if ("再生" in name) or ("▶" in name) or ("Play" in name):
+    """ボタン名いろいろ試す + F5 / Space フォールバック"""
+    candidates = ("再生", "▶", "Play", "再生(F5)", "再生 / 停止")
+    try:
+        btns = win.descendants(control_type="Button")
+    except Exception:
+        btns = []
+    for b in btns:
+        try:
+            name = (b.window_text() or "").strip()
+        except Exception:
+            name = ""
+        if any(c in name for c in candidates):
             try:
                 b.click_input()
                 return True
             except Exception:
                 pass
-    # 2) ショートカットのフォールバック
+    # フォールバック: ショートカット送信
     try:
         from pywinauto.keyboard import send_keys
         win.set_focus()
         for key in ("{F5}", " "):
-            send_keys(key, pause=0.02)
-            time.sleep(0.05)
+            send_keys(key, pause=0.03)
+            time.sleep(0.06)
             return True
     except Exception:
         pass
     return False
 
 def focus_console():
-    """コンソールを最前面へ。失敗しても無視"""
     try:
         import win32gui
         from ctypes import windll
@@ -160,16 +196,29 @@ def focus_console():
     except Exception:
         pass
 
+def debug_print_top_windows():
+    """見つからない時の調査用：トップレベルタイトルを出す"""
+    try:
+        desk = _desktop_uia()
+        print("== Top windows (UIA) ==")
+        for w in desk.windows():
+            try:
+                print(" -", (w.window_text() or "").strip())
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 # ---------- main ----------
 def main():
-    print("【GUI版】VOICEROID を直接操作して読み上げ（AssistantSeika 非依存）")
+    print("【GUI版(robust)】VOICEROID を直接操作して読み上げ（AssistantSeika 非依存）")
     print("使い方: VOICEROID＋ 東北きりたん EX を起動してから、このスクリプトを実行。")
     print("コマンド: exit / quit （それ以外は会話）")
 
-    # 起動時：VOICEROID検出 → フレーズ編集へ整列
     win = _find_voiceroid_window(timeout=8.0)
     if not win:
-        print("VOICEROID＋ 東北きりたん EX のウィンドウが見つかりません。起動してから再実行してください。", file=sys.stderr)
+        print("VOICEROID のウィンドウが見つかりません。タイトルが異なる可能性があります。", file=sys.stderr)
+        debug_print_top_windows()
         return
     ensure_phrase_tab(win)
     focus_console()
@@ -187,14 +236,17 @@ def main():
         reply = chat_once(user)
         print("きりたん>", reply)
 
-        # 入力 → 再生 → タブ復帰 → コンソール復帰
-        if not set_phrase_text(win, reply):
+        # ループ毎にウィンドウを再取得（タイトル変化/再起動に追従）
+        w2 = _find_voiceroid_window(timeout=2.0) or win
+        ensure_phrase_tab(w2)
+
+        if not set_phrase_text(w2, reply):
             print("本文エリアの検出/入力に失敗しました。VOICEROIDの画面レイアウトを確認してください。", file=sys.stderr)
         else:
-            if not click_play(win):
+            if not click_play(w2):
                 print("『再生』の実行に失敗しました。ショートカット（F5/Space）も効かない可能性があります。", file=sys.stderr)
 
-        ensure_phrase_tab(win)
+        ensure_phrase_tab(w2)
         focus_console()
 
     print("終了します。")
