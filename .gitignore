@@ -8,3 +8,6 @@ __pycache__/
 *.log
 # VSCode 設定など
 .vscode/
+
+.env
+
