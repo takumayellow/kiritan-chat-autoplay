@@ -69,3 +69,12 @@
 ## 9) 拡張の出発点
 - 簡易トースト/ログ化、速度・抑揚プリセット、録音系の安定化（必要時のみ）
 
+
+## モード構成
+
+- **GUI 基本版（推奨）**: kiritan_chat_gui.py  
+  AssistantSeika への依存なし。VOICEROID＋東北きりたん EX を起動してから実行。  
+  返答は VOICEROID で再生され、ターミナルにも表示されます。
+
+- **CLI 版**: kiritan_chat_cli.py  
+  SeikaSay2.exe 経由で再生（HTTP/WCF 不要の環境ならこちらでも可）。
