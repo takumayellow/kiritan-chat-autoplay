@@ -1,4 +1,25 @@
-﻿# -*- coding: utf-8 -*-
+﻿# --- UTF-8 hardening (Windows/ConHost) ---------------------------------------
+import os, sys, io, locale
+os.environ.setdefault("PYTHONUTF8","1")
+os.environ["PYTHONIOENCODING"] = "utf-8"
+def _reconfig_streams():
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        else:
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+        if hasattr(sys.stdin, "reconfigure"):
+            sys.stdin.reconfigure(encoding="utf-8", errors="ignore")
+    except Exception:
+        pass
+try:
+    locale.setlocale(locale.LC_ALL, "")
+except Exception:
+    pass
+# ----------------------------------------------------------------------------- 
+# -*- coding: utf-8 -*-
 """
 GUI版：VOICEROID＋ 東北きりたん EX のウィンドウを UIA で掴み、テキストを流し込んで「再生」ボタンを押すだけ
 - AssistantSeika の HTTP/WCF などは一切使わない
@@ -238,4 +259,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
