@@ -10,7 +10,33 @@ GUI発展版-音声（Voice）
 import os, sys, re, time, tempfile
 from typing import Optional, List, Dict
 from datetime import datetime
+# --- console unicode safety (never crash on JP text) ---
+try:
+    import ctypes
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+except Exception:
+    pass
+try:
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
+import builtins as _bi
+_original_print = print
+def _safe_print(*args, **kwargs):
+    try:
+        _original_print(*args, **kwargs)
+    except UnicodeEncodeError:
+        end = kwargs.get("end", "\n")
+        s = " ".join(str(a) for a in args) + end
+        try:
+            sys.stdout.buffer.write(s.encode("utf-8", "replace"))
+            sys.stdout.flush()
+        except Exception:
+            pass
+print = _safe_print  # type: ignore
 # === UIA / 入力操作 ===
 from pywinauto import Desktop, keyboard
 from pywinauto.base_wrapper import BaseWrapper
@@ -367,3 +393,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
