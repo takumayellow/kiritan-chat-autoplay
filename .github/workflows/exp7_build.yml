@@ -1,0 +1,34 @@
+﻿name: Build report_current.pdf
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - report/**
+      - tools/**
+      - .github/workflows/exp7_build.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: paperist/texlive-ja:latest  # pLaTeX + dvipdfmx + latexmk 付き
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (platex + dvipdfmx)
+        run: |
+          set -eux
+          # latexmk を使わず、最小コマンドで確実に pdf 化
+          platex -interaction=nonstopmode -halt-on-error -file-line-error report/03_no6/report.tex
+          platex -interaction=nonstopmode -halt-on-error -file-line-error report/03_no6/report.tex
+          dvipdfmx report/03_no6/report.dvi
+
+      - name: Upload artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report_current
+          path: |
+            report/03_no6/report.pdf
+            report/03_no6/report.log
