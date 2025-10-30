@@ -148,14 +148,14 @@ def print_cli_usage():
     print("\n--- コマンド一覧 ---")
     print("  help           : このヘルプ")
     print("  mode text      : 入力を文字入力に戻す")
-    print("  mode mic       : マイク会話（'voice' でもOK / Enterで録音開始）")
+    print("  mode mic       : マイク会話（'voice' でもOK、録音秒数は time N で調整）")
     print("  mode loop      : PCの再生音を拾って会話")
     print("  mode dual      : テキスト→マイクの連続モード")
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
     print("  exit           : 終了")
-    print("\nヒント: mic モード中もコマンドを入力して Enter すればモード変更できます。")
+    print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
 
 
 def normalize_mode_name(raw: str) -> Optional[str]:
