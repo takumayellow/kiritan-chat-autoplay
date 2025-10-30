@@ -19,6 +19,10 @@ import wave
 import ctypes
 import subprocess
 import threading
+try:
+    import msvcrt  # type: ignore
+except Exception:
+    msvcrt = None
 import win32gui
 import win32process
 from typing import Dict, List, Optional, Tuple
@@ -116,6 +120,22 @@ def stop_phrase_tab_sentry(stop_event: Optional[threading.Event], thread: Option
         thread.join(timeout=1.5)
 
 
+def ensure_phrase_tab_with_retry(duration: float = 1.0, interval: float = 0.2) -> bool:
+    """
+    音声効果タブへの自動遷移対策として、短時間リトライしながら
+    フレーズ編集タブへ戻す。
+    """
+    end = time.time() + max(duration, 0.1)
+    success = False
+    while time.time() < end:
+        if ensure_phrase_tab(log_failure=False):
+            success = True
+        time.sleep(interval)
+    if not success:
+        ensure_phrase_tab(log_failure=True)
+    return success
+
+
 def _profile_lookup() -> Dict[str, Dict[str, str]]:
     lookup: Dict[str, Dict[str, str]] = {}
     for profile in MODEL_PROFILES:
@@ -134,6 +154,7 @@ def choose_conversation_profile() -> Dict[str, str]:
 
     default = MODEL_PROFILES[0]
     while True:
+        bring_powershell_front()
         choice = input(f"スタイル番号 [Enter={default['key']}]: ").strip().lower()
         if not choice:
             print(f"→ {default['label']} を選択しました。")
@@ -358,7 +379,7 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
         if guard_thread is not None:
             guard_thread.join(timeout=1.0)
         # タブを戻す（音声効果に飛ばされる対策）
-        ensure_phrase_tab()
+        ensure_phrase_tab_with_retry(duration=1.2, interval=0.2)
         # PowerShell を前面に
         bring_powershell_front()
 
@@ -436,6 +457,14 @@ def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
             except Exception as e:
                 print(f"[mic] 取得エラー: {e}", file=sys.stderr)
                 break
+            if msvcrt and msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch == "\r":
+                    print("[mic] Enter が押されたので録音を終了します。")
+                    # consume trailing LF if存在
+                    while msvcrt.kbhit():
+                        msvcrt.getwch()
+                    break
     except Exception as e:
         print(f"[mic] PyAudio 初期化失敗: {e}", file=sys.stderr)
     finally:
@@ -530,11 +559,6 @@ def main():
 
     sentry_stop: Optional[threading.Event] = None
     sentry_thread: Optional[threading.Thread] = None
-    try:
-        sentry_stop, sentry_thread = start_phrase_tab_sentry()
-    except Exception:
-        sentry_stop = None
-        sentry_thread = None
 
     client = create_client()
     profile = choose_conversation_profile()
@@ -542,6 +566,12 @@ def main():
     system_prompt = profile["prompt"]
     print(f"[model] {current_model} ({profile['label']})")
     print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。録音秒数は time N で調整できます。")
+
+    try:
+        sentry_stop, sentry_thread = start_phrase_tab_sentry()
+    except Exception:
+        sentry_stop = None
+        sentry_thread = None
 
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
@@ -552,8 +582,10 @@ def main():
         while True:
             try:
                 if mode == "dual":
+                    bring_powershell_front()
                     user = input("You: " ).strip()
                 elif mode == "text":
+                    bring_powershell_front()
                     user = input("You (text): " ).strip()
                 elif mode == "mic":
                     if wait <= 0:
@@ -572,6 +604,7 @@ def main():
                     else:
                         continue
                 else:
+                    bring_powershell_front()
                     user = input("You: " ).strip()
 
                 if not user:
