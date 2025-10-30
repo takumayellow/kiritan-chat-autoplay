@@ -155,6 +155,30 @@ def ensure_phrase_tab_with_retry(duration: float = 1.0, interval: float = 0.2) -
     return success
 
 
+def _phrase_tab_active(win) -> bool:
+    specs = [
+        {"title": "フレーズ編集", "control_type": "TabItem"},
+        {"title": "フレーズ編集", "control_type": "Button"},
+        {"title": "フレーズ編集", "control_type": "RadioButton"},
+    ]
+    for spec in specs:
+        try:
+            ctrl = win.child_window(**spec).wrapper_object()
+        except Exception:
+            continue
+        try:
+            if hasattr(ctrl, "is_selected") and ctrl.is_selected():
+                return True
+        except Exception:
+            pass
+        try:
+            if hasattr(ctrl, "get_toggle_state") and ctrl.get_toggle_state() == 1:
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _profile_lookup() -> Dict[str, Dict[str, str]]:
     lookup: Dict[str, Dict[str, str]] = {}
     for profile in MODEL_PROFILES:
@@ -307,26 +331,42 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
     if not win:
         return False
 
-    # TabItem を総当たりで取得
-    try:
-        items = win.descendants(control_type='TabItem')
-    except Exception as e:
-        if log_failure:
-            print(f"✖️ TabItem 取得失敗: {e}")
-        return False
+    if _phrase_tab_active(win):
+        return True
 
-    # 名前一致で select → invoke → click の順に試す
+    control_types = ("TabItem", "Button", "RadioButton", "ToggleButton")
+    controls = []
+    for ctype in control_types:
+        try:
+            controls.extend(win.descendants(control_type=ctype))
+        except Exception:
+            continue
+
     last_err: Optional[Exception] = None
-    for tab in items:
-        name = (tab.element_info.name or "").strip()
-        if 'フレーズ編集' in name:
-            for action in (tab.select, tab.invoke, tab.click_input):
-                try:
-                    action()
+    for ctrl in controls:
+        name = (getattr(ctrl, "window_text", lambda: "")() or ctrl.element_info.name or "").strip()
+        if "フレーズ編集" not in name:
+            continue
+        try:
+            wrapper = ctrl.wrapper_object()
+        except Exception:
+            wrapper = ctrl
+
+        actions = []
+        for attr in ("select", "invoke", "toggle"):
+            if hasattr(wrapper, attr):
+                actions.append(getattr(wrapper, attr))
+        actions.append(lambda w=wrapper: w.click_input())
+
+        for action in actions:
+            try:
+                action()
+                time.sleep(0.05)
+                if _phrase_tab_active(win):
                     return True
-                except Exception as e:
-                    last_err = e
-            break
+            except Exception as e:
+                last_err = e
+                continue
 
     if log_failure:
         if last_err:
@@ -537,7 +577,7 @@ def listen_mic(client, limit: int) -> str:
             audio = _record_with_pyaudio(limit)
         except KeyboardInterrupt:
             print("\n[mic] 録音をキャンセルしました。")
-            return ""
+            raise
         if audio:
             text = _transcribe_with_openai(client, audio)
             if text:
@@ -551,7 +591,7 @@ def listen_mic(client, limit: int) -> str:
             audio = r.listen(mic, phrase_time_limit=limit)
     except KeyboardInterrupt:
         print("\n[mic] 録音をキャンセルしました。")
-        return ""
+        raise
     try:
         return r.recognize_google(audio, language="ja-JP")
     except Exception:
@@ -600,116 +640,111 @@ def main():
 
     try:
         while True:
-            try:
-                if mode == "dual":
-                    bring_powershell_front()
-                    user = input("You: " ).strip()
-                elif mode == "text":
-                    bring_powershell_front()
-                    user = input("You (text): " ).strip()
-                elif mode == "mic":
-                    if wait <= 0:
-                        wait = 6
-                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
-                    user = listen_mic(client, wait)
-                    if user:
-                        print(f"You (mic): {user}")
-                    else:
-                        print("[mic] 音声を認識できませんでした。")
-                        continue
-                elif mode == "loop":
-                    user = listen_loopback(wait)
-                    if user:
-                        print(f"You (loop): {user}")
-                    else:
-                        continue
-                else:
-                    bring_powershell_front()
-                    user = input("You: " ).strip()
-
-                if not user:
-                    continue
-
-                low = user.lower()
-
-                if low in ("exit", "quit"):
-                    break
-                if low in ("help", "/help"):
-                    print_cli_usage()
-                    continue
-                if low.startswith("style"):
-                    profile = choose_conversation_profile()
-                    current_model = profile["model"]
-                    system_prompt = profile["prompt"]
-                    print(f"[model] {current_model} ({profile['label']})")
-                    continue
-                if low.startswith("mode "):
-                    parts = low.split()
-                    if len(parts) >= 2:
-                        new_mode = normalize_mode_name(parts[1])
-                        if new_mode:
-                            mode = new_mode
-                            print(f"[mode] -> {mode}")
-                            if mode == "mic":
-                                if wait <= 0:
-                                    wait = 6
-                                    print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
-                                else:
-                                    print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                                print("     以降は自動で録音します。")
-                            continue
-                    print("Usage: mode text|mic|dual|loop")
-                    continue
-                quick_mode = normalize_mode_name(low)
-                if quick_mode:
-                    mode = quick_mode
-                    print(f"[mode] -> {mode}")
-                    if mode == "mic":
-                        if wait <= 0:
-                            wait = 6
-                            print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
-                        else:
-                            print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                        print("     以降は自動で録音します。")
-                    continue
-                if low.startswith("time "):
-                    try:
-                        wait = max(0, int(low.split()[1]))
-                        print(f"[listen] {wait}s")
-                    except Exception:
-                        print("Usage: time N")
-                    continue
-                if low.startswith("speed "):
-                    try:
-                        speed = float(low.split()[1])
-                        speed = max(0.5, min(4.0, speed))
-                        print(f"[speed] {speed}x")
-                    except Exception:
-                        print("Usage: speed X")
-                    continue
-
-                reply = chat_once(client, user, current_model, system_prompt)
-                print(f"Kiritan: {reply}")
-                speak(reply, speed)
-
-                if mode == "mic":
-                    if wait <= 0:
-                        wait = 6
-                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
-                    follow = listen_mic(client, wait)
-                    if follow:
-                        print(f"You (mic): {follow}")
-                        reply2 = chat_once(client, follow, current_model, system_prompt)
-                        print(f"Kiritan: {reply2}")
-                        speak(reply2, speed)
-
-            except KeyboardInterrupt:
-                print("\n(CTRL+C) 入力をキャンセルしました。")
+            if mode == "dual":
                 bring_powershell_front()
-                if mode == "mic":
-                    print("[mic] テキスト入力モードへ戻します。")
-                    mode = "text"
+                user = input("You: " ).strip()
+            elif mode == "text":
+                bring_powershell_front()
+                user = input("You (text): " ).strip()
+            elif mode == "mic":
+                if wait <= 0:
+                    wait = 6
+                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                user = listen_mic(client, wait)
+                if user:
+                    print(f"You (mic): {user}")
+                else:
+                    print("[mic] 音声を認識できませんでした。")
+                    continue
+            elif mode == "loop":
+                user = listen_loopback(wait)
+                if user:
+                    print(f"You (loop): {user}")
+                else:
+                    continue
+            else:
+                bring_powershell_front()
+                user = input("You: " ).strip()
+
+            if not user:
                 continue
+
+            low = user.lower()
+
+            if low in ("exit", "quit"):
+                break
+            if low in ("help", "/help"):
+                print_cli_usage()
+                continue
+            if low.startswith("style"):
+                profile = choose_conversation_profile()
+                current_model = profile["model"]
+                system_prompt = profile["prompt"]
+                print(f"[model] {current_model} ({profile['label']})")
+                continue
+            if low.startswith("mode "):
+                parts = low.split()
+                if len(parts) >= 2:
+                    new_mode = normalize_mode_name(parts[1])
+                    if new_mode:
+                        mode = new_mode
+                        print(f"[mode] -> {mode}")
+                        if mode == "mic":
+                            if wait <= 0:
+                                wait = 6
+                                print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
+                            else:
+                                print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
+                            print("     以降は自動で録音します。")
+                        continue
+                print("Usage: mode text|mic|dual|loop")
+                continue
+            quick_mode = normalize_mode_name(low)
+            if quick_mode:
+                mode = quick_mode
+                print(f"[mode] -> {mode}")
+                if mode == "mic":
+                    if wait <= 0:
+                        wait = 6
+                        print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
+                    else:
+                        print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
+                    print("     以降は自動で録音します。")
+                continue
+            if low.startswith("time "):
+                try:
+                    wait = max(0, int(low.split()[1]))
+                    print(f"[listen] {wait}s")
+                except Exception:
+                    print("Usage: time N")
+                continue
+            if low.startswith("speed "):
+                try:
+                    speed = float(low.split()[1])
+                    speed = max(0.5, min(4.0, speed))
+                    print(f"[speed] {speed}x")
+                except Exception:
+                    print("Usage: speed X")
+                continue
+
+            reply = chat_once(client, user, current_model, system_prompt)
+            print(f"Kiritan: {reply}")
+            speak(reply, speed)
+
+            if mode == "mic":
+                if wait <= 0:
+                    wait = 6
+                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                follow = listen_mic(client, wait)
+                if follow:
+                    print(f"You (mic): {follow}")
+                    reply2 = chat_once(client, follow, current_model, system_prompt)
+                    print(f"Kiritan: {reply2}")
+                    speak(reply2, speed)
+    except KeyboardInterrupt:
+        print("\n(CTRL+C) 終了します。")
+        bring_powershell_front()
+        return
     finally:
         stop_phrase_tab_sentry(sentry_stop, sentry_thread)
 
