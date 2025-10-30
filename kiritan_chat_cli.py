@@ -21,7 +21,7 @@ import subprocess
 import threading
 import win32gui
 import win32process
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # 音声入出力（必要なら使う）
 try:
@@ -46,6 +46,141 @@ except Exception:
 from pywinauto import Application, timings
 
 
+MODEL_PROFILES: List[Dict[str, str]] = [
+    {
+        "key": "1",
+        "alias": "light",
+        "label": "ライト雑談（軽め）",
+        "model": "gpt-4o-mini",
+        "prompt": (
+            "あなたは東北きりたんEXです。短めで気楽な雑談トーンを意識し、"
+            "相手を励ますように明るく返答してください。"
+        ),
+    },
+    {
+        "key": "2",
+        "alias": "normal",
+        "label": "ゆったり会話（丁寧）",
+        "model": "o4-mini",
+        "prompt": (
+            "あなたは東北きりたんEXです。落ち着いて相手の意図をくみ取り、"
+            "適度な長さで丁寧に説明してください。"
+        ),
+    },
+    {
+        "key": "3",
+        "alias": "deep",
+        "label": "じっくり深掘り（知的寄り）",
+        "model": "o4-mini-high",
+        "prompt": (
+            "あなたは東北きりたんEXです。背景や理由を補足しながら、"
+            "洞察や提案も添えて会話してください。"
+        ),
+    },
+]
+
+
+
+def focus_voiceroid_window():
+    """VOICEROID ウィンドウを前面に持ってくる（フォーカス移動）"""
+    hwnd, _ = find_voiceroid_handle()
+    if not hwnd:
+        return
+    try:
+        ctypes.windll.user32.ShowWindow(hwnd, 5)
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+
+
+def start_phrase_tab_sentry(interval: float = 1.2) -> Tuple[threading.Event, threading.Thread]:
+    """フレーズ編集タブを見張る常駐スレッドを起動する。"""
+    stop_event = threading.Event()
+
+    def _worker():
+        ensure_phrase_tab(log_failure=False)
+        while not stop_event.wait(interval):
+            ensure_phrase_tab(log_failure=False)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return stop_event, thread
+
+
+def stop_phrase_tab_sentry(stop_event: Optional[threading.Event], thread: Optional[threading.Thread]) -> None:
+    if stop_event:
+        stop_event.set()
+    if thread:
+        thread.join(timeout=1.5)
+
+
+def _profile_lookup() -> Dict[str, Dict[str, str]]:
+    lookup: Dict[str, Dict[str, str]] = {}
+    for profile in MODEL_PROFILES:
+        for key in (profile["key"], profile["alias"], profile["label"].lower()):
+            lookup[key.lower()] = profile
+    return lookup
+
+
+def choose_conversation_profile() -> Dict[str, str]:
+    lookup = _profile_lookup()
+    print("\n=== 会話スタイルを選びましょう ===")
+    print("きりたん、今日はどんなテンポでお話ししますか？")
+    for p in MODEL_PROFILES:
+        print(f"  {p['key']}: {p['label']}  (model: {p['model']})")
+    print("  他にも 'light' / 'normal' / 'deep' のキーワードでも選べます。")
+
+    default = MODEL_PROFILES[0]
+    while True:
+        choice = input(f"スタイル番号 [Enter={default['key']}]: ").strip().lower()
+        if not choice:
+            print(f"→ {default['label']} を選択しました。")
+            return default
+        if choice in lookup:
+            profile = lookup[choice]
+            print(f"→ {profile['label']} を選択しました。")
+            return profile
+        print("  ※ 1/2/3 または light/normal/deep で選んでください。")
+
+def print_cli_usage():
+    print("\n--- コマンド一覧 ---")
+    print("  help           : このヘルプ")
+    print("  mode text      : 入力を文字入力に戻す")
+    print("  mode mic       : マイクで会話（'voice' でもOK）")
+    print("  mode loop      : PCの再生音を拾って会話")
+    print("  mode dual      : テキスト→マイクの連続モード")
+    print("  time N         : 録音秒数の設定")
+    print("  speed X        : 読み上げ速度 0.5～4.0")
+    print("  style          : 会話スタイルを再選択")
+    print("  exit           : 終了")
+    print("\nヒント: 'mode mic' で音声会話に切り替えられます。Ctrl+C で録音を中断できます。")
+
+
+def normalize_mode_name(raw: str) -> Optional[str]:
+    if not raw:
+        return None
+    key = raw.strip().lower()
+    aliases = {
+        "voice": "mic",
+        "mic": "mic",
+        "microphone": "mic",
+        "text": "text",
+        "loop": "loop",
+        "dual": "dual",
+    }
+    return aliases.get(key)
+
+    default = MODEL_PROFILES[0]
+    while True:
+        choice = input(f"スタイル番号 [Enter={default['key']}]: ").strip().lower()
+        if not choice:
+            print(f"→ {default['label']} を選択しました。")
+            return default
+        if choice in lookup:
+            profile = lookup[choice]
+            print(f"→ {profile['label']} を選択しました。")
+            return profile
+        print("  ※ 1/2/3 または light/normal/deep で選んでください。")
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
 DEFAULT_SPEED = 1.0           # 読み上げ速度（Seika側の話速に対して倍率）
@@ -190,6 +325,8 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
     guard_stop: Optional[threading.Event] = None
     guard_thread: Optional[threading.Thread] = None
     try:
+        focus_voiceroid_window()
+        ensure_phrase_tab(log_failure=False)
         proc = subprocess.Popen(
             cmd,
             creationflags=subprocess.CREATE_NO_WINDOW
@@ -229,35 +366,46 @@ def create_client():
     return OpenAI(api_key=key)
 
 
-def chat_once(client, user_text: str) -> str:
-    """
-    利用可能そうなモデルを順に試す（環境によって異なるため）。
-    OPENAI_MODEL が設定されていれば最優先。
-    """
-    tried = []
-    models = []
-    if os.getenv("OPENAI_MODEL"):
-        models.append(os.getenv("OPENAI_MODEL"))
-    models += ["gpt-5","gpt-4o-mini", "o4-mini-high", "o3-mini", "gpt-4o"]
 
-    last_err = None
-    for m in models:
+
+def _collect_candidate_models(preferred: str) -> List[str]:
+    ordered: List[str] = []
+
+    def _add(name: Optional[str]):
+        if name and name not in ordered:
+            ordered.append(name)
+
+    _add(os.getenv("OPENAI_MODEL"))
+    _add(preferred)
+    for profile in MODEL_PROFILES:
+        _add(profile["model"])
+    for fallback in ("gpt-4o-mini", "o4-mini", "o4-mini-high", "o3-mini", "gpt-4o"):
+        _add(fallback)
+    return ordered
+
+def chat_once(client, user_text: str, preferred_model: str, system_prompt: str) -> str:
+    """選んだモデルを優先しつつ、順にフォールバックして応答を得る。"""
+    models = _collect_candidate_models(preferred_model)
+    tried = []
+    last_err: Optional[Exception] = None
+    prompt = system_prompt or SYSTEM_PROMPT
+
+    for model_name in models:
         try:
             res = client.chat.completions.create(
-                model=m,
+                model=model_name,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": prompt},
                     {"role": "user", "content": user_text},
                 ],
             )
             return (res.choices[0].message.content or "").strip()
-        except Exception as e:
-            tried.append(m)
-            last_err = e
-    raise RuntimeError(f"使用可能なモデルが見つかりません（試行: {tried}）: {last_err}")
+        except Exception as err:
+            tried.append(model_name)
+            last_err = err
+    raise RuntimeError(f"利用可能なモデルが見つかりません (tried={tried}) : {last_err}")
 
 
-# ---------------- 入力ヘルパ（必要なら） ----------------
 def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
     if not (pyaudio and seconds > 0):
         return b""
@@ -363,86 +511,120 @@ def listen_loopback(limit: int) -> str:
 
 # ---------------- メイン ----------------
 def main():
-    # 起動直後にタブを『フレーズ編集』へ
     ensure_phrase_tab()
 
+    sentry_stop: Optional[threading.Event] = None
+    sentry_thread: Optional[threading.Thread] = None
+    try:
+        sentry_stop, sentry_thread = start_phrase_tab_sentry()
+    except Exception:
+        sentry_stop = None
+        sentry_thread = None
+
     client = create_client()
+    profile = choose_conversation_profile()
+    current_model = profile["model"]
+    system_prompt = profile["prompt"]
+    print(f"[model] {current_model} ({profile['label']})")
+    print("Hint: use 'mode mic' (or 'voice') to enter microphone chat. Type 'help' for the full list.")
+
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
-    mode = "dual"   # dual | text | mic | loop
+    mode = "dual"
+    print_cli_usage()
 
-    print("=== きりたんEX 会話 (CLI版) ===")
-    print("mode dual/text/mic/loop | time N | speed X | exit")
-
-    while True:
-        try:
-            # 入力
-            if mode == "dual":
-                user = input("You: ").strip()
-            elif mode == "text":
-                user = input("You (text): ").strip()
-            elif mode == "mic":
-                user = listen_mic(client, wait)
-                if user:
-                    print(f"You (mic): {user}")
+    try:
+        while True:
+            try:
+                if mode == "dual":
+                    user = input("You: " ).strip()
+                elif mode == "text":
+                    user = input("You (text): " ).strip()
+                elif mode == "mic":
+                    user = listen_mic(client, wait)
+                    if user:
+                        print(f"You (mic): {user}")
+                    else:
+                        continue
+                elif mode == "loop":
+                    user = listen_loopback(wait)
+                    if user:
+                        print(f"You (loop): {user}")
+                    else:
+                        continue
                 else:
+                    user = input("You: " ).strip()
+
+                if not user:
                     continue
-            elif mode == "loop":
-                user = listen_loopback(wait)
-                if user:
-                    print(f"You (loop): {user}")
-                else:
+
+                low = user.lower()
+
+                if low in ("exit", "quit"):
+                    break
+                if low in ("help", "/help"):
+                    print_cli_usage()
                     continue
-            else:
-                user = input("You: ").strip()
+                if low.startswith("style"):
+                    profile = choose_conversation_profile()
+                    current_model = profile["model"]
+                    system_prompt = profile["prompt"]
+                    print(f"[model] {current_model} ({profile['label']})")
+                    continue
+                if low.startswith("mode "):
+                    parts = low.split()
+                    if len(parts) >= 2:
+                        new_mode = normalize_mode_name(parts[1])
+                        if new_mode:
+                            mode = new_mode
+                            print(f"[mode] -> {mode}")
+                            if mode == "mic":
+                                print("  -> Mic conversation mode. Recording starts immediately; press Ctrl+C to cancel.")
+                            continue
+                    print("Usage: mode text|mic|dual|loop")
+                    continue
+                quick_mode = normalize_mode_name(low)
+                if quick_mode:
+                    mode = quick_mode
+                    print(f"[mode] -> {mode}")
+                    if mode == "mic":
+                        print("  -> Mic conversation mode. Recording starts immediately; press Ctrl+C to cancel.")
+                    continue
+                if low.startswith("time "):
+                    try:
+                        wait = max(0, int(low.split()[1]))
+                        print(f"[listen] {wait}s")
+                    except Exception:
+                        print("Usage: time N")
+                    continue
+                if low.startswith("speed "):
+                    try:
+                        speed = float(low.split()[1])
+                        speed = max(0.5, min(4.0, speed))
+                        print(f"[speed] {speed}x")
+                    except Exception:
+                        print("Usage: speed X")
+                    continue
 
-            if not user:
-                continue
+                reply = chat_once(client, user, current_model, system_prompt)
+                print(f"Kiritan: {reply}")
+                speak(reply, speed)
 
-            low = user.lower()
-            if low in ("exit", "quit"):
-                break
-            if low.startswith("mode "):
-                v = low.split()[1]
-                if v in ("dual", "text", "mic", "loop"):
-                    mode = v
-                    print(f"→ mode = {mode}")
-                continue
-            if low.startswith("time "):
-                try:
-                    wait = max(0, int(low.split()[1]))
-                    print(f"→ listen = {wait}s")
-                except Exception:
-                    print("time N 形式")
-                continue
-            if low.startswith("speed "):
-                try:
-                    speed = float(low.split()[1])
-                    # 安全範囲にクランプ
-                    speed = max(0.5, min(4.0, speed))
-                    print(f"→ speed = {speed}x")
-                except Exception:
-                    print("speed X 形式")
-                continue
+                if mode == "mic":
+                    follow = listen_mic(client, wait)
+                    if follow:
+                        print(f"You (mic): {follow}")
+                        reply2 = chat_once(client, follow, current_model, system_prompt)
+                        print(f"Kiritan: {reply2}")
+                        speak(reply2, speed)
 
-            # 生成→読み上げ
-            reply = chat_once(client, user)
-            print(f"きりたん: {reply}")
-            speak(reply, speed)
-
-            # mic モードは続けて一往復
-            if mode == "mic":
-                follow = listen_mic(client, wait)
-                if follow:
-                    print(f"You (mic): {follow}")
-                    reply2 = chat_once(client, follow)
-                    print(f"きりたん: {reply2}")
-                    speak(reply2, speed)
-
-        except KeyboardInterrupt:
-            print("\n(CTRL+C) 中断。続けます。")
-            bring_powershell_front()
-            continue
+            except KeyboardInterrupt:
+                print("\n(CTRL+C) 録音を中断しました。")
+                bring_powershell_front()
+                if mode != "mic":
+                    continue
+    finally:
+        stop_phrase_tab_sentry(sentry_stop, sentry_thread)
 
 
 if __name__ == "__main__":
