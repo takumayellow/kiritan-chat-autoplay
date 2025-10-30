@@ -146,14 +146,14 @@ def print_cli_usage():
     print("\n--- コマンド一覧 ---")
     print("  help           : このヘルプ")
     print("  mode text      : 入力を文字入力に戻す")
-    print("  mode mic       : マイクで会話（'voice' でもOK）")
+    print("  mode mic       : マイク会話（'voice' でもOK / Enterで録音開始）")
     print("  mode loop      : PCの再生音を拾って会話")
     print("  mode dual      : テキスト→マイクの連続モード")
-    print("  time N         : 録音秒数の設定")
+    print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
     print("  exit           : 終了")
-    print("\nヒント: 'mode mic' で音声会話に切り替えられます。Ctrl+C で録音を中断できます。")
+    print("\nヒント: mic モード中もコマンドを入力して Enter すればモード変更できます。")
 
 
 def normalize_mode_name(raw: str) -> Optional[str]:
@@ -477,7 +477,11 @@ def listen_mic(client, limit: int) -> str:
     if limit <= 0:
         return ""
     if pyaudio and client:
-        audio = _record_with_pyaudio(limit)
+        try:
+            audio = _record_with_pyaudio(limit)
+        except KeyboardInterrupt:
+            print("\n[mic] 録音をキャンセルしました。")
+            return ""
         if audio:
             text = _transcribe_with_openai(client, audio)
             if text:
@@ -485,9 +489,13 @@ def listen_mic(client, limit: int) -> str:
     if not sr:
         return ""
     r = sr.Recognizer()
-    with sr.Microphone() as mic:
-        print(f"[mic] 発話どうぞ（最大 {limit}s）…")
-        audio = r.listen(mic, phrase_time_limit=limit)
+    try:
+        with sr.Microphone() as mic:
+            print(f"[mic] 発話どうぞ（最大 {limit}s）…")
+            audio = r.listen(mic, phrase_time_limit=limit)
+    except KeyboardInterrupt:
+        print("\n[mic] 録音をキャンセルしました。")
+        return ""
     try:
         return r.recognize_google(audio, language="ja-JP")
     except Exception:
@@ -526,7 +534,7 @@ def main():
     current_model = profile["model"]
     system_prompt = profile["prompt"]
     print(f"[model] {current_model} ({profile['label']})")
-    print("Hint: use 'mode mic' (or 'voice') to enter microphone chat. Type 'help' for the full list.")
+    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enterで録音開始、コマンド入力も可能です。'help' で一覧。")
 
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
@@ -541,11 +549,19 @@ def main():
                 elif mode == "text":
                     user = input("You (text): " ).strip()
                 elif mode == "mic":
-                    user = listen_mic(client, wait)
-                    if user:
-                        print(f"You (mic): {user}")
+                    if wait <= 0:
+                        wait = 6
+                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（'time N' で変更可能）。")
+                    mic_prompt = input("[mic] Enterで録音 / コマンド入力可: ").strip()
+                    if mic_prompt:
+                        user = mic_prompt
                     else:
-                        continue
+                        user = listen_mic(client, wait)
+                        if user:
+                            print(f"You (mic): {user}")
+                        else:
+                            print("[mic] 音声を認識できませんでした。")
+                            continue
                 elif mode == "loop":
                     user = listen_loopback(wait)
                     if user:
@@ -579,7 +595,12 @@ def main():
                             mode = new_mode
                             print(f"[mode] -> {mode}")
                             if mode == "mic":
-                                print("  -> Mic conversation mode. Recording starts immediately; press Ctrl+C to cancel.")
+                                if wait <= 0:
+                                    wait = 6
+                                    print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（'time N' で変更）。")
+                                else:
+                                    print(f"  -> Mic conversation mode. Enterで録音開始、録音秒数は {wait}s（'time N' で変更）。")
+                                print("     コマンドを入力したい場合はそのまま文字を打って Enter。")
                             continue
                     print("Usage: mode text|mic|dual|loop")
                     continue
@@ -588,7 +609,12 @@ def main():
                     mode = quick_mode
                     print(f"[mode] -> {mode}")
                     if mode == "mic":
-                        print("  -> Mic conversation mode. Recording starts immediately; press Ctrl+C to cancel.")
+                        if wait <= 0:
+                            wait = 6
+                            print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（'time N' で変更）。")
+                        else:
+                            print(f"  -> Mic conversation mode. Enterで録音開始、録音秒数は {wait}s（'time N' で変更）。")
+                        print("     コマンドを入力したい場合はそのまま文字を打って Enter。")
                     continue
                 if low.startswith("time "):
                     try:
@@ -619,10 +645,12 @@ def main():
                         speak(reply2, speed)
 
             except KeyboardInterrupt:
-                print("\n(CTRL+C) 録音を中断しました。")
+                print("\n(CTRL+C) 入力をキャンセルしました。")
                 bring_powershell_front()
-                if mode != "mic":
-                    continue
+                if mode == "mic":
+                    print("[mic] テキスト入力モードへ戻します。")
+                    mode = "text"
+                continue
     finally:
         stop_phrase_tab_sentry(sentry_stop, sentry_thread)
 
