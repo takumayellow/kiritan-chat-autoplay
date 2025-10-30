@@ -19,6 +19,7 @@ import wave
 import ctypes
 import subprocess
 import threading
+import re
 try:
     import msvcrt  # type: ignore
 except Exception:
@@ -85,6 +86,24 @@ MODEL_PROFILES: List[Dict[str, str]] = [
 
 _LAST_VOICEROID_SPEED: Optional[float] = None
 
+SANITIZE_TABLE = str.maketrans({
+    "*": "",
+    "`": "",
+    "_": "",
+    "~": "",
+    "^": "",
+    "#": "",
+    "|": "",
+})
+
+
+def sanitize_for_voice(text: str) -> str:
+    """
+    読み上げ時に不要な装飾記号を除去する。
+    """
+    cleaned = text.translate(SANITIZE_TABLE)
+    cleaned = re.sub(r"[•●○◆◇■□※☆★▶▷◀◁]", "・", cleaned)
+    return cleaned
 
 
 def focus_voiceroid_window():
@@ -427,7 +446,8 @@ def chat_once(client, user_text: str, preferred_model: str, system_prompt: str) 
                     {"role": "user", "content": user_text},
                 ],
             )
-            return (res.choices[0].message.content or "").strip()
+            raw = (res.choices[0].message.content or "").strip()
+            return sanitize_for_voice(raw)
         except Exception as err:
             tried.append(model_name)
             last_err = err
