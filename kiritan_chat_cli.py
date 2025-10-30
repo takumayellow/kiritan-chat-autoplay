@@ -14,8 +14,11 @@
 import os
 import sys
 import time
+import io
+import wave
 import ctypes
 import subprocess
+import threading
 import win32gui
 import win32process
 from typing import Optional, Tuple
@@ -27,6 +30,11 @@ try:
 except Exception:
     sr = None
     sd = None
+
+try:
+    import pyaudio  # type: ignore
+except Exception:
+    pyaudio = None
 
 # LLM
 try:
@@ -107,51 +115,61 @@ def connect_by_pid_hwnd(pid: int, hwnd: int):
         return None
 
 
-def ensure_phrase_tab():
+def ensure_phrase_tab(log_failure: bool = True) -> bool:
     """
     VOICEROID のタブを『フレーズ編集』に合わせる。
     起動時と、再生のたびに呼ぶと安定。
     """
     hwnd, pid = find_voiceroid_handle()
     if not (hwnd and pid):
-        print("⚠️ VOICEROID ウィンドウが見つかりません（タブ切替スキップ）")
-        return
+        if log_failure:
+            print("⚠️ VOICEROID ウィンドウが見つかりません（タブ切替スキップ）")
+        return False
 
     win = connect_by_pid_hwnd(pid, hwnd)
     if not win:
-        return
+        return False
 
     # TabItem を総当たりで取得
     try:
         items = win.descendants(control_type='TabItem')
     except Exception as e:
-        print(f"✖️ TabItem 取得失敗: {e}")
-        return
+        if log_failure:
+            print(f"✖️ TabItem 取得失敗: {e}")
+        return False
 
     # 名前一致で select → invoke → click の順に試す
+    last_err: Optional[Exception] = None
     for tab in items:
-        if tab.element_info.name == 'フレーズ編集':
-            try:
-                tab.select()
-                print("◎ 『フレーズ編集』 tab: select() 成功")
-                return
-            except Exception:
-                pass
-            try:
-                tab.invoke()
-                print("◎ 『フレーズ編集』 tab: invoke() 成功")
-                return
-            except Exception:
-                pass
-            try:
-                tab.click_input()
-                print("◎ 『フレーズ編集』 tab: click_input() 成功")
-                return
-            except Exception as e:
-                print(f"✖️ 『フレーズ編集』 tab クリック失敗: {e}")
-                return
+        name = (tab.element_info.name or "").strip()
+        if 'フレーズ編集' in name:
+            for action in (tab.select, tab.invoke, tab.click_input):
+                try:
+                    action()
+                    return True
+                except Exception as e:
+                    last_err = e
+            break
 
-    print("⚠️ 『フレーズ編集』タブが見つかりませんでした")
+    if log_failure:
+        if last_err:
+            print(f"✖️ 『フレーズ編集』 tab 操作失敗: {last_err}")
+        else:
+            print("⚠️ 『フレーズ編集』タブが見つかりませんでした")
+    return False
+
+
+def _guard_phrase_tab(stop_event: "threading.Event", interval: float = 0.6) -> None:
+    """VOICEROID が音声再生中にタブがズレないよう見張る。"""
+    ensure_phrase_tab(log_failure=False)
+    miss = 0
+    while not stop_event.wait(interval):
+        if ensure_phrase_tab(log_failure=False):
+            miss = 0
+            continue
+        miss += 1
+        if miss >= 5:
+            break
 
 
 # ---------------- 音声再生（SeikaSay2 CLI） ----------------
@@ -169,11 +187,20 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
         "-nc",
         "-t", text,
     ]
+    guard_stop: Optional[threading.Event] = None
+    guard_thread: Optional[threading.Thread] = None
     try:
         proc = subprocess.Popen(
             cmd,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
+        guard_stop = threading.Event()
+        guard_thread = threading.Thread(
+            target=_guard_phrase_tab,
+            args=(guard_stop,),
+            daemon=True,
+        )
+        guard_thread.start()
         proc.wait()
     except KeyboardInterrupt:
         try:
@@ -182,6 +209,10 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
             pass
         print("◆ 再生を中断しました。")
     finally:
+        if guard_stop is not None:
+            guard_stop.set()
+        if guard_thread is not None:
+            guard_thread.join(timeout=1.0)
         # タブを戻す（音声効果に飛ばされる対策）
         ensure_phrase_tab()
         # PowerShell を前面に
@@ -227,8 +258,83 @@ def chat_once(client, user_text: str) -> str:
 
 
 # ---------------- 入力ヘルパ（必要なら） ----------------
-def listen_mic(limit: int) -> str:
-    if not (sr and limit > 0):
+def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
+    if not (pyaudio and seconds > 0):
+        return b""
+    pa = pyaudio.PyAudio()
+    stream = None
+    frames = []
+    chunk = 1024
+    total = max(1, int(rate / chunk * seconds))
+    try:
+        stream = pa.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=rate,
+            input=True,
+            frames_per_buffer=chunk,
+        )
+        print(f"[mic] 録音 {seconds}s ...（PyAudio）")
+        for _ in range(total):
+            try:
+                frames.append(stream.read(chunk, exception_on_overflow=False))
+            except Exception as e:
+                print(f"[mic] 取得エラー: {e}", file=sys.stderr)
+                break
+    except Exception as e:
+        print(f"[mic] PyAudio 初期化失敗: {e}", file=sys.stderr)
+    finally:
+        if stream:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                pass
+        pa.terminate()
+    audio = b"".join(frames)
+    if not audio:
+        print("[mic] 音声を取得できませんでした。", file=sys.stderr)
+    return audio
+
+
+def _transcribe_with_openai(client, audio_bytes: bytes, rate: int = 16000) -> str:
+    if not (client and audio_bytes):
+        return ""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(audio_bytes)
+    buf.seek(0)
+    model = os.getenv("OPENAI_TRANSCRIBE_MODEL") or "gpt-4o-mini-transcribe"
+    try:
+        res = client.audio.transcriptions.create(
+            model=model,
+            file=("mic-input.wav", buf, "audio/wav"),
+            response_format="text",
+        )
+    except Exception as e:
+        print(f"[mic] 文字起こし失敗: {e}", file=sys.stderr)
+        return ""
+    if isinstance(res, str):
+        return res.strip()
+    text = getattr(res, "text", "")
+    if isinstance(text, str):
+        return text.strip()
+    return ""
+
+
+def listen_mic(client, limit: int) -> str:
+    if limit <= 0:
+        return ""
+    if pyaudio and client:
+        audio = _record_with_pyaudio(limit)
+        if audio:
+            text = _transcribe_with_openai(client, audio)
+            if text:
+                return text
+    if not sr:
         return ""
     r = sr.Recognizer()
     with sr.Microphone() as mic:
@@ -276,7 +382,7 @@ def main():
             elif mode == "text":
                 user = input("You (text): ").strip()
             elif mode == "mic":
-                user = listen_mic(wait)
+                user = listen_mic(client, wait)
                 if user:
                     print(f"You (mic): {user}")
                 else:
@@ -326,7 +432,7 @@ def main():
 
             # mic モードは続けて一往復
             if mode == "mic":
-                follow = listen_mic(wait)
+                follow = listen_mic(client, wait)
                 if follow:
                     print(f"You (mic): {follow}")
                     reply2 = chat_once(client, follow)

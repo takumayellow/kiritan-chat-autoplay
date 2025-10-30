@@ -28,7 +28,7 @@ GUI発展版-音声（Voice）
 - 相槌モード（/aizuchi on）で短め＆相槌多めの返答スタイルに切替
 """
 
-import os, sys, re, time, tempfile
+import os, sys, re, time, tempfile, threading
 from typing import Optional, List, Dict
 from datetime import datetime
 # --- console unicode safety (never crash on JP text) ---
@@ -122,6 +122,17 @@ def ensure_phrase_tab(win: BaseWrapper, timeout: float = 3.0) -> bool:
                         pass
         time.sleep(0.2)
     return False
+
+
+def guard_phrase_tab_for(win: BaseWrapper, duration: float = 3.0, interval: float = 0.4) -> None:
+    """再生中に『フレーズ編集』タブが外れないよう、短時間だけ見張る。"""
+    def _worker():
+        stop_at = time.time() + max(duration, 0.5)
+        ensure_phrase_tab(win, timeout=0.5)
+        while time.time() < stop_at:
+            ensure_phrase_tab(win, timeout=0.5)
+            time.sleep(interval)
+    threading.Thread(target=_worker, daemon=True).start()
 
 def _find_text_area(win: BaseWrapper):
     nodes = []
@@ -398,8 +409,10 @@ def main():
             print("[paste] 入力欄に貼り付け失敗。", file=sys.stderr)
             if mode == "loop": continue
             else:            continue
-        if not click_play(win):
+        played = click_play(win)
+        if not played:
             print("[play] 失敗（Space/F5 も不発）", file=sys.stderr)
+        guard_phrase_tab_for(win)
 
         # ログ
         try:
@@ -414,5 +427,87 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# --- HOTFIX: fixed model & UTF-8 safe generator (SDK fallback to raw HTTP) ---
+import os, sys, json, urllib.request
+os.environ.setdefault("PYTHONUTF8","1")
+os.environ.setdefault("PYTHONIOENCODING","utf-8")
+try:
+    if hasattr(sys.stdout,"reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    import codecs
+    if hasattr(sys,"stdout") and hasattr(sys.stdout,"buffer"):
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer,"replace")
+    if hasattr(sys,"stderr") and hasattr(sys.stderr,"buffer"):
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer,"replace")
+
+_FIXED_MODEL = os.environ.get("OPENAI_MODEL") or "gpt-4o-mini"
+_OAI_KEY     = os.environ.get("OPENAI_API_KEY","").strip()
+
+try:
+    from openai import OpenAI
+    _sdk_client = OpenAI()
+except Exception:
+    _sdk_client = None
+
+def _raw_http_chat(user_text: str) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    payload = {
+        "model": _FIXED_MODEL,
+        "messages": [
+            {"role":"system","content":"あなたは丁寧に日本語で答えるアシスタントです。"},
+            {"role":"user","content": str(user_text)}
+        ],
+        "temperature": 0.7,
+    }
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req  = urllib.request.Request(
+        url, data=data,
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Bearer {_OAI_KEY}",
+        }
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        obj = json.loads(resp.read().decode("utf-8", "replace"))
+    return obj["choices"][0]["message"]["content"]
+
+def chat_once(user_text: str) -> str:
+    print(f"[model] {_FIXED_MODEL}")
+    if _sdk_client:
+        try:
+            r = _sdk_client.chat.completions.create(
+                model=_FIXED_MODEL,
+                messages=[
+                    {"role":"system","content":"あなたは丁寧に日本語で答えるアシスタントです。"},
+                    {"role":"user","content": str(user_text)}
+                ],
+                temperature=0.7,
+            )
+            out = r.choices[0].message.content or ""
+            if not isinstance(out, str):
+                out = str(out)
+            print(f"[reply] {out}")
+            return out
+        except (UnicodeEncodeError, UnicodeDecodeError) as ue:
+            print(f"[sdk->raw] encoding error: {ue!r}")
+        except Exception as e:
+            print(f"[sdk warn] {e!r}")
+    try:
+        out = _raw_http_chat(user_text)
+        if not isinstance(out, str):
+            out = str(out)
+        print(f"[reply] {out}")
+        return out
+    except Exception as e:
+        try:
+            print(f"[raw error] {e!r}")
+        except Exception:
+            pass
+        return "ごめん、うまく応答を生成できませんでした。"
+# --- /HOTFIX ---
 
 
