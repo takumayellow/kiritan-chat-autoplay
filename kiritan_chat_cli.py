@@ -79,6 +79,8 @@ MODEL_PROFILES: List[Dict[str, str]] = [
     },
 ]
 
+_LAST_VOICEROID_SPEED: Optional[float] = None
+
 
 
 def focus_voiceroid_window():
@@ -313,11 +315,16 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
     SeikaSay2.exe -play で非同期起動→待機。
     再生後は PowerShell を前面に戻し、VOICEROID のタブを『フレーズ編集』へ戻す。
     """
+    global _LAST_VOICEROID_SPEED
     exe = seika_exe_path()
     cmd = [
         exe,
         "-cid",   str(CID_KIRITAN),
-        "-speed", f"{float(speed):.2f}",
+    ]
+    if _LAST_VOICEROID_SPEED is None or abs(float(speed) - _LAST_VOICEROID_SPEED) > 1e-3:
+        cmd += ["-speed", f"{float(speed):.2f}"]
+        _LAST_VOICEROID_SPEED = float(speed)
+    cmd += [
         "-play",
         "-nc",
         "-t", text,
@@ -422,7 +429,7 @@ def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
             input=True,
             frames_per_buffer=chunk,
         )
-        print(f"[mic] 録音 {seconds}s ...（PyAudio）")
+        print(f"[mic] 録音 {seconds}s ...")
         for _ in range(total):
             try:
                 frames.append(stream.read(chunk, exception_on_overflow=False))
@@ -534,7 +541,7 @@ def main():
     current_model = profile["model"]
     system_prompt = profile["prompt"]
     print(f"[model] {current_model} ({profile['label']})")
-    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enterで録音開始、コマンド入力も可能です。'help' で一覧。")
+    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。録音秒数は time N で調整できます。")
 
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
@@ -551,17 +558,13 @@ def main():
                 elif mode == "mic":
                     if wait <= 0:
                         wait = 6
-                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（'time N' で変更可能）。")
-                    mic_prompt = input("[mic] Enterで録音 / コマンド入力可: ").strip()
-                    if mic_prompt:
-                        user = mic_prompt
+                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                    user = listen_mic(client, wait)
+                    if user:
+                        print(f"You (mic): {user}")
                     else:
-                        user = listen_mic(client, wait)
-                        if user:
-                            print(f"You (mic): {user}")
-                        else:
-                            print("[mic] 音声を認識できませんでした。")
-                            continue
+                        print("[mic] 音声を認識できませんでした。")
+                        continue
                 elif mode == "loop":
                     user = listen_loopback(wait)
                     if user:
@@ -597,10 +600,10 @@ def main():
                             if mode == "mic":
                                 if wait <= 0:
                                     wait = 6
-                                    print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（'time N' で変更）。")
+                                    print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                                 else:
-                                    print(f"  -> Mic conversation mode. Enterで録音開始、録音秒数は {wait}s（'time N' で変更）。")
-                                print("     コマンドを入力したい場合はそのまま文字を打って Enter。")
+                                    print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
+                                print("     以降は自動で録音します。")
                             continue
                     print("Usage: mode text|mic|dual|loop")
                     continue
@@ -611,10 +614,10 @@ def main():
                     if mode == "mic":
                         if wait <= 0:
                             wait = 6
-                            print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（'time N' で変更）。")
+                            print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                         else:
-                            print(f"  -> Mic conversation mode. Enterで録音開始、録音秒数は {wait}s（'time N' で変更）。")
-                        print("     コマンドを入力したい場合はそのまま文字を打って Enter。")
+                            print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
+                        print("     以降は自動で録音します。")
                     continue
                 if low.startswith("time "):
                     try:
@@ -637,6 +640,9 @@ def main():
                 speak(reply, speed)
 
                 if mode == "mic":
+                    if wait <= 0:
+                        wait = 6
+                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
                     follow = listen_mic(client, wait)
                     if follow:
                         print(f"You (mic): {follow}")
