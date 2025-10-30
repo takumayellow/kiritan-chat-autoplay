@@ -49,6 +49,7 @@ except Exception:
 
 # UI 操作（UIA バックエンド）
 from pywinauto import Application, timings
+from pywinauto.keyboard import send_keys
 
 
 MODEL_PROFILES: List[Dict[str, str]] = [
@@ -75,7 +76,7 @@ MODEL_PROFILES: List[Dict[str, str]] = [
     {
         "key": "3",
         "alias": "deep",
-        "label": "じっくり深掘り（知的寄り）",
+        "label": "じっくり深掘り（教授モード）",
         "model": "o4-mini-high",
         "prompt": (
             "あなたは東北きりたんEXです。背景や理由を補足しながら、"
@@ -136,7 +137,10 @@ def stop_phrase_tab_sentry(stop_event: Optional[threading.Event], thread: Option
     if stop_event:
         stop_event.set()
     if thread:
-        thread.join(timeout=1.5)
+        try:
+            thread.join(timeout=1.5)
+        except KeyboardInterrupt:
+            pass
 
 
 def ensure_phrase_tab_with_retry(duration: float = 1.0, interval: float = 0.2) -> bool:
@@ -160,6 +164,30 @@ def _phrase_tab_active(win) -> bool:
         {"title": "フレーズ編集", "control_type": "TabItem"},
         {"title": "フレーズ編集", "control_type": "Button"},
         {"title": "フレーズ編集", "control_type": "RadioButton"},
+    ]
+    for spec in specs:
+        try:
+            ctrl = win.child_window(**spec).wrapper_object()
+        except Exception:
+            continue
+        try:
+            if hasattr(ctrl, "is_selected") and ctrl.is_selected():
+                return True
+        except Exception:
+            pass
+        try:
+            if hasattr(ctrl, "get_toggle_state") and ctrl.get_toggle_state() == 1:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _sound_effect_active(win) -> bool:
+    specs = [
+        {"title": "音声効果", "control_type": "TabItem"},
+        {"title": "音声効果", "control_type": "Button"},
+        {"title": "音声効果", "control_type": "RadioButton"},
     ]
     for spec in specs:
         try:
@@ -212,7 +240,7 @@ def print_cli_usage():
     print("\n--- コマンド一覧 ---")
     print("  help           : このヘルプ")
     print("  mode text      : 入力を文字入力に戻す")
-    print("  mode mic       : マイク会話（'voice' でもOK、録音秒数は time N で調整）")
+    print("  mode mic       : マイク会話（'voice' でもOK、Enter で途中停止・待ち時間は time N）")
     print("  mode loop      : PCの再生音を拾って会話")
     print("  mode dual      : テキスト→マイクの連続モード")
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
@@ -368,6 +396,23 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
                 last_err = e
                 continue
 
+    if _sound_effect_active(win):
+        try:
+            btn = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
+            btn.click_input()
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
+        except Exception:
+            pass
+        try:
+            win.set_focus()
+            send_keys("^1")
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
+        except Exception:
+            pass
     if log_failure:
         if last_err:
             print(f"✖️ 『フレーズ編集』 tab 操作失敗: {last_err}")
@@ -520,7 +565,7 @@ def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
             if msvcrt and msvcrt.kbhit():
                 ch = msvcrt.getwch()
                 if ch == "\r":
-                    print("[mic] Enter が押されたので録音を終了します。")
+                    print("[mic] Enter で録音を終了しました。")
                     # consume trailing LF if存在
                     while msvcrt.kbhit():
                         msvcrt.getwch()
@@ -625,7 +670,7 @@ def main():
     current_model = profile["model"]
     system_prompt = profile["prompt"]
     print(f"[model] {current_model} ({profile['label']})")
-    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。録音秒数は time N で調整できます。")
+    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
 
     try:
         sentry_stop, sentry_thread = start_phrase_tab_sentry()
