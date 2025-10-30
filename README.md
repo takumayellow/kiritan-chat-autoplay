@@ -1,10 +1,11 @@
-﻿# きりたん Chat Autoplay（GUI優先・CLI併用）
+# きりたん Chat Autoplay（GUI優先・CLI併用）
 
 ## 1) “完成版”の全体像
 - **会話生成**: OpenAI API（`OPENAI_MODEL` 未指定時は `gpt-4o-mini → o4-mini-high → o3-mini → gpt-4o` 順で自動フォールバック）
 - **読み上げ**: `SeikaSay2.exe` の **CLI** で再生
+- **音声入力**: `mode mic` で自動録音（Enter で途中停止 / `time N` で録音秒数を変更）
 - **UI 安定化**: VOICEROID のタブが勝手に動く問題に対し、**UIA** で「**フレーズ編集**」に自動復帰  
-  起動時と毎回の再生後に `select() → invoke() → click_input()` の順でフォールバック
+  watchdog が `TabItem/ボタン/ラジオ` を監視し、必要なら `Ctrl+1` 擬似入力まで使って復帰
 - **フォーカス**: 毎回の再生後に PowerShell を前面復帰
 - **速度**: 入力値をそのまま Seika に渡し、`0.5–4.0x` にクランプ（2倍速化バグを解消）
 - 実装方針は **「CLIで読み上げ」＋「GUIでタブ復帰」** の二本立て（GUI操作は必要最小限）
@@ -28,8 +29,8 @@
 
 ## 4) “タブが動く”問題の最終対処
 - 再生後にタブが他へ移動する事象あり
-- **UIA** で `TabItem` を列挙し「**フレーズ編集**」を
-  - `select()` → 失敗なら `invoke()` → さらに失敗なら `click_input()` で確実に復帰
+- **UIA** で `TabItem` だけでなく **ボタン/ラジオも列挙**し「フレーズ編集」へ復帰
+  - `select()` → `invoke()` → `click_input()` → `Ctrl+1` 擬似入力まで段階的に試行
 - これは `tab_switch_test.py` で検証済み → 本体 `ensure_phrase_tab()` に統合
 
 ## 5) 依存・環境・実行
@@ -47,7 +48,8 @@
   `mode dual|text|mic|loop | time N | speed X | exit`  
   例）`speed 1.2`, `mode mic`, `time 6`
 - 動作フロー:  
-  起動直後に **フレーズ編集へ復帰** → 返答生成 → `SeikaSay2 -play` で再生 → 再生後にタブ復帰＋前面復帰
+  起動直後に **フレーズ編集へ復帰** → 返答生成 → `SeikaSay2 -play` で再生  
+  再生中は watchdog がタブを監視し続け、終了後も再度タブ復帰＋前面復帰を保证
 
 ## 6) /debug にある検証資材
 - `tab_switch_test.py`: タブ列挙と復帰の確定版
