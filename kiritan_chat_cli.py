@@ -423,15 +423,18 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
 
 def _guard_phrase_tab(stop_event: "threading.Event", interval: float = 0.6) -> None:
     """VOICEROID が音声再生中にタブがズレないよう見張る。"""
-    ensure_phrase_tab(log_failure=False)
+    interval = max(0.2, interval)
+    ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
     miss = 0
     while not stop_event.wait(interval):
         if ensure_phrase_tab(log_failure=False):
             miss = 0
             continue
         miss += 1
-        if miss >= 5:
-            break
+        if miss >= 3:
+            ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+            miss = 0
+    ensure_phrase_tab_with_retry(duration=1.0, interval=0.2)
 
 
 # ---------------- 音声再生（SeikaSay2 CLI） ----------------
@@ -773,7 +776,7 @@ def main():
                 continue
 
             reply = chat_once(client, user, current_model, system_prompt)
-            print(f"Kiritan: {reply}")
+            print(f"きりたん: {reply}")
             speak(reply, speed)
 
             if mode == "mic":
@@ -784,7 +787,7 @@ def main():
                 if follow:
                     print(f"You (mic): {follow}")
                     reply2 = chat_once(client, follow, current_model, system_prompt)
-                    print(f"Kiritan: {reply2}")
+                    print(f"きりたん: {reply2}")
                     speak(reply2, speed)
     except KeyboardInterrupt:
         print("\n(CTRL+C) 終了します。")
