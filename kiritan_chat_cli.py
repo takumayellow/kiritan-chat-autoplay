@@ -20,6 +20,7 @@ import ctypes
 import subprocess
 import threading
 import re
+from dataclasses import dataclass
 try:
     import msvcrt  # type: ignore
 except Exception:
@@ -52,19 +53,58 @@ from pywinauto import Application, timings
 from pywinauto.keyboard import send_keys
 
 
-DEFAULT_USER_NAME = "おにいさん"
+DEFAULT_USER_NAME = "あなた"
+DEFAULT_USER_HONORIFIC = "お友だち"
 
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
     "秋田弁まじりの柔らかい口調と、素朴で元気な性格で相手を励まします。"
     "好物はきりたんぽで、東北の話題や季節の出来事が大好き。"
-    "一人称は「きりたん」または「わたし」を使い、必要に応じて相手を「おにいさん」「おねえさん」などと親しげに呼びます。"
-    "相手の名前は「{user_name}」さんです。できるだけ丁寧かつ親しみを込めて名前を呼びかけましょう。"
+    "一人称は「きりたん」または「わたし」を使い、明るく丁寧な語り方を心がけます。"
+    "{name_line}"
+    "{honorific_line}"
+    "{gender_line}"
+    "{age_line}"
     "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
 )
 
 TAB_GUARD_DEBUG = os.getenv("KIRITAN_TAB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
 
+
+@dataclass
+class UserProfile:
+    name: str = ""
+    honorific: str = ""
+    gender: str = ""
+    age: str = ""
+
+    @staticmethod
+    def _append_default_suffix(value: str) -> str:
+        if not value:
+            return ""
+        suffixes = ("さん", "様", "さま", "くん", "ちゃん", "殿", "どの", "先生")
+        value = value.strip()
+        if value.endswith(suffixes):
+            return value
+        return f"{value}さん"
+
+    def display_label(self) -> str:
+        if self.honorific:
+            return self.honorific
+        if self.name:
+            return self._append_default_suffix(self.name)
+        return DEFAULT_USER_HONORIFIC
+
+    def call_name(self) -> str:
+        if self.name:
+            return self._append_default_suffix(self.name)
+        return DEFAULT_USER_NAME
+
+
+def profile_summary(user_profile: UserProfile) -> str:
+    gender = user_profile.gender or "未設定"
+    age = user_profile.age or "未設定"
+    return f"呼び名: {user_profile.display_label()} / ジェンダー: {gender} / 年齢感: {age}"
 
 MODEL_PROFILES: List[Dict[str, str]] = [
     {
@@ -102,15 +142,52 @@ MODEL_PROFILES: List[Dict[str, str]] = [
 ]
 
 
-def build_kiritan_persona(user_name: str) -> str:
-    name = user_name.strip() if user_name else ""
-    if not name:
-        name = DEFAULT_USER_NAME
-    return KIRITAN_PERSONA_TEMPLATE.format(user_name=name)
+def build_kiritan_persona(user_profile: UserProfile) -> str:
+    name = (user_profile.name or "").strip()
+    honorific = (user_profile.honorific or "").strip()
+    gender = (user_profile.gender or "").strip()
+    age = (user_profile.age or "").strip()
+
+    if name:
+        name_line = f"相手の名前は「{name}」さんです。"
+    else:
+        name_line = "相手の名前は明かされていないので、「あなた」と呼びかけます。"
+
+    if honorific:
+        honorific_line = (
+            f"親しみを込めて主に「{honorific}」と呼び、必要に応じて名前に「さん」を添えてください。"
+        )
+    elif name:
+        honorific_line = (
+            "基本は名前に『さん』を添えて呼び、砕けすぎない距離感を保ってください。"
+        )
+    else:
+        honorific_line = "名前が分からないので『あなた』と呼びかけつつ、丁寧で中立的な言葉遣いを心がけてください。"
+
+    if gender:
+        gender_line = (
+            f"相手の性別・ジェンダー表現は「{gender}」として尊重し、ステレオタイプな言及は避けてください。"
+        )
+    else:
+        gender_line = "性別は不明なので推測せず、ジェンダーに配慮した表現を選んでください。"
+
+    if age:
+        age_line = (
+            f"相手は「{age}」であることを意識し、年齢に合わせた気遣いを添えてください。"
+        )
+    else:
+        age_line = "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
+
+    return KIRITAN_PERSONA_TEMPLATE.format(
+        name_line=name_line,
+        honorific_line=honorific_line,
+        gender_line=gender_line,
+        age_line=age_line,
+    )
 
 
-def compose_system_prompt(profile: Dict[str, str], user_name: str) -> str:
-    persona = build_kiritan_persona(user_name)
+def compose_system_prompt(profile: Dict[str, str], user_profile: UserProfile) -> str:
+    persona = build_kiritan_persona(user_profile)
     template = profile.get("prompt_template") or BASE_SYSTEM_PROMPT_TEMPLATE
     try:
         return template.format(persona=persona)
@@ -346,7 +423,8 @@ def print_cli_usage():
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
-    print("  name [呼び方]  : きりたんが呼ぶ名前を設定（省略で再入力）")
+    print("  profile        : 名前・呼び方・ジェンダー・年齢感を再入力")
+    print("  name           : （profile のエイリアス）")
     print("  exit           : 終了")
     print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
 
@@ -366,21 +444,37 @@ def normalize_mode_name(raw: str) -> Optional[str]:
     return aliases.get(key)
 
 
-def prompt_user_name() -> str:
+def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     """
-    初回の自己紹介。空ならデフォルト呼称にフォールバックする。
+    名前・呼称・ジェンダー・年齢感をヒアリング。Enterでそれぞれスキップ可。
     """
     bring_powershell_front()
+    base = existing or UserProfile()
+    print("\n=== きりたんに自己紹介しましょう ===")
+    print("※ 何も入力せず Enter でスキップできます。")
     try:
-        name = input("\nきりたんにお名前を教えてください（省略したい場合は Enter）: ").strip()
+        name = input(f"お名前（表示したくない場合は空欄）[{base.name or '未設定'}]: ").strip()
+        gender = input(f"性別・ジェンダー（例: 男性/女性/ノンバイナリ）[{base.gender or '未設定'}]: ").strip()
+        honorific = input(
+            f"呼ばれたい敬称・ニックネーム（例: 先生/お姉さん/さん など）[{base.honorific or '未設定'}]: "
+        ).strip()
+        age = input(f"年齢や年代感（例: 大学生/30代/高校生）[{base.age or '未設定'}]: ").strip()
     except (EOFError, KeyboardInterrupt):
-        print("\nお名前が分からなかったので、とりあえず『おにいさん』って呼ぶね。")
-        return ""
-    if name:
-        print(f"きりたん: {name} さん、これからよろしくお願いします！")
-    else:
-        print("きりたん: じゃあ今は『おにいさん』って呼ぶね～。")
-    return name
+        print("\n入力を中断しました。前回の設定を使います。")
+        return base
+
+    profile = UserProfile(
+        name=name or base.name,
+        gender=gender or base.gender,
+        honorific=honorific or base.honorific,
+        age=age or base.age,
+    )
+
+    display = profile.display_label()
+    print(f"きりたん: {display}、あらためてよろしくお願いします！")
+    if not profile.gender:
+        print("きりたん: 性別は分からないから、中立な話し方でいくね。")
+    return profile
 
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
@@ -398,8 +492,10 @@ BASE_SYSTEM_PROMPT_TEMPLATE = (
     "相手の気持ちをくみ取りつつ親しみやすく返答し、会話をつなぐ自然な質問を最後に一つだけ添えてください。"
 )
 
+DEFAULT_USER_PROFILE = UserProfile()
+
 SYSTEM_PROMPT = BASE_SYSTEM_PROMPT_TEMPLATE.format(
-    persona=build_kiritan_persona(DEFAULT_USER_NAME)
+    persona=build_kiritan_persona(DEFAULT_USER_PROFILE)
 )
 
 
@@ -821,12 +917,12 @@ def main():
     sentry_thread: Optional[threading.Thread] = None
 
     client = create_client()
-    profile = choose_conversation_profile()
-    user_name = prompt_user_name()
-    current_model = profile["model"]
-    system_prompt = compose_system_prompt(profile, user_name)
-    print(f"[model] {current_model} ({profile['label']})")
-    print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
+    conversation_profile = choose_conversation_profile()
+    user_profile = prompt_user_profile()
+    current_model = conversation_profile["model"]
+    system_prompt = compose_system_prompt(conversation_profile, user_profile)
+    print(f"[model] {current_model} ({conversation_profile['label']})")
+    print(f"[persona] {profile_summary(user_profile)}")
     print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
 
     try:
@@ -879,20 +975,20 @@ def main():
                 print_cli_usage()
                 continue
             if low.startswith("style"):
-                profile = choose_conversation_profile()
-                current_model = profile["model"]
-                system_prompt = compose_system_prompt(profile, user_name)
-                print(f"[model] {current_model} ({profile['label']})")
-                print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
+                conversation_profile = choose_conversation_profile()
+                current_model = conversation_profile["model"]
+                system_prompt = compose_system_prompt(conversation_profile, user_profile)
+                print(f"[model] {current_model} ({conversation_profile['label']})")
+                print(f"[persona] {profile_summary(user_profile)}")
                 continue
-            if low.startswith("name"):
+            if low.startswith("profile") or low.startswith("name"):
                 parts = user.split(maxsplit=1)
                 if len(parts) >= 2 and parts[1].strip():
-                    user_name = parts[1].strip()
+                    user_profile.name = parts[1].strip()
                 else:
-                    user_name = prompt_user_name()
-                system_prompt = compose_system_prompt(profile, user_name)
-                print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
+                    user_profile = prompt_user_profile(existing=user_profile)
+                system_prompt = compose_system_prompt(conversation_profile, user_profile)
+                print(f"[persona] {profile_summary(user_profile)}")
                 continue
             if low.startswith("mode "):
                 parts = low.split()
