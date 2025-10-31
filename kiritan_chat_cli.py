@@ -52,6 +52,15 @@ from pywinauto import Application, timings
 from pywinauto.keyboard import send_keys
 
 
+KIRITAN_PERSONA = (
+    "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
+    "秋田弁まじりの柔らかい口調と、素朴で元気な性格で相手を励まします。"
+    "好物はきりたんぽで、東北の話題や季節の出来事が大好き。"
+    "一人称は「きりたん」または「わたし」を使い、必要に応じて相手を「おにいさん」「おねえさん」などと親しげに呼びます。"
+    "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
+)
+
+
 MODEL_PROFILES: List[Dict[str, str]] = [
     {
         "key": "1",
@@ -59,8 +68,9 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "label": "ライト雑談（軽め）",
         "model": "gpt-4o-mini",
         "prompt": (
-            "あなたは東北きりたんEXです。短めで気楽な雑談トーンを意識し、"
-            "相手を励ますように明るく返答してください。"
+            KIRITAN_PERSONA
+            + "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
+              "短めのセリフで元気づけるように返答してください。"
         ),
     },
     {
@@ -69,8 +79,9 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "label": "ゆったり会話（丁寧）",
         "model": "o4-mini",
         "prompt": (
-            "あなたは東北きりたんEXです。落ち着いて相手の意図をくみ取り、"
-            "適度な長さで丁寧に説明してください。"
+            KIRITAN_PERSONA
+            + "落ち着いたテンポで相手の意図をくみ取り、"
+              "丁寧さと親しみを両立させながら柔らかく答えてください。"
         ),
     },
     {
@@ -79,8 +90,8 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "label": "じっくり深掘り（教授モード）",
         "model": "o4-mini-high",
         "prompt": (
-            "あなたは東北きりたんEXです。背景や理由を補足しながら、"
-            "洞察や提案も添えて会話してください。"
+            KIRITAN_PERSONA
+            + "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
         ),
     },
 ]
@@ -287,8 +298,8 @@ DEFAULT_SEIKA_EXE = (
 )
 
 SYSTEM_PROMPT = (
-    "あなたは『東北きりたんEX』です。可愛らしく親しみやすい口調で、"
-    "返答の最後に会話が続くような自然な一つの質問を添えてください。"
+    KIRITAN_PERSONA
+    + "相手の気持ちをくみ取りつつ親しみやすく返答し、会話をつなぐ自然な質問を最後に一つだけ添えてください。"
 )
 
 
@@ -421,20 +432,49 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
     return False
 
 
-def _guard_phrase_tab(stop_event: "threading.Event", interval: float = 0.6) -> None:
-    """VOICEROID が音声再生中にタブがズレないよう見張る。"""
+def _guard_phrase_tab(
+    stop_event: "threading.Event",
+    interval: float = 0.6,
+    linger_after_stop: float = 1.4,
+) -> None:
+    """
+    VOICEROID が音声再生中にタブがズレないよう見張る。
+
+    `stop_event` が立った直後は VOICEROID 側でタブ切替が起こりやすいので、
+    しばらく監視を続けてから抜ける。
+    """
     interval = max(0.2, interval)
+    linger_after_stop = max(0.0, linger_after_stop)
     ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
     miss = 0
-    while not stop_event.wait(interval):
+    linger_deadline: Optional[float] = None
+
+    while True:
         if ensure_phrase_tab(log_failure=False):
             miss = 0
+        else:
+            miss += 1
+            if miss >= 3:
+                ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+                miss = 0
+
+        if stop_event.is_set():
+            now = time.time()
+            if linger_deadline is None:
+                linger_deadline = now + linger_after_stop
+            if linger_after_stop <= 0 or now >= linger_deadline:
+                break
+            time.sleep(min(interval, 0.2))
             continue
-        miss += 1
-        if miss >= 3:
-            ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
-            miss = 0
-    ensure_phrase_tab_with_retry(duration=1.0, interval=0.2)
+
+        # イベントが立つまで待機。途中で stop_event が立った場合は即座にループを継続。
+        if stop_event.wait(interval):
+            continue
+
+    ensure_phrase_tab_with_retry(
+        duration=max(1.0, 0.8 + linger_after_stop),
+        interval=0.2,
+    )
 
 
 # ---------------- 音声再生（SeikaSay2 CLI） ----------------
@@ -459,26 +499,33 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
     ]
     guard_stop: Optional[threading.Event] = None
     guard_thread: Optional[threading.Thread] = None
+    proc: Optional[subprocess.Popen] = None
     try:
         focus_voiceroid_window()
-        ensure_phrase_tab(log_failure=False)
-        proc = subprocess.Popen(
-            cmd,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
+        pre_ensured = ensure_phrase_tab_with_retry(duration=1.0, interval=0.2)
+        if not pre_ensured:
+            print("⚠️ 再生前に『フレーズ編集』タブへ戻すことに失敗しました。リトライします。")
         guard_stop = threading.Event()
         guard_thread = threading.Thread(
             target=_guard_phrase_tab,
             args=(guard_stop,),
+            kwargs={"interval": 0.3, "linger_after_stop": 1.4},
             daemon=True,
         )
         guard_thread.start()
+        ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+        proc = subprocess.Popen(
+            cmd,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        ensure_phrase_tab_with_retry(duration=0.6, interval=0.2)
         proc.wait()
     except KeyboardInterrupt:
-        try:
-            proc.terminate()
-        except Exception:
-            pass
+        if proc:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
         print("◆ 再生を中断しました。")
     finally:
         if guard_stop is not None:
