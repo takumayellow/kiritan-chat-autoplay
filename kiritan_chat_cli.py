@@ -63,12 +63,15 @@ KIRITAN_PERSONA_TEMPLATE = (
     "一人称は「きりたん」または「わたし」を使い、明るく丁寧な語り方を心がけます。"
     "{name_line}"
     "{honorific_line}"
+    "{call_line}"
     "{gender_line}"
     "{age_line}"
     "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
 )
 
 TAB_GUARD_DEBUG = os.getenv("KIRITAN_TAB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+_VOICEROID_WARN_INTERVAL = 5.0
+_last_voiceroid_warn = 0.0
 
 
 @dataclass
@@ -151,7 +154,7 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
     if name:
         name_line = f"相手の名前は「{name}」さんです。"
     else:
-        name_line = "相手の名前は明かされていないので、「あなた」と呼びかけます。"
+        name_line = "相手の名前は明かされていないので、『あなた』と呼びかけます。"
 
     if honorific:
         honorific_line = (
@@ -178,9 +181,12 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
     else:
         age_line = "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
 
+    call_line = f"会話では主に「{user_profile.call_name()}」と呼びかけてください。"
+
     return KIRITAN_PERSONA_TEMPLATE.format(
         name_line=name_line,
         honorific_line=honorific_line,
+        call_line=call_line,
         gender_line=gender_line,
         age_line=age_line,
     )
@@ -200,6 +206,14 @@ def _tab_debug(msg: str) -> None:
     if TAB_GUARD_DEBUG:
         stamp = time.strftime("%H:%M:%S")
         print(f"[tab-debug {stamp}] {msg}")
+
+
+def _warn_voiceroid_missing() -> None:
+    global _last_voiceroid_warn
+    now = time.time()
+    if now - _last_voiceroid_warn >= _VOICEROID_WARN_INTERVAL:
+        print("⚠️ VOICEROID ウィンドウが見つかりません。VOICEROID＋ 東北きりたん EX が起動済みか確認してください。")
+        _last_voiceroid_warn = now
 
 
 def _select_phrase_tab_via_tabcontrol(win) -> bool:
@@ -458,8 +472,8 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
             "性別・ジェンダー（番号でも選べます）:\n"
             "  1: 男性\n"
             "  2: 女性\n"
-            "  3: ノンバイナリ（男女の枠に当てはまらない/決めたくない）\n"
-            "  その他: ご希望の表現をそのまま入力"
+            "  3: その他／決めたくない（例: ノンバイナリ）\n"
+            "  ※『ノンバイナリ』は男女どちらにも限定されない、あるいは決めたくない立場を指します。"
         )
         gender_input = input(f"性別・ジェンダー [{base.gender or '未設定'}]: ").strip()
         if gender_input == "1":
@@ -467,17 +481,40 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
         elif gender_input == "2":
             gender = "女性"
         elif gender_input == "3":
-            gender = "ノンバイナリ（男女の枠に当てはまらない/決めたくない）"
-        elif gender_input == "4":
-            gender = input("自由入力で教えてください（例: Xジェンダー/不回答 など）: ").strip()
+            gender = (
+                input("ご希望の表現があれば入力してください（例: ノンバイナリ / 決めない / 不回答 など）: ").strip()
+                or "ノンバイナリ（男女の枠に当てはまらない/決めたくない）"
+            )
         elif gender_input.isdigit():
             gender = ""
         else:
             gender = gender_input
         honorific = input(
-            f"呼ばれたい敬称・ニックネーム（例: 先生/お姉さん/さん など）[{base.honorific or '未設定'}]: "
+            f"呼ばれたい呼び方（例: さん / 様 / 先輩 など）[{base.honorific or '未設定'}]: "
         ).strip()
-        age = input(f"年齢や年代感（例: 大学生/30代/高校生）[{base.age or '未設定'}]: ").strip()
+        print(
+            "年代・ライフステージ（番号でも選べます）:\n"
+            "  1: 学生\n"
+            "  2: 20代\n"
+            "  3: 30代\n"
+            "  4: 40代以上\n"
+            "  5: その他・自由入力"
+        )
+        age_input = input(f"年齢や年代感 [{base.age or '未設定'}]: ").strip()
+        if age_input == "1":
+            age = "学生"
+        elif age_input == "2":
+            age = "20代"
+        elif age_input == "3":
+            age = "30代"
+        elif age_input == "4":
+            age = "40代以上"
+        elif age_input == "5":
+            age = input("自由入力で教えてください（例: 社会人5年目 / シニア など）: ").strip()
+        elif age_input.isdigit():
+            age = ""
+        else:
+            age = age_input
     except (EOFError, KeyboardInterrupt):
         print("\n入力を中断しました。前回の設定を使います。")
         return base
@@ -490,9 +527,13 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     )
 
     display = profile.display_label()
-    print(f"きりたん: {display}、あらためてよろしくお願いします！")
-    if not profile.gender:
-        print("きりたん: 性別は分からないから、中立な話し方でいくね。")
+    print(f"きりたん: {display}、よろしくお願いします！")
+    if profile.gender:
+        print(f"きりたん: ジェンダーは「{profile.gender}」として尊重するね。")
+    else:
+        print("きりたん: 分からないところは無理に触れず、中立な言葉でお話しするね。")
+    if profile.age:
+        print(f"きりたん: 年齢感は「{profile.age}」で覚えておくね。")
     return profile
 
 # ---------------- 設定 ----------------
@@ -578,7 +619,7 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
     hwnd, pid = find_voiceroid_handle()
     if not (hwnd and pid):
         if log_failure:
-            print("⚠️ VOICEROID ウィンドウが見つかりません（タブ切替スキップ）")
+            _warn_voiceroid_missing()
         return False
 
     win = connect_by_pid_hwnd(pid, hwnd)
