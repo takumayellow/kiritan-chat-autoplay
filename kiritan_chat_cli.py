@@ -52,11 +52,14 @@ from pywinauto import Application, timings
 from pywinauto.keyboard import send_keys
 
 
-KIRITAN_PERSONA = (
+DEFAULT_USER_NAME = "おにいさん"
+
+KIRITAN_PERSONA_TEMPLATE = (
     "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
     "秋田弁まじりの柔らかい口調と、素朴で元気な性格で相手を励まします。"
     "好物はきりたんぽで、東北の話題や季節の出来事が大好き。"
     "一人称は「きりたん」または「わたし」を使い、必要に応じて相手を「おにいさん」「おねえさん」などと親しげに呼びます。"
+    "相手の名前は「{user_name}」さんです。できるだけ丁寧かつ親しみを込めて名前を呼びかけましょう。"
     "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
 )
 
@@ -67,10 +70,10 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "alias": "light",
         "label": "ライト雑談（軽め）",
         "model": "gpt-4o-mini",
-        "prompt": (
-            KIRITAN_PERSONA
-            + "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
-              "短めのセリフで元気づけるように返答してください。"
+        "prompt_template": (
+            "{persona}"
+            "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
+            "短めのセリフで元気づけるように返答してください。"
         ),
     },
     {
@@ -78,10 +81,10 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "alias": "normal",
         "label": "ゆったり会話（丁寧）",
         "model": "o4-mini",
-        "prompt": (
-            KIRITAN_PERSONA
-            + "落ち着いたテンポで相手の意図をくみ取り、"
-              "丁寧さと親しみを両立させながら柔らかく答えてください。"
+        "prompt_template": (
+            "{persona}"
+            "落ち着いたテンポで相手の意図をくみ取り、"
+            "丁寧さと親しみを両立させながら柔らかく答えてください。"
         ),
     },
     {
@@ -89,12 +92,30 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "alias": "deep",
         "label": "じっくり深掘り（教授モード）",
         "model": "o4-mini-high",
-        "prompt": (
-            KIRITAN_PERSONA
-            + "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
+        "prompt_template": (
+            "{persona}"
+            "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
         ),
     },
 ]
+
+
+def build_kiritan_persona(user_name: str) -> str:
+    name = user_name.strip() if user_name else ""
+    if not name:
+        name = DEFAULT_USER_NAME
+    return KIRITAN_PERSONA_TEMPLATE.format(user_name=name)
+
+
+def compose_system_prompt(profile: Dict[str, str], user_name: str) -> str:
+    persona = build_kiritan_persona(user_name)
+    template = profile.get("prompt_template") or BASE_SYSTEM_PROMPT_TEMPLATE
+    try:
+        return template.format(persona=persona)
+    except Exception:
+        # 念のためテンプレートが壊れてもペルソナ文だけは返す
+        return persona
+
 
 _LAST_VOICEROID_SPEED: Optional[float] = None
 
@@ -168,6 +189,23 @@ def ensure_phrase_tab_with_retry(duration: float = 1.0, interval: float = 0.2) -
     if not success:
         ensure_phrase_tab(log_failure=True)
     return success
+
+
+def force_phrase_tab(duration: float = 1.5, interval: float = 0.15) -> bool:
+    """
+    フォーカスも戻しつつ攻めのリトライ。短時間で確実に「フレーズ編集」に戻したいときに使用。
+    """
+    end = time.time() + max(duration, 0.2)
+    result = False
+    while time.time() < end:
+        focus_voiceroid_window()
+        if ensure_phrase_tab(log_failure=False):
+            result = True
+            break
+        time.sleep(max(0.05, interval))
+    if not result:
+        ensure_phrase_tab(log_failure=True)
+    return result
 
 
 def _phrase_tab_active(win) -> bool:
@@ -257,6 +295,7 @@ def print_cli_usage():
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
+    print("  name [呼び方]  : きりたんが呼ぶ名前を設定（省略で再入力）")
     print("  exit           : 終了")
     print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
 
@@ -275,17 +314,23 @@ def normalize_mode_name(raw: str) -> Optional[str]:
     }
     return aliases.get(key)
 
-    default = MODEL_PROFILES[0]
-    while True:
-        choice = input(f"スタイル番号 [Enter={default['key']}]: ").strip().lower()
-        if not choice:
-            print(f"→ {default['label']} を選択しました。")
-            return default
-        if choice in lookup:
-            profile = lookup[choice]
-            print(f"→ {profile['label']} を選択しました。")
-            return profile
-        print("  ※ 1/2/3 または light/normal/deep で選んでください。")
+
+def prompt_user_name() -> str:
+    """
+    初回の自己紹介。空ならデフォルト呼称にフォールバックする。
+    """
+    bring_powershell_front()
+    try:
+        name = input("\nきりたんにお名前を教えてください（省略可）: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nお名前が分からなかったので、とりあえず『おにいさん』って呼ぶね。")
+        return ""
+    if name:
+        print(f"きりたん: {name} さん、これからよろしくお願いします！")
+    else:
+        print("きりたん: じゃあ今は『おにいさん』って呼ぶね～。")
+    return name
+
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
 DEFAULT_SPEED = 1.0           # 読み上げ速度（Seika側の話速に対して倍率）
@@ -297,9 +342,13 @@ DEFAULT_SEIKA_EXE = (
     r"C:\Users\takum\Downloads\assistantseika20250113a\SeikaSay2\SeikaSay2.exe"
 )
 
-SYSTEM_PROMPT = (
-    KIRITAN_PERSONA
-    + "相手の気持ちをくみ取りつつ親しみやすく返答し、会話をつなぐ自然な質問を最後に一つだけ添えてください。"
+BASE_SYSTEM_PROMPT_TEMPLATE = (
+    "{persona}"
+    "相手の気持ちをくみ取りつつ親しみやすく返答し、会話をつなぐ自然な質問を最後に一つだけ添えてください。"
+)
+
+SYSTEM_PROMPT = BASE_SYSTEM_PROMPT_TEMPLATE.format(
+    persona=build_kiritan_persona(DEFAULT_USER_NAME)
 )
 
 
@@ -434,7 +483,7 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
 
 def _guard_phrase_tab(
     stop_event: "threading.Event",
-    interval: float = 0.6,
+    interval: float = 0.3,
     linger_after_stop: float = 1.4,
 ) -> None:
     """
@@ -443,9 +492,9 @@ def _guard_phrase_tab(
     `stop_event` が立った直後は VOICEROID 側でタブ切替が起こりやすいので、
     しばらく監視を続けてから抜ける。
     """
-    interval = max(0.2, interval)
+    interval = max(0.15, interval)
     linger_after_stop = max(0.0, linger_after_stop)
-    ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+    force_phrase_tab(duration=1.0, interval=0.1)
     miss = 0
     linger_deadline: Optional[float] = None
 
@@ -454,8 +503,8 @@ def _guard_phrase_tab(
             miss = 0
         else:
             miss += 1
-            if miss >= 3:
-                ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+            if miss >= 2:
+                force_phrase_tab(duration=1.0, interval=0.1)
                 miss = 0
 
         if stop_event.is_set():
@@ -471,9 +520,9 @@ def _guard_phrase_tab(
         if stop_event.wait(interval):
             continue
 
-    ensure_phrase_tab_with_retry(
-        duration=max(1.0, 0.8 + linger_after_stop),
-        interval=0.2,
+    force_phrase_tab(
+        duration=max(1.0, 0.6 + linger_after_stop),
+        interval=0.1,
     )
 
 
@@ -502,23 +551,22 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
     proc: Optional[subprocess.Popen] = None
     try:
         focus_voiceroid_window()
-        pre_ensured = ensure_phrase_tab_with_retry(duration=1.0, interval=0.2)
-        if not pre_ensured:
-            print("⚠️ 再生前に『フレーズ編集』タブへ戻すことに失敗しました。リトライします。")
+        if not force_phrase_tab(duration=1.2, interval=0.1):
+            print("⚠️ 再生前に『フレーズ編集』タブへ戻すことに失敗しました。")
         guard_stop = threading.Event()
         guard_thread = threading.Thread(
             target=_guard_phrase_tab,
             args=(guard_stop,),
-            kwargs={"interval": 0.3, "linger_after_stop": 1.4},
+            kwargs={"interval": 0.2, "linger_after_stop": 1.6},
             daemon=True,
         )
         guard_thread.start()
-        ensure_phrase_tab_with_retry(duration=0.8, interval=0.2)
+        force_phrase_tab(duration=0.8, interval=0.1)
         proc = subprocess.Popen(
             cmd,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
-        ensure_phrase_tab_with_retry(duration=0.6, interval=0.2)
+        force_phrase_tab(duration=0.8, interval=0.1)
         proc.wait()
     except KeyboardInterrupt:
         if proc:
@@ -533,7 +581,7 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
         if guard_thread is not None:
             guard_thread.join(timeout=1.0)
         # タブを戻す（音声効果に飛ばされる対策）
-        ensure_phrase_tab_with_retry(duration=1.2, interval=0.2)
+        force_phrase_tab(duration=1.2, interval=0.1)
         # PowerShell を前面に
         bring_powershell_front()
 
@@ -717,9 +765,11 @@ def main():
 
     client = create_client()
     profile = choose_conversation_profile()
+    user_name = prompt_user_name()
     current_model = profile["model"]
-    system_prompt = profile["prompt"]
+    system_prompt = compose_system_prompt(profile, user_name)
     print(f"[model] {current_model} ({profile['label']})")
+    print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
     print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
 
     try:
@@ -774,8 +824,18 @@ def main():
             if low.startswith("style"):
                 profile = choose_conversation_profile()
                 current_model = profile["model"]
-                system_prompt = profile["prompt"]
+                system_prompt = compose_system_prompt(profile, user_name)
                 print(f"[model] {current_model} ({profile['label']})")
+                print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
+                continue
+            if low.startswith("name"):
+                parts = user.split(maxsplit=1)
+                if len(parts) >= 2 and parts[1].strip():
+                    user_name = parts[1].strip()
+                else:
+                    user_name = prompt_user_name()
+                system_prompt = compose_system_prompt(profile, user_name)
+                print(f"[persona] 呼び名: {user_name or DEFAULT_USER_NAME}")
                 continue
             if low.startswith("mode "):
                 parts = low.split()
