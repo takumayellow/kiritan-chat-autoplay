@@ -63,6 +63,8 @@ KIRITAN_PERSONA_TEMPLATE = (
     "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
 )
 
+TAB_GUARD_DEBUG = os.getenv("KIRITAN_TAB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+
 
 MODEL_PROFILES: List[Dict[str, str]] = [
     {
@@ -115,6 +117,51 @@ def compose_system_prompt(profile: Dict[str, str], user_name: str) -> str:
     except Exception:
         # 念のためテンプレートが壊れてもペルソナ文だけは返す
         return persona
+
+
+def _tab_debug(msg: str) -> None:
+    if TAB_GUARD_DEBUG:
+        stamp = time.strftime("%H:%M:%S")
+        print(f"[tab-debug {stamp}] {msg}")
+
+
+def _select_phrase_tab_via_tabcontrol(win) -> bool:
+    try:
+        tabs = win.descendants(control_type="Tab")
+    except Exception:
+        return False
+    for tab in tabs:
+        try:
+            wrapper = tab.wrapper_object()
+        except Exception:
+            wrapper = tab
+        try:
+            wrapper.select("フレーズ編集")
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                _tab_debug("Selected フレーズ編集 via Tab control")
+                return True
+        except Exception:
+            pass
+        try:
+            for child in wrapper.children():
+                name = (getattr(child, "window_text", lambda: "")() or "").strip()
+                if "フレーズ編集" not in name:
+                    continue
+                try:
+                    child.select()
+                except Exception:
+                    try:
+                        child.click_input()
+                    except Exception:
+                        continue
+                time.sleep(0.05)
+                if _phrase_tab_active(win):
+                    _tab_debug("Selected フレーズ編集 via Tab child")
+                    return True
+        except Exception:
+            continue
+    return False
 
 
 _LAST_VOICEROID_SPEED: Optional[float] = None
@@ -197,13 +244,17 @@ def force_phrase_tab(duration: float = 1.5, interval: float = 0.15) -> bool:
     """
     end = time.time() + max(duration, 0.2)
     result = False
+    attempts = 0
     while time.time() < end:
         focus_voiceroid_window()
         if ensure_phrase_tab(log_failure=False):
             result = True
             break
+        attempts += 1
+        _tab_debug(f"force_phrase_tab retry #{attempts}")
         time.sleep(max(0.05, interval))
     if not result:
+        _tab_debug("force_phrase_tab fallback ensure with logging")
         ensure_phrase_tab(log_failure=True)
     return result
 
@@ -321,7 +372,7 @@ def prompt_user_name() -> str:
     """
     bring_powershell_front()
     try:
-        name = input("\nきりたんにお名前を教えてください（省略可）: ").strip()
+        name = input("\nきりたんにお名前を教えてください（省略したい場合は Enter）: ").strip()
     except (EOFError, KeyboardInterrupt):
         print("\nお名前が分からなかったので、とりあえず『おにいさん』って呼ぶね。")
         return ""
@@ -422,6 +473,9 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
     if _phrase_tab_active(win):
         return True
 
+    if _select_phrase_tab_via_tabcontrol(win):
+        return True
+
     control_types = ("TabItem", "Button", "RadioButton", "ToggleButton")
     controls = []
     for ctype in control_types:
@@ -503,6 +557,7 @@ def _guard_phrase_tab(
             miss = 0
         else:
             miss += 1
+            _tab_debug(f"_guard_phrase_tab miss count {miss}")
             if miss >= 2:
                 force_phrase_tab(duration=1.0, interval=0.1)
                 miss = 0
@@ -524,6 +579,7 @@ def _guard_phrase_tab(
         duration=max(1.0, 0.6 + linger_after_stop),
         interval=0.1,
     )
+    _tab_debug("_guard_phrase_tab exit after lingering ensure")
 
 
 # ---------------- 音声再生（SeikaSay2 CLI） ----------------
@@ -759,6 +815,7 @@ def listen_loopback(limit: int) -> str:
 # ---------------- メイン ----------------
 def main():
     ensure_phrase_tab()
+    force_phrase_tab(duration=1.2, interval=0.1)
 
     sentry_stop: Optional[threading.Event] = None
     sentry_thread: Optional[threading.Thread] = None

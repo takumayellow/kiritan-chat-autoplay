@@ -35,6 +35,7 @@
   → 遅れて「音声効果」へ飛ぶケースも再度「フレーズ編集」へ戻せるようになった
 - 再生開始前に `ensure_phrase_tab_with_retry()` を複数回実行し、実際に話し出す時点でタブが「フレーズ編集」にあることを確認してから `SeikaSay2.exe -play` を発火
 - `force_phrase_tab()` で VOICEROID ウィンドウへフォーカスを戻しつつ高速にリトライし、再生前後で確実にタブを引き戻す
+- `KIRITAN_TAB_DEBUG=1` を設定するとタブ監視の詳細ログが PowerShell に出力され、原因調査時に役立つ
 - **UIA** で `TabItem` だけでなく **ボタン/ラジオも列挙**し「フレーズ編集」へ復帰
   - `select()` → `invoke()` → `click_input()` → `Ctrl+1` 擬似入力まで段階的に試行
 - これは `tab_switch_test.py` で検証済み → 本体 `ensure_phrase_tab()` に統合
