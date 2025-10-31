@@ -454,7 +454,26 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     print("※ 何も入力せず Enter でスキップできます。")
     try:
         name = input(f"お名前（表示したくない場合は空欄）[{base.name or '未設定'}]: ").strip()
-        gender = input(f"性別・ジェンダー（例: 男性/女性/ノンバイナリ）[{base.gender or '未設定'}]: ").strip()
+        print(
+            "性別・ジェンダー（番号でも選べます）:\n"
+            "  1: 男性\n"
+            "  2: 女性\n"
+            "  3: ノンバイナリ（男女の枠に当てはまらない/決めたくない）\n"
+            "  その他: ご希望の表現をそのまま入力"
+        )
+        gender_input = input(f"性別・ジェンダー [{base.gender or '未設定'}]: ").strip()
+        if gender_input == "1":
+            gender = "男性"
+        elif gender_input == "2":
+            gender = "女性"
+        elif gender_input == "3":
+            gender = "ノンバイナリ（男女の枠に当てはまらない/決めたくない）"
+        elif gender_input == "4":
+            gender = input("自由入力で教えてください（例: Xジェンダー/不回答 など）: ").strip()
+        elif gender_input.isdigit():
+            gender = ""
+        else:
+            gender = gender_input
         honorific = input(
             f"呼ばれたい敬称・ニックネーム（例: 先生/お姉さん/さん など）[{base.honorific or '未設定'}]: "
         ).strip()
