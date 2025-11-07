@@ -139,7 +139,7 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "model": "gpt-4o-mini",
         "prompt_template": (
             "{persona}"
-            "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
+            "テンポは軽く、やわらかな秋田訛りをほんのり添え、"
             "短めのセリフで元気づけるように返答してください。"
         ),
     },
@@ -1020,7 +1020,9 @@ def listen_loopback(limit: int) -> str:
         data = rec.tobytes()
         recog = sr.Recognizer()
         audio = sr.AudioData(data, 44100, 2)
-        return recog.recognize_google(audio, language="ja-JP")
+        text = recog.recognize_google(audio, language="ja-JP")
+        _loop_warned_missing = False
+        return text
     except Exception:
         _warn_loopback_unavailable("音声認識への変換に失敗")
         return ""
@@ -1078,6 +1080,8 @@ def main():
                 if user:
                     print(f"You (loop): {user}")
                 else:
+                    print("[loop] 入力を取得できなかったので text モードに戻ります。")
+                    mode = "text"
                     continue
             else:
                 bring_powershell_front()
