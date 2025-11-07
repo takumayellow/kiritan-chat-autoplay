@@ -20,7 +20,10 @@ import ctypes
 import subprocess
 import threading
 import re
+import json
+import datetime
 from dataclasses import dataclass
+from pathlib import Path
 try:
     import msvcrt  # type: ignore
 except Exception:
@@ -55,6 +58,9 @@ from pywinauto.keyboard import send_keys
 
 DEFAULT_USER_NAME = "あなた"
 DEFAULT_USER_HONORIFIC = "お友だち"
+PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
+VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
+_loop_warned_missing = False
 
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
@@ -108,6 +114,22 @@ def profile_summary(user_profile: UserProfile) -> str:
     gender = user_profile.gender or "未設定"
     age = user_profile.age or "未設定"
     return f"呼び名: {user_profile.display_label()} / ジェンダー: {gender} / 年齢感: {age}"
+
+
+def append_profile_history(user_profile: UserProfile) -> None:
+    data = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "name": user_profile.name,
+        "honorific": user_profile.honorific,
+        "gender": user_profile.gender,
+        "age": user_profile.age,
+    }
+    try:
+        PROFILE_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with PROFILE_HISTORY_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(data, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 MODEL_PROFILES: List[Dict[str, str]] = [
     {
@@ -214,6 +236,15 @@ def _warn_voiceroid_missing() -> None:
     if now - _last_voiceroid_warn >= _VOICEROID_WARN_INTERVAL:
         print("⚠️ VOICEROID ウィンドウが見つかりません。VOICEROID＋ 東北きりたん EX が起動済みか確認してください。")
         _last_voiceroid_warn = now
+
+
+def _warn_loopback_unavailable(reason: str) -> None:
+    global _loop_warned_missing
+    if _loop_warned_missing:
+        return
+    print(f"[loop] この環境ではシステム音録音を開始できませんでした（{reason}）。")
+    print("[loop] Windows のステレオミックスや共有デバイスを有効にするか、対応デバイスを用意してください。")
+    _loop_warned_missing = True
 
 
 def _select_phrase_tab_via_tabcontrol(win) -> bool:
@@ -432,7 +463,7 @@ def print_cli_usage():
     print("  help           : このヘルプ")
     print("  mode text      : 入力を文字入力に戻す")
     print("  mode mic       : マイク会話（'voice' でもOK、Enter で途中停止・待ち時間は time N）")
-    print("  mode loop      : PCの再生音を拾って会話")
+    print("  mode loop/system: PCの再生音（ステレオミックス等が必要）")
     print("  mode dual      : テキスト→マイクの連続モード")
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
@@ -441,6 +472,7 @@ def print_cli_usage():
     print("  name           : （profile のエイリアス）")
     print("  exit           : 終了")
     print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
+    print("      : いつでも Ctrl+C で全体を終了できます。")
 
 
 def normalize_mode_name(raw: str) -> Optional[str]:
@@ -453,6 +485,8 @@ def normalize_mode_name(raw: str) -> Optional[str]:
         "microphone": "mic",
         "text": "text",
         "loop": "loop",
+        "loopback": "loop",
+        "system": "loop",
         "dual": "dual",
     }
     return aliases.get(key)
@@ -472,8 +506,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
             "性別・ジェンダー（番号でも選べます）:\n"
             "  1: 男性\n"
             "  2: 女性\n"
-            "  3: その他／決めたくない（例: ノンバイナリ）\n"
-            "  ※『ノンバイナリ』は男女どちらにも限定されない、あるいは決めたくない立場を指します。"
+            "  3: その他"
         )
         gender_input = input(f"性別・ジェンダー [{base.gender or '未設定'}]: ").strip()
         if gender_input == "1":
@@ -481,10 +514,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
         elif gender_input == "2":
             gender = "女性"
         elif gender_input == "3":
-            gender = (
-                input("ご希望の表現があれば入力してください（例: ノンバイナリ / 決めない / 不回答 など）: ").strip()
-                or "ノンバイナリ（男女の枠に当てはまらない/決めたくない）"
-            )
+            gender = "その他"
         elif gender_input.isdigit():
             gender = ""
         else:
@@ -525,6 +555,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
         honorific=honorific or base.honorific,
         age=age or base.age,
     )
+    append_profile_history(profile)
 
     display = profile.display_label()
     print(f"きりたん: {display}、よろしくお願いします！")
@@ -589,6 +620,21 @@ def bring_powershell_front():
 def find_voiceroid_handle() -> Tuple[Optional[int], Optional[int]]:
     """VOICEROID ウィンドウの HWND と PID を返す"""
     hwnd = win32gui.FindWindow(None, VOICEROID_TITLE)
+    if not hwnd:
+        matches: List[int] = []
+
+        def _enum_cb(candidate_hwnd, acc):
+            title = win32gui.GetWindowText(candidate_hwnd)
+            if title and all(keyword in title for keyword in VOICEROID_TITLE_KEYWORDS):
+                acc.append(candidate_hwnd)
+            return True
+
+        try:
+            win32gui.EnumWindows(_enum_cb, matches)
+        except Exception:
+            matches = []
+        if matches:
+            hwnd = matches[0]
     if not hwnd:
         return None, None
     _, pid = win32process.GetWindowThreadProcessId(hwnd)
@@ -954,17 +1000,29 @@ def listen_mic(client, limit: int) -> str:
 
 
 def listen_loopback(limit: int) -> str:
-    if not (sd and limit > 0):
+    global _loop_warned_missing
+    if limit <= 0:
+        return ""
+    if not sd:
+        _warn_loopback_unavailable("sounddevice が未インストール")
+        return ""
+    if not sr:
+        _warn_loopback_unavailable("speech_recognition が未インストール")
         return ""
     print(f"[loop] システム音声録音（{limit}s）…")
-    rec = sd.rec(int(limit * 44100), samplerate=44100, channels=2)
-    sd.wait()
+    try:
+        rec = sd.rec(int(limit * 44100), samplerate=44100, channels=2)
+        sd.wait()
+    except Exception as e:
+        _warn_loopback_unavailable(str(e))
+        return ""
     try:
         data = rec.tobytes()
         recog = sr.Recognizer()
         audio = sr.AudioData(data, 44100, 2)
         return recog.recognize_google(audio, language="ja-JP")
     except Exception:
+        _warn_loopback_unavailable("音声認識への変換に失敗")
         return ""
 
 
@@ -995,6 +1053,7 @@ def main():
     wait = DEFAULT_LISTEN
     mode = "dual"
     print_cli_usage()
+    print("Ctrl+C でいつでも終了できます。")
 
     try:
         while True:
@@ -1045,6 +1104,7 @@ def main():
                 parts = user.split(maxsplit=1)
                 if len(parts) >= 2 and parts[1].strip():
                     user_profile.name = parts[1].strip()
+                    append_profile_history(user_profile)
                 else:
                     user_profile = prompt_user_profile(existing=user_profile)
                 system_prompt = compose_system_prompt(conversation_profile, user_profile)
