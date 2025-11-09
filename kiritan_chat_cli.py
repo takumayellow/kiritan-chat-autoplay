@@ -281,7 +281,7 @@ def focus_voiceroid_window():
     if not hwnd:
         return
     try:
-        ctypes.windll.user32.ShowWindow(hwnd, 5)
+        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE（最小化からの復帰を優先）
         ctypes.windll.user32.SetForegroundWindow(hwnd)
     except Exception:
         pass
@@ -525,13 +525,13 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     append_profile_history(profile)
 
     display = profile.display_label()
-    print(f"きりたん: {display}、よろしくお願いします！")
+    print(f"きりたん: {display}、よろしくね。")
     if profile.gender:
-        print(f"きりたん: ジェンダーは「{profile.gender}」として尊重するね。")
+        print(f"きりたん: ジェンダーは「{profile.gender}」って覚えておくね。")
     else:
-        print("きりたん: 分からないところは無理に触れず、中立な言葉でお話しするね。")
+        print("きりたん: 分からないところは無理に触れずにお話しするね。")
     if profile.age:
-        print(f"きりたん: 年齢感は「{profile.age}」で覚えておくね。")
+        print(f"きりたん: 年齢感は「{profile.age}」くらいってイメージしておくね。")
     return profile
 
 # ---------------- 設定 ----------------
@@ -641,6 +641,22 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
 
     if _phrase_tab_active(win):
         return True
+
+    try:
+        tab_item = win.child_window(title="フレーズ編集", control_type="TabItem").wrapper_object()
+        tab_item.select()
+        time.sleep(0.05)
+        if _phrase_tab_active(win):
+            return True
+    except Exception:
+        try:
+            tab_item = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
+            tab_item.click_input()
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
+        except Exception:
+            pass
 
     if _select_phrase_tab_via_tabcontrol(win):
         return True
