@@ -57,7 +57,6 @@ from pywinauto.keyboard import send_keys
 
 
 DEFAULT_USER_NAME = "あなた"
-DEFAULT_USER_HONORIFIC = "お友だち"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
 _loop_warned_missing = False
@@ -68,7 +67,6 @@ KIRITAN_PERSONA_TEMPLATE = (
     "好物はきりたんぽで、東北の話題や季節の出来事が大好き。"
     "一人称は「きりたん」または「わたし」を使い、明るく丁寧な語り方を心がけます。"
     "{name_line}"
-    "{honorific_line}"
     "{call_line}"
     "{gender_line}"
     "{age_line}"
@@ -83,31 +81,14 @@ _last_voiceroid_warn = 0.0
 @dataclass
 class UserProfile:
     name: str = ""
-    honorific: str = ""
     gender: str = ""
     age: str = ""
 
-    @staticmethod
-    def _append_default_suffix(value: str) -> str:
-        if not value:
-            return ""
-        suffixes = ("さん", "様", "さま", "くん", "ちゃん", "殿", "どの", "先生")
-        value = value.strip()
-        if value.endswith(suffixes):
-            return value
-        return f"{value}さん"
-
     def display_label(self) -> str:
-        if self.honorific:
-            return self.honorific
-        if self.name:
-            return self._append_default_suffix(self.name)
-        return DEFAULT_USER_HONORIFIC
+        return self.name or DEFAULT_USER_NAME
 
     def call_name(self) -> str:
-        if self.name:
-            return self._append_default_suffix(self.name)
-        return DEFAULT_USER_NAME
+        return self.name or DEFAULT_USER_NAME
 
 
 def profile_summary(user_profile: UserProfile) -> str:
@@ -120,7 +101,6 @@ def append_profile_history(user_profile: UserProfile) -> None:
     data = {
         "timestamp": datetime.datetime.now().isoformat(),
         "name": user_profile.name,
-        "honorific": user_profile.honorific,
         "gender": user_profile.gender,
         "age": user_profile.age,
     }
@@ -139,7 +119,7 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "model": "gpt-4o-mini",
         "prompt_template": (
             "{persona}"
-            "テンポは軽く、やわらかな秋田訛りをほんのり添え、"
+            "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
             "短めのセリフで元気づけるように返答してください。"
         ),
     },
@@ -169,25 +149,15 @@ MODEL_PROFILES: List[Dict[str, str]] = [
 
 def build_kiritan_persona(user_profile: UserProfile) -> str:
     name = (user_profile.name or "").strip()
-    honorific = (user_profile.honorific or "").strip()
     gender = (user_profile.gender or "").strip()
     age = (user_profile.age or "").strip()
 
     if name:
         name_line = f"相手の名前は「{name}」さんです。"
+        call_line = f"会話では「{name}」と自然に呼びかけてください。"
     else:
         name_line = "相手の名前は明かされていないので、『あなた』と呼びかけます。"
-
-    if honorific:
-        honorific_line = (
-            f"親しみを込めて主に「{honorific}」と呼び、必要に応じて名前に「さん」を添えてください。"
-        )
-    elif name:
-        honorific_line = (
-            "基本は名前に『さん』を添えて呼び、砕けすぎない距離感を保ってください。"
-        )
-    else:
-        honorific_line = "名前が分からないので『あなた』と呼びかけつつ、丁寧で中立的な言葉遣いを心がけてください。"
+        call_line = "名前が分からないため、『あなた』と丁寧に呼びかけてください。"
 
     if gender:
         gender_line = (
@@ -203,11 +173,8 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
     else:
         age_line = "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
 
-    call_line = f"会話では主に「{user_profile.call_name()}」と呼びかけてください。"
-
     return KIRITAN_PERSONA_TEMPLATE.format(
         name_line=name_line,
-        honorific_line=honorific_line,
         call_line=call_line,
         gender_line=gender_line,
         age_line=age_line,
@@ -1000,31 +967,17 @@ def listen_mic(client, limit: int) -> str:
 
 
 def listen_loopback(limit: int) -> str:
-    global _loop_warned_missing
-    if limit <= 0:
-        return ""
-    if not sd:
-        _warn_loopback_unavailable("sounddevice が未インストール")
-        return ""
-    if not sr:
-        _warn_loopback_unavailable("speech_recognition が未インストール")
+    if not (sd and limit > 0):
         return ""
     print(f"[loop] システム音声録音（{limit}s）…")
-    try:
-        rec = sd.rec(int(limit * 44100), samplerate=44100, channels=2)
-        sd.wait()
-    except Exception as e:
-        _warn_loopback_unavailable(str(e))
-        return ""
+    rec = sd.rec(int(limit * 44100), samplerate=44100, channels=2)
+    sd.wait()
     try:
         data = rec.tobytes()
         recog = sr.Recognizer()
         audio = sr.AudioData(data, 44100, 2)
-        text = recog.recognize_google(audio, language="ja-JP")
-        _loop_warned_missing = False
-        return text
+        return recog.recognize_google(audio, language="ja-JP")
     except Exception:
-        _warn_loopback_unavailable("音声認識への変換に失敗")
         return ""
 
 
@@ -1080,8 +1033,6 @@ def main():
                 if user:
                     print(f"You (loop): {user}")
                 else:
-                    print("[loop] 入力を取得できなかったので text モードに戻ります。")
-                    mode = "text"
                     continue
             else:
                 bring_powershell_front()
