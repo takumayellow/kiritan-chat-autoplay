@@ -63,32 +63,51 @@ _loop_warned_missing = False
 
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
-    "秋田弁まじりの柔らかい口調と、素朴で元気な性格で相手を励まします。"
-    "好物はきりたんぽで、東北の話題や季節の出来事が大好き。"
-    "一人称は「きりたん」または「わたし」を使い、明るく丁寧な語り方を心がけます。"
+    "柔らかな標準語で素朴かつ元気な性格を見せ、きりたんぽや東北の話題が好きです。"
+    "一人称は「きりたん」または「わたし」。丁寧さを保ちつつ距離感の近い話し方で相手を励まします。"
+    "挨拶は状況に合わせて短く自然に行い、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
+    "分からない内容があっても「分からないところは無理に触れず…」と突き放さず、知っている部分に触れたり質問で寄り添ってください。"
+    "AI やシステムの事情は出さず、キャラクターとして自然に振る舞ってください。"
     "{name_line}"
     "{call_line}"
     "{gender_line}"
     "{age_line}"
-    "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞いましょう。"
 )
 
 TAB_GUARD_DEBUG = os.getenv("KIRITAN_TAB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
 _VOICEROID_WARN_INTERVAL = 5.0
 _last_voiceroid_warn = 0.0
+ALLOW_VOICEROID_FOCUS = os.getenv("KIRITAN_ALLOW_WINDOW_FOCUS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 
 @dataclass
 class UserProfile:
     name: str = ""
+    honorific: str = ""
     gender: str = ""
     age: str = ""
 
-    def display_label(self) -> str:
+    def _base_name(self) -> str:
         return self.name or DEFAULT_USER_NAME
 
+    def display_label(self) -> str:
+        suffix = (self.honorific or "").strip()
+        base = self._base_name()
+        if suffix and self.name:
+            return f"{base}{suffix}"
+        return base
+
     def call_name(self) -> str:
-        return self.name or DEFAULT_USER_NAME
+        suffix = (self.honorific or "").strip()
+        base = self._base_name()
+        if suffix and self.name:
+            return f"{base}{suffix}"
+        return base
 
 
 def profile_summary(user_profile: UserProfile) -> str:
@@ -101,6 +120,7 @@ def append_profile_history(user_profile: UserProfile) -> None:
     data = {
         "timestamp": datetime.datetime.now().isoformat(),
         "name": user_profile.name,
+        "honorific": user_profile.honorific,
         "gender": user_profile.gender,
         "age": user_profile.age,
     }
@@ -119,7 +139,7 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "model": "gpt-4o-mini",
         "prompt_template": (
             "{persona}"
-            "テンポは軽く、語尾にちょっとした秋田弁（〜だべ、〜だよ〜 など）を散りばめ、"
+            "テンポは軽く、柔らかな標準語で親しみを込めつつ、"
             "短めのセリフで元気づけるように返答してください。"
         ),
     },
@@ -154,7 +174,7 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
 
     if name:
         name_line = f"相手の名前は「{name}」さんです。"
-        call_line = f"会話では「{name}」と自然に呼びかけてください。"
+        call_line = f"会話では「{user_profile.call_name()}」と自然に呼びかけてください。"
     else:
         name_line = "相手の名前は明かされていないので、『あなた』と呼びかけます。"
         call_line = "名前が分からないため、『あなた』と丁寧に呼びかけてください。"
@@ -216,7 +236,7 @@ def _warn_loopback_unavailable(reason: str) -> None:
 
 def _select_phrase_tab_via_tabcontrol(win) -> bool:
     try:
-        tabs = win.descendants(control_type="Tab")
+        tabs = win.children(control_type="Tab")
     except Exception:
         return False
     for tab in tabs:
@@ -240,6 +260,8 @@ def _select_phrase_tab_via_tabcontrol(win) -> bool:
                 try:
                     child.select()
                 except Exception:
+                    if not ALLOW_VOICEROID_FOCUS:
+                        continue
                     try:
                         child.click_input()
                     except Exception:
@@ -275,16 +297,20 @@ def sanitize_for_voice(text: str) -> str:
     return cleaned
 
 
-def focus_voiceroid_window():
-    """VOICEROID ウィンドウを前面に持ってくる（フォーカス移動）"""
+def focus_voiceroid_window() -> bool:
+    """必要なときだけ VOICEROID ウィンドウを前面に持ってくる。"""
+    if not ALLOW_VOICEROID_FOCUS:
+        return False
     hwnd, _ = find_voiceroid_handle()
     if not hwnd:
-        return
+        return False
     try:
-        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE（最小化からの復帰を優先）
+        if win32gui.IsIconic(hwnd):
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
         ctypes.windll.user32.SetForegroundWindow(hwnd)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def start_phrase_tab_sentry(interval: float = 1.2) -> Tuple[threading.Event, threading.Thread]:
@@ -335,7 +361,8 @@ def force_phrase_tab(duration: float = 1.5, interval: float = 0.15) -> bool:
     result = False
     attempts = 0
     while time.time() < end:
-        focus_voiceroid_window()
+        if ALLOW_VOICEROID_FOCUS:
+            focus_voiceroid_window()
         if ensure_phrase_tab(log_failure=False):
             result = True
             break
@@ -356,7 +383,10 @@ def _phrase_tab_active(win) -> bool:
     ]
     for spec in specs:
         try:
-            ctrl = win.child_window(**spec).wrapper_object()
+            ctrl_spec = win.child_window(**spec)
+            if not ctrl_spec.exists(timeout=0.6):
+                continue
+            ctrl = ctrl_spec.wrapper_object()
         except Exception:
             continue
         try:
@@ -644,19 +674,26 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
 
     try:
         tab_item = win.child_window(title="フレーズ編集", control_type="TabItem").wrapper_object()
-        tab_item.select()
+        try:
+            tab_item.select()
+        except Exception:
+            try:
+                tab_item.invoke()
+            except Exception:
+                raise
         time.sleep(0.05)
         if _phrase_tab_active(win):
             return True
     except Exception:
-        try:
-            tab_item = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
-            tab_item.click_input()
-            time.sleep(0.05)
-            if _phrase_tab_active(win):
-                return True
-        except Exception:
-            pass
+        if ALLOW_VOICEROID_FOCUS:
+            try:
+                tab_item = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
+                tab_item.click_input()
+                time.sleep(0.05)
+                if _phrase_tab_active(win):
+                    return True
+            except Exception:
+                pass
 
     if _select_phrase_tab_via_tabcontrol(win):
         return True
@@ -683,7 +720,8 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
         for attr in ("select", "invoke", "toggle"):
             if hasattr(wrapper, attr):
                 actions.append(getattr(wrapper, attr))
-        actions.append(lambda w=wrapper: w.click_input())
+        if ALLOW_VOICEROID_FOCUS:
+            actions.append(lambda w=wrapper: w.click_input())
 
         for action in actions:
             try:
@@ -696,6 +734,8 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
                 continue
 
     if _sound_effect_active(win):
+        _tab_debug("音声効果タブへの自動遷移を検出（SeikaSay2 の再生直後が原因）")
+    if _sound_effect_active(win) and ALLOW_VOICEROID_FOCUS:
         try:
             btn = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
             btn.click_input()
@@ -791,7 +831,8 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
     guard_thread: Optional[threading.Thread] = None
     proc: Optional[subprocess.Popen] = None
     try:
-        focus_voiceroid_window()
+        if ALLOW_VOICEROID_FOCUS:
+            focus_voiceroid_window()
         if not force_phrase_tab(duration=1.2, interval=0.1):
             print("⚠️ 再生前に『フレーズ編集』タブへ戻すことに失敗しました。")
         guard_stop = threading.Event()
@@ -1005,6 +1046,12 @@ def main():
     sentry_stop: Optional[threading.Event] = None
     sentry_thread: Optional[threading.Thread] = None
 
+    try:
+        sentry_stop, sentry_thread = start_phrase_tab_sentry()
+    except Exception:
+        sentry_stop = None
+        sentry_thread = None
+
     client = create_client()
     conversation_profile = choose_conversation_profile()
     user_profile = prompt_user_profile()
@@ -1013,12 +1060,6 @@ def main():
     print(f"[model] {current_model} ({conversation_profile['label']})")
     print(f"[persona] {profile_summary(user_profile)}")
     print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
-
-    try:
-        sentry_stop, sentry_thread = start_phrase_tab_sentry()
-    except Exception:
-        sentry_stop = None
-        sentry_thread = None
 
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
