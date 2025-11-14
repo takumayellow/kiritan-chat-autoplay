@@ -24,14 +24,13 @@ import json
 import datetime
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 try:
     import msvcrt  # type: ignore
 except Exception:
     msvcrt = None
 import win32gui
 import win32process
-from typing import Dict, List, Optional, Tuple
-
 # 音声入出力（必要なら使う）
 try:
     import speech_recognition as sr
@@ -53,20 +52,32 @@ except Exception:
 
 # UI 操作（UIA バックエンド）
 from pywinauto import Application, timings
-from pywinauto.keyboard import send_keys
-
-
 DEFAULT_USER_NAME = "あなた"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
 _loop_warned_missing = False
+DEFAULT_CALL_SUFFIX = "さん"
+CALL_SUFFIX_WHITELIST = (
+    "さん",
+    "san",
+    "様",
+    "さま",
+    "ちゃん",
+    "くん",
+    "君",
+    "氏",
+    "殿",
+    "どの",
+    "先生",
+    "先輩",
+)
 
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは VOICEROID＋ 東北きりたん EX です。14歳で、東北ずん子と東北イタコの妹。"
-    "柔らかな標準語で素朴かつ元気な性格を見せ、きりたんぽや東北の話題が好きです。"
-    "一人称は「きりたん」または「わたし」。丁寧さを保ちつつ距離感の近い話し方で相手を励まします。"
-    "挨拶は状況に合わせて短く自然に行い、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
-    "分からない内容があっても「分からないところは無理に触れず…」と突き放さず、知っている部分に触れたり質問で寄り添ってください。"
+    "柔らかな標準語で物腰のやわらかい落ち着いたトーンを保ち、きりたんぽや東北の季節の話題が好きです。"
+    "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
+    "不明点があっても「分からないところは無理に触れずにお話しするね。」のような言い訳はせず、知っている情報や質問で寄り添ってください。"
+    "過度な感嘆符や「頑張るぞー！」といった勢い任せの台詞は避け、静かで丁寧な励ましを大切にします。"
     "AI やシステムの事情は出さず、キャラクターとして自然に振る舞ってください。"
     "{name_line}"
     "{call_line}"
@@ -88,26 +99,28 @@ ALLOW_VOICEROID_FOCUS = os.getenv("KIRITAN_ALLOW_WINDOW_FOCUS", "").strip().lowe
 @dataclass
 class UserProfile:
     name: str = ""
-    honorific: str = ""
     gender: str = ""
     age: str = ""
 
-    def _base_name(self) -> str:
-        return self.name or DEFAULT_USER_NAME
-
     def display_label(self) -> str:
-        suffix = (self.honorific or "").strip()
-        base = self._base_name()
-        if suffix and self.name:
-            return f"{base}{suffix}"
-        return base
+        return self.call_name()
 
     def call_name(self) -> str:
-        suffix = (self.honorific or "").strip()
-        base = self._base_name()
-        if suffix and self.name:
-            return f"{base}{suffix}"
-        return base
+        base = (self.name or "").strip()
+        if not base:
+            return DEFAULT_USER_NAME
+        if self._has_suffix(base):
+            return base
+        return f"{base}{DEFAULT_CALL_SUFFIX}"
+
+    @staticmethod
+    def _has_suffix(name: str) -> bool:
+        normalized = name.strip()
+        lower = normalized.lower()
+        for suffix in CALL_SUFFIX_WHITELIST:
+            if normalized.endswith(suffix) or lower.endswith(suffix):
+                return True
+        return False
 
 
 def profile_summary(user_profile: UserProfile) -> str:
@@ -120,7 +133,6 @@ def append_profile_history(user_profile: UserProfile) -> None:
     data = {
         "timestamp": datetime.datetime.now().isoformat(),
         "name": user_profile.name,
-        "honorific": user_profile.honorific,
         "gender": user_profile.gender,
         "age": user_profile.age,
     }
@@ -139,8 +151,8 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "model": "gpt-4o-mini",
         "prompt_template": (
             "{persona}"
-            "テンポは軽く、柔らかな標準語で親しみを込めつつ、"
-            "短めのセリフで元気づけるように返答してください。"
+            "テンポは軽やかでも声は落ち着いたまま、柔らかな標準語で親しみを込めてください。"
+            "感嘆符や勢い任せの掛け声は控え、静かに背中を押す短いフレーズで応じてください。"
         ),
     },
     {
@@ -173,11 +185,12 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
     age = (user_profile.age or "").strip()
 
     if name:
-        name_line = f"相手の名前は「{name}」さんです。"
-        call_line = f"会話では「{user_profile.call_name()}」と自然に呼びかけてください。"
+        call_label = user_profile.call_name()
+        name_line = f"相手の名前は「{name}」です。"
+        call_line = f"会話では常に「{call_label}」と穏やかに呼びかけてください。"
     else:
-        name_line = "相手の名前は明かされていないので、『あなた』と呼びかけます。"
-        call_line = "名前が分からないため、『あなた』と丁寧に呼びかけてください。"
+        name_line = "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
+        call_line = "呼びかける際は常に『あなた』という丁寧な言い方を使ってください。"
 
     if gender:
         gender_line = (
@@ -258,18 +271,43 @@ def _select_phrase_tab_via_tabcontrol(win) -> bool:
                 if "フレーズ編集" not in name:
                     continue
                 try:
-                    child.select()
+                    child_wrapper = child.wrapper_object()
                 except Exception:
-                    if not ALLOW_VOICEROID_FOCUS:
-                        continue
-                    try:
-                        child.click_input()
-                    except Exception:
-                        continue
+                    child_wrapper = child
+                if not _activate_control(child_wrapper):
+                    continue
                 time.sleep(0.05)
                 if _phrase_tab_active(win):
                     _tab_debug("Selected フレーズ編集 via Tab child")
                     return True
+        except Exception:
+            continue
+    return False
+
+
+def _activate_control(wrapper) -> bool:
+    actions: List[Callable[[], None]] = []
+    selection_pattern = getattr(wrapper, "iface_selection_item", None)
+    if selection_pattern:
+        actions.append(lambda p=selection_pattern: p.Select())
+    invoke_pattern = getattr(wrapper, "iface_invoke", None)
+    if invoke_pattern:
+        actions.append(lambda p=invoke_pattern: p.Invoke())
+    toggle_pattern = getattr(wrapper, "iface_toggle", None)
+    if toggle_pattern:
+        actions.append(lambda p=toggle_pattern: p.Toggle())
+
+    for attr in ("select", "invoke", "toggle"):
+        if hasattr(wrapper, attr):
+            actions.append(getattr(wrapper, attr))
+
+    if ALLOW_VOICEROID_FOCUS and hasattr(wrapper, "click_input"):
+        actions.append(lambda w=wrapper: w.click_input())
+
+    for action in actions:
+        try:
+            action()
+            return True
         except Exception:
             continue
     return False
@@ -313,7 +351,7 @@ def focus_voiceroid_window() -> bool:
         return False
 
 
-def start_phrase_tab_sentry(interval: float = 1.2) -> Tuple[threading.Event, threading.Thread]:
+def start_phrase_tab_sentry(interval: float = 0.5) -> Tuple[threading.Event, threading.Thread]:
     """フレーズ編集タブを見張る常駐スレッドを起動する。"""
     stop_event = threading.Event()
 
@@ -465,7 +503,7 @@ def print_cli_usage():
     print("  time N         : 録音秒数の設定（mic/loop 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
-    print("  profile        : 名前・呼び方・ジェンダー・年齢感を再入力")
+    print("  profile        : 名前・ジェンダー・年齢感を再入力")
     print("  name           : （profile のエイリアス）")
     print("  exit           : 終了")
     print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
@@ -491,7 +529,7 @@ def normalize_mode_name(raw: str) -> Optional[str]:
 
 def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     """
-    名前・呼称・ジェンダー・年齢感をヒアリング。Enterでそれぞれスキップ可。
+    名前・ジェンダー・年齢感をヒアリング。Enterでそれぞれスキップ可。
     """
     bring_powershell_front()
     base = existing or UserProfile()
@@ -516,9 +554,6 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
             gender = ""
         else:
             gender = gender_input
-        honorific = input(
-            f"呼ばれたい呼び方（例: さん / 様 / 先輩 など）[{base.honorific or '未設定'}]: "
-        ).strip()
         print(
             "年代・ライフステージ（番号でも選べます）:\n"
             "  1: 学生\n"
@@ -549,7 +584,6 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
     profile = UserProfile(
         name=name or base.name,
         gender=gender or base.gender,
-        honorific=honorific or base.honorific,
         age=age or base.age,
     )
     append_profile_history(profile)
@@ -577,7 +611,8 @@ DEFAULT_SEIKA_EXE = (
 
 BASE_SYSTEM_PROMPT_TEMPLATE = (
     "{persona}"
-    "相手の気持ちをくみ取りつつ親しみやすく返答し、会話をつなぐ自然な質問を最後に一つだけ添えてください。"
+    "静かで丁寧な声色を意識しつつ相手の気持ちをくみ取り、柔らかい言葉で返答してください。"
+    "必要であれば短い確認や質問を最後に一つ添えて会話を自然に続けてください。"
 )
 
 DEFAULT_USER_PROFILE = UserProfile()
@@ -674,31 +709,25 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
 
     try:
         tab_item = win.child_window(title="フレーズ編集", control_type="TabItem").wrapper_object()
-        try:
-            tab_item.select()
-        except Exception:
-            try:
-                tab_item.invoke()
-            except Exception:
-                raise
-        time.sleep(0.05)
-        if _phrase_tab_active(win):
-            return True
+        if _activate_control(tab_item):
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
     except Exception:
-        if ALLOW_VOICEROID_FOCUS:
-            try:
-                tab_item = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
-                tab_item.click_input()
-                time.sleep(0.05)
-                if _phrase_tab_active(win):
-                    return True
-            except Exception:
-                pass
+        pass
+    try:
+        button = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
+        if _activate_control(button):
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
+    except Exception:
+        pass
 
     if _select_phrase_tab_via_tabcontrol(win):
         return True
 
-    control_types = ("TabItem", "Button", "RadioButton", "ToggleButton")
+    control_types = ("TabItem", "Button", "RadioButton", "ToggleButton", "ListItem", "MenuItem")
     controls = []
     for ctype in control_types:
         try:
@@ -716,42 +745,21 @@ def ensure_phrase_tab(log_failure: bool = True) -> bool:
         except Exception:
             wrapper = ctrl
 
-        actions = []
-        for attr in ("select", "invoke", "toggle"):
-            if hasattr(wrapper, attr):
-                actions.append(getattr(wrapper, attr))
-        if ALLOW_VOICEROID_FOCUS:
-            actions.append(lambda w=wrapper: w.click_input())
-
-        for action in actions:
-            try:
-                action()
-                time.sleep(0.05)
-                if _phrase_tab_active(win):
-                    return True
-            except Exception as e:
-                last_err = e
-                continue
+        if _activate_control(wrapper):
+            time.sleep(0.05)
+            if _phrase_tab_active(win):
+                return True
 
     if _sound_effect_active(win):
         _tab_debug("音声効果タブへの自動遷移を検出（SeikaSay2 の再生直後が原因）")
-    if _sound_effect_active(win) and ALLOW_VOICEROID_FOCUS:
         try:
-            btn = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
-            btn.click_input()
+            fallback = win.child_window(title="フレーズ編集", control_type="Button").wrapper_object()
+        except Exception:
+            fallback = None
+        if fallback and _activate_control(fallback):
             time.sleep(0.05)
             if _phrase_tab_active(win):
                 return True
-        except Exception:
-            pass
-        try:
-            win.set_focus()
-            send_keys("^1")
-            time.sleep(0.05)
-            if _phrase_tab_active(win):
-                return True
-        except Exception:
-            pass
     if log_failure:
         if last_err:
             print(f"✖️ 『フレーズ編集』 tab 操作失敗: {last_err}")
@@ -850,6 +858,7 @@ def speak(text: str, speed: float = DEFAULT_SPEED):
         )
         force_phrase_tab(duration=0.8, interval=0.1)
         proc.wait()
+        ensure_phrase_tab_with_retry(duration=1.0, interval=0.1)
     except KeyboardInterrupt:
         if proc:
             try:
