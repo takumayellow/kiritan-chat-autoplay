@@ -285,24 +285,34 @@ def _select_phrase_tab_via_tabcontrol(win) -> bool:
     return False
 
 
+def _safe_getattr(obj, attr: str):
+    try:
+        return getattr(obj, attr)
+    except Exception:
+        return None
+
+
 def _activate_control(wrapper) -> bool:
     actions: List[Callable[[], None]] = []
-    selection_pattern = getattr(wrapper, "iface_selection_item", None)
+    selection_pattern = _safe_getattr(wrapper, "iface_selection_item")
     if selection_pattern:
         actions.append(lambda p=selection_pattern: p.Select())
-    invoke_pattern = getattr(wrapper, "iface_invoke", None)
+    invoke_pattern = _safe_getattr(wrapper, "iface_invoke")
     if invoke_pattern:
         actions.append(lambda p=invoke_pattern: p.Invoke())
-    toggle_pattern = getattr(wrapper, "iface_toggle", None)
+    toggle_pattern = _safe_getattr(wrapper, "iface_toggle")
     if toggle_pattern:
         actions.append(lambda p=toggle_pattern: p.Toggle())
 
     for attr in ("select", "invoke", "toggle"):
-        if hasattr(wrapper, attr):
-            actions.append(getattr(wrapper, attr))
+        fn = _safe_getattr(wrapper, attr)
+        if fn:
+            actions.append(fn)
 
-    if ALLOW_VOICEROID_FOCUS and hasattr(wrapper, "click_input"):
-        actions.append(lambda w=wrapper: w.click_input())
+    if ALLOW_VOICEROID_FOCUS:
+        click_fn = _safe_getattr(wrapper, "click_input")
+        if click_fn:
+            actions.append(click_fn)
 
     for action in actions:
         try:
