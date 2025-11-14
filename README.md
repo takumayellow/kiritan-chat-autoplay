@@ -1,97 +1,66 @@
-# きりたん Chat Autoplay（GUI優先・CLI併用）
+# きりたん Chat Autoplay (CLI / GUI)
 
-## 1) “完成版”の全体像
-- **会話生成**: OpenAI API（`OPENAI_MODEL` 未指定時は `gpt-4o-mini → o4-mini-high → o3-mini → gpt-4o` 順で自動フォールバック）
-- **読み上げ**: `SeikaSay2.exe` の **CLI** で再生
-- **音声入力**: `mode mic` で自動録音（Enter で途中停止 / `time N` で録音秒数を変更）
-- **UI 安定化**: VOICEROID のタブが勝手に動く問題に対し、**UIA** で「**フレーズ編集**」に自動復帰  
-  watchdog が `TabItem/ボタン/ラジオ` を監視し、必要なら `Ctrl+1` 擬似入力まで使って復帰
-- **フォーカス**: 毎回の再生後に PowerShell を前面復帰
-- **速度**: 入力値をそのまま Seika に渡し、`0.5–4.0x` にクランプ（2倍速化バグを解消）
-- **ペルソナ**: 東北きりたんの年齢・口調・好物（きりたんぽ）・秋田弁の言い回しをプロンプトに明記し、AIらしい口調に戻らないよう調整
-- **呼称ヒアリング**: 起動直後に名前・ジェンダー・年代を番号メニューで確認し、回答に沿ってペルソナへ反映（`profile` / `name` コマンドで再設定可）
-- **プロフィール履歴**: 入力されたプロフィールは `logs/profile_history.jsonl` に JSONL 形式で追記され、後から分析できる
-- **システム音入力**: `mode loop` / `mode system` で Stereo Mix などのデバイスから PC 音声を拾い、失敗した場合は自動で text モードへ戻る
-- 実装方針は **「CLIで読み上げ」＋「GUIでタブ復帰」** の二本立て（GUI操作は必要最小限）
+VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキスト／音声の往復会話を自動化するためのツールセットです。SeikaSay2.exe をバックエンドに据え、PowerShell（CLI）から自然に会話を続けられるようにしています。
 
-## 2) GUI（pywinauto）を使う背景と現実解
-- 直接 VOICEROID を操作して再生ボタンを押す設計を検討
-- しかし実運用では以下で不安定:
-  - 32/64bit 非一致の警告（VOICEROID は 32bit）
-  - Win32 backend は要素探索が不安定・遅い
-  - **ウィンドウタイトルの「全角＋（VOICEROID＋）」** を見落とすと検出失敗
-  - 読み上げ後にタブが「音声効果」等へ飛ぶ
-- 結論: **再生は CLI、GUI はタブ復帰のみ**に限定するのが堅牢
+## 概要
+- **会話生成**: OpenAI API（`OPENAI_MODEL` が未設定なら `gpt-4o-mini` などにフォールバック）で返答を取得。
+- **読み上げ**: AssistantSeika 同梱の `SeikaSay2.exe` CLI で VOICEROID を起動せずに再生。速度 (`speed`)、話者 (`cid`) を直接指定できます。
+- **UI 制御**: pywinauto（UIA）で VOICEROID の「フレーズ編集」タブを監視し、音声効果タブへ飛んでも自動で戻す watchdog を常駐。
+- **入力モード**: `mode text / mic / loop / dual` を切り替え可能。`time N` で録音秒数、`speed X` で再生速度を調整。
+- **プロフィール記録**: 名前／ジェンダー／年代をヒアリングし、`logs/profile_history.jsonl` に JSONL で保存。 honorific は名前の末尾に含める方式に一本化。
+- **フォーカス保護**: 既定では PowerShell のフォーカスを奪わず、VOICEROID 画面を勝手に中央へ移動させません（`KIRITAN_ALLOW_WINDOW_FOCUS=1` で従来挙動に戻せます）。
 
-## 3) なぜ CLI（SeikaSay2.exe）でやり切るのが正解か
-- クリックやウィンドウ状態に依存せず **確実に再生**
-- `-cid` や `-speed` を引数で明示制御
-- 既知問題と対処
-  - `invalid option: -play` → VOICEROID 本体に投げていた → **SeikaSay2.exe** に向ける
-  - `Process "SeikaSay2.exe" not found` → パス誤り → 既定値/環境変数でカバー
-  - **2倍速化** → 内部の二重適用をやめ、入力値をそのまま渡す（`0.5–4.0` クランプ）
+## 最近のアップデート
+- **ペルソナ再構築**: 8 月時点の「親しみやすい口調＋質問で締める」スタイルをベースに、落ち着いたトーンでも自然に質問を添えるプロンプトへ更新。毎返答の末尾に 1 つだけ質問を足すよう System Prompt を強化。
+- **呼称管理の自動化**: honorific 入力欄を廃止し、名前に接尾辞が含まれていない場合は自動で「さん」を付ける仕様に変更。履歴にも自動整形後の呼び名を保持。
+- **タブガードの堅牢化**: UIA パターン取得を安全化（`iface_invoke` 取得失敗でも落ちない）、`SeikaSay2` 完了後に追加で `ensure_phrase_tab_with_retry` を走らせるなど、音声効果タブからの復帰精度を向上。
+- **ウィンドウフォーカス制御**: `KIRITAN_ALLOW_WINDOW_FOCUS` で VOICEROID の前面化を明示的に許可するまで一切フォーカスを奪わない設計に変更。誤って PowerShell が背面に飛ぶ問題を解消。
 
-## 4) “タブが動く”問題の最終対処
-- 再生後にタブが他へ移動する事象あり
-- 監視スレッド `_guard_phrase_tab` を調整し、再生停止直後も約 1.4 秒 linger しながら監視を継続  
-  → 遅れて「音声効果」へ飛ぶケースも再度「フレーズ編集」へ戻せるようになった
-- 再生開始前に `ensure_phrase_tab_with_retry()` を複数回実行し、実際に話し出す時点でタブが「フレーズ編集」にあることを確認してから `SeikaSay2.exe -play` を発火
-- `force_phrase_tab()` で VOICEROID ウィンドウへフォーカスを戻しつつ高速にリトライし、再生前後で確実にタブを引き戻す
-- `KIRITAN_TAB_DEBUG=1` を設定するとタブ監視の詳細ログが PowerShell に出力され、原因調査時に役立つ
-- VOICEROID 本体が起動していない場合は数秒間隔で注意喚起を出し、ログが連打されないよう抑制
-- **UIA** で `TabItem` だけでなく **ボタン/ラジオも列挙**し「フレーズ編集」へ復帰
-  - `select()` → `invoke()` → `click_input()` → `Ctrl+1` 擬似入力まで段階的に試行
-- これは `tab_switch_test.py` で検証済み → 本体 `ensure_phrase_tab()` に統合
-- 手動検証メモ（Windows 実機で実施推奨）
-  - 連続再生を数回繰り返し、停止後もタブが「フレーズ編集」を維持しているか確認
-  - 再生停止直後に VOICEROID 側で速度・プリセットを変更し、タブがずれても 1 秒以内に戻るか確認
-  - PowerShell ログに `⚠️/✖️` が頻出しないかを観察（連続失敗時は watchdog 間隔を調整）
+## 既知の課題
+- **音声効果タブへ自動遷移する仕様**: SeikaSay2.exe は毎回「音声効果」パラメータを更新・リセットするため、VOICEROID 本体が再生完了直後に音声効果タブを前面に戻してしまいます。根本的に止める術はなく、監視スレッド `_guard_phrase_tab` で検知→即フレーズ編集へ復帰するアプローチを採用しています。
+- **GUI 直接操作との二者択一**: CLI での安定再生を優先した結果、VOICEROID の画面に触っている最中はタブが揺れ動きます。画面自体を見せたくない場合は GUI を閉じた状態で CLI のみを表示する運用を推奨します。
 
-## 5) 依存・環境・実行
-- 必須: Windows（VOICEROID＋ 東北きりたん EX が稼働）、Python 3.11+
-- ライブラリ:  
-  `pip install openai pywinauto pywin32 speechrecognition sounddevice`
-  （mic/loop を使わないなら `speechrecognition` と `sounddevice` は不要）
-- 環境変数  
-  - `OPENAI_API_KEY`（必須）  
-  - `OPENAI_MODEL`（任意）  
-  - `SEIKA_EXE`（任意: `SeikaSay2.exe` の絶対パスで既定値上書き）
-- 実行:  
-  `python kiritan-chat-autoplay.py`
-- プロンプト:  
-  `mode dual|text|mic|loop | time N | speed X | exit`  
-  例）`speed 1.2`, `mode mic`, `time 6`
-- いつでも `Ctrl+C` で安全に終了できます。`mode loop`/`mode system` は Stereo Mix などのシステム音入力デバイスが必要で、取得できなければ自動で text モードへ戻ります。
-- 動作フロー:  
-  起動直後に **フレーズ編集へ復帰** → 返答生成 → `SeikaSay2 -play` で再生  
-  再生中は watchdog がタブを監視し続け、終了後も再度タブ復帰＋前面復帰を保证
+## 使い方
 
-## 6) /debug にある検証資材
-- `tab_switch_test.py`: タブ列挙と復帰の確定版
-- `debug_step*_*.py`: ウィンドウ列挙/接続/PID 解決など  
-  ※タイトルは **VOICEROID＋ 東北きりたん EX**（全角＋）
+### 必要環境
+- Windows 10/11（VOICEROID＋ 東北きりたん EX がインストール済み）
+- Python 3.11 以上（`pywinauto`, `pywin32`, `openai`, `speechrecognition`, `sounddevice` などを `pip install -r requirements.txt` で導入）
+- OpenAI API Key（`OPENAI_API_KEY`）
+- AssistantSeika / SeikaSay2.exe（`SEIKA_EXE` でパスを上書き可能）
 
-## 7) よくあるエラーと即時対処
-- `NameError: find_voiceroid_handle ...` → 検証関数の移植漏れ。現行コードは修正済み
-- `invalid option: -play` → 送信先が VOICEROID 本体。**SeikaSay2.exe** に向ける
-- `UIA: NULL COM pointer access` → `select → invoke → click_input` フォールバックを実装
-- `Window not found` → タイトルの **全角＋** を確認
+### 実行手順
+1. 仮想環境を有効化し依存パッケージをインストールします。  
+   `pip install -r requirements.txt`
+2. 必要な環境変数を設定します。  
+   - `OPENAI_API_KEY`（必須）  
+   - `OPENAI_MODEL`（任意。未設定なら `gpt-4o-mini`→`o4-mini`…の順にフォールバック）  
+   - `SEIKA_EXE`（任意。SeikaSay2.exe のフルパスを上書きしたい場合）  
+   - `KIRITAN_ALLOW_WINDOW_FOCUS`（任意。`1` で VOICEROID を前面化・クリック可能）  
+   - `KIRITAN_TAB_DEBUG`（任意。`1` でタブ監視ログを PowerShell に出力）
+3. CLI を起動します。  
+   `python kiritan_chat_cli.py`
+4. 画面の指示に従ってプロフィールを入力し、`mode dual`（既定）/`mode mic`/`mode loop` などを選びながら会話します。
 
-## 8) 本体のキーノート（後続開発の入口）
-- `ensure_phrase_tab()`：タブ復帰の中核（起動時＆再生後に必ず呼ぶ）
-- `speak()`：SeikaSay2 CLI 実行。終了後にタブ復帰＋前面復帰
-- `chat_once()`：モデルのフォールバック実装
-- 速度：`0.5–4.0` にクランプ、二重掛け禁止
+### 主なコマンド
+| コマンド | 説明 |
+| --- | --- |
+| `mode text/mic/loop/dual` | 入力モード切り替え（`voice`/`system` などの別名あり） |
+| `time N` | 録音秒数（mic / loop 共通） |
+| `speed X` | 読み上げ速度。`0.5～4.0` の範囲で制限 |
+| `style` | 会話スタイル（light/normal/deep）を再選択 |
+| `profile` / `name` | 名前・ジェンダー・年代の再入力 |
+| `exit` | 終了 |
 
-## 9) 拡張の出発点
-- 簡易トースト/ログ化、速度・抑揚プリセット、録音系の安定化（必要時のみ）
+### ログと履歴
+- `logs/profile_history.jsonl` にプロフィール入力の履歴を JSONL 形式で追記します。
+- `KIRITAN_TAB_DEBUG=1` を指定すると、VOICEROID が音声効果タブへ遷移したタイミングが `[tab-debug …]` ログに記録されます。
 
+## トラブルシューティング
+- **VOICEROID が見つからない**: VOICEROID＋ 東北きりたん EX を起動し、タイトルに「VOICEROID」「きりたん」が含まれていることを確認してください。
+- **SeikaSay2.exe が見つからない**: `SEIKA_EXE` にフルパスを設定するか、デフォルト配置（`AssistantSeika/.../SeikaSay2.exe`）に置きます。
+- **UIA の NULL COM pointer エラー**: `_activate_control` で握り潰すように対処済みですが、再発する場合は VOICEROID ウィンドウを一度最小化→復帰してください。
+- **音声効果タブに固定したい**: 逆に音声効果タブを維持したい場合は `ensure_phrase_tab()` 呼び出し箇所をコメントアウトするか、`start_phrase_tab_sentry()` を起動しないカスタムモードを作成してください。なお公式仕様上、録音後に音声効果側へ戻る挙動は避けられません。
 
-## モード構成
-
-- **GUI 基本版（推奨）**: kiritan_chat_gui.py  
-  AssistantSeika への依存なし。VOICEROID＋東北きりたん EX を起動してから実行。  
-  返答は VOICEROID で再生され、ターミナルにも表示されます。
-
-- **CLI 版**: kiritan_chat_cli.py  
-  SeikaSay2.exe 経由で再生（HTTP/WCF 不要の環境ならこちらでも可）。
+## ライセンス / 貢献
+- 本リポジトリのコードは作者の個人検証用途として公開しており、ライセンスは同梱ファイルに準じます。
+- 変更や改善の提案は Pull Request / Issue で受け付けています。README の内容を更新する場合は、最近の仕様変更（ペルソナ、タブ制御、フォーカス動作など）との整合性にご注意ください。
