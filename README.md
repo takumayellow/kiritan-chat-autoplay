@@ -1,6 +1,6 @@
-# きりたん Chat Autoplay (CLI / GUI)
+# きりたん Chat Autoplay (CLI版 / GUI版)
 
-VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキスト／音声の往復会話を自動化するためのツールセットです。SeikaSay2.exe をバックエンドに据え、PowerShell（CLI）から自然に会話を続けられるようにしています。
+VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキスト／音声の往復会話を自動化するためのツールセットです。SeikaSay2.exe をバックエンドに据え、PowerShell（CLI版）から自然に会話を続けられるようにしています。
 
 ## 概要
 - **会話生成**: OpenAI API（`OPENAI_MODEL` が未設定なら `gpt-4o-mini` などにフォールバック）で返答を取得。
