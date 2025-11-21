@@ -22,6 +22,7 @@ import threading
 import re
 import json
 import datetime
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -54,6 +55,7 @@ except Exception:
 from pywinauto import Application, timings
 DEFAULT_USER_NAME = "あなた"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
+PROFILE_DB_FILE = Path("logs/profile_history.sqlite")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
 _loop_warned_missing = False
 DEFAULT_CALL_SUFFIX = "さん"
@@ -142,6 +144,58 @@ def append_profile_history(user_profile: UserProfile) -> None:
             fh.write(json.dumps(data, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+
+def _ensure_profile_db() -> None:
+    PROFILE_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(PROFILE_DB_FILE) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                created_at TEXT,
+                name TEXT,
+                gender TEXT,
+                age TEXT,
+                source TEXT
+            )
+            """
+        )
+        conn.commit()
+
+
+def save_profile_to_db(
+    user_profile: UserProfile,
+    *,
+    source: str,
+    session_id: str,
+) -> None:
+    try:
+        _ensure_profile_db()
+        with sqlite3.connect(PROFILE_DB_FILE) as conn:
+            conn.execute(
+                """
+                INSERT INTO user_profiles (session_id, created_at, name, gender, age, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    datetime.datetime.now().isoformat(),
+                    user_profile.name,
+                    user_profile.gender,
+                    user_profile.age,
+                    source,
+                ),
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
+def persist_profile(user_profile: UserProfile, *, source: str, session_id: str) -> None:
+    append_profile_history(user_profile)
+    save_profile_to_db(user_profile, source=source, session_id=session_id)
 
 MODEL_PROFILES: List[Dict[str, str]] = [
     {
@@ -596,7 +650,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
         gender=gender or base.gender,
         age=age or base.age,
     )
-    append_profile_history(profile)
+    persist_profile(profile, source="prompt", session_id=SESSION_ID)
 
     display = profile.display_label()
     print(f"きりたん: {display}、よろしくね。")
@@ -630,6 +684,7 @@ DEFAULT_USER_PROFILE = UserProfile()
 SYSTEM_PROMPT = BASE_SYSTEM_PROMPT_TEMPLATE.format(
     persona=build_kiritan_persona(DEFAULT_USER_PROFILE)
 )
+SESSION_ID = datetime.datetime.now().strftime("%Y%m%dT%H%M%S")
 
 
 # ---------------- ユーティリティ ----------------
@@ -1095,15 +1150,20 @@ def main():
                 bring_powershell_front()
                 user = input("You (text): " ).strip()
             elif mode == "mic":
-                if wait <= 0:
-                    wait = 6
-                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
-                user = listen_mic(client, wait)
-                if user:
-                    print(f"You (mic): {user}")
+                bring_powershell_front()
+                typed = input("You (mic) Enterで録音 / コマンド入力可（例: mode text）> ").strip()
+                if typed:
+                    user = typed
                 else:
-                    print("[mic] 音声を認識できませんでした。")
-                    continue
+                    if wait <= 0:
+                        wait = 6
+                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                    user = listen_mic(client, wait)
+                    if user:
+                        print(f"You (mic): {user}")
+                    else:
+                        print("[mic] 音声を認識できませんでした。")
+                        continue
             elif mode == "loop":
                 user = listen_loopback(wait)
                 if user:
@@ -1135,7 +1195,7 @@ def main():
                 parts = user.split(maxsplit=1)
                 if len(parts) >= 2 and parts[1].strip():
                     user_profile.name = parts[1].strip()
-                    append_profile_history(user_profile)
+                    persist_profile(user_profile, source="command:name", session_id=SESSION_ID)
                 else:
                     user_profile = prompt_user_profile(existing=user_profile)
                 system_prompt = compose_system_prompt(conversation_profile, user_profile)
@@ -1154,7 +1214,7 @@ def main():
                                 print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                             else:
                                 print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                            print("     以降は自動で録音します。")
+                            print("     Enter で録音開始、または 'mode text' などのコマンドを入力できます。")
                         continue
                 print("Usage: mode text|mic|dual|loop")
                 continue
@@ -1168,7 +1228,7 @@ def main():
                         print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                     else:
                         print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                    print("     以降は自動で録音します。")
+                    print("     Enter で録音開始、または 'mode text' などのコマンドを入力できます。")
                 continue
             if low.startswith("time "):
                 try:
