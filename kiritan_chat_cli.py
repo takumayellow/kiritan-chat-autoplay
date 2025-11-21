@@ -561,16 +561,14 @@ def print_cli_usage():
     print("\n--- コマンド一覧 ---")
     print("  help           : このヘルプ")
     print("  mode text      : 入力を文字入力に戻す")
-    print("  mode mic       : マイク会話（'voice' でもOK、Enter で途中停止・待ち時間は time N）")
-    print("  mode loop/system: PCの再生音（ステレオミックス等が必要）")
-    print("  mode dual      : テキスト→マイクの連続モード")
-    print("  time N         : 録音秒数の設定（mic/loop 共通）")
+    print("  mode mic       : マイク会話（'voice' でもOK、待ち時間は time N）")
+    print("  time N         : 録音秒数の設定（mic 共通）")
     print("  speed X        : 読み上げ速度 0.5～4.0")
     print("  style          : 会話スタイルを再選択")
     print("  profile        : 名前・ジェンダー・年齢感を再入力")
-    print("  name           : （profile のエイリアス）")
     print("  exit           : 終了")
-    print("\nヒント: mic モードでは自動で録音。待ち時間を変えたいときは time N を話す/入力してください。")
+    print("\nヒント: text モードでも Enter だけ押すと音声入力できます。")
+    print("      : mic モードでは自動録音。待ち時間を変えたいときは time N を話す/入力してください。")
     print("      : いつでも Ctrl+C で全体を終了できます。")
 
 
@@ -578,16 +576,22 @@ def normalize_mode_name(raw: str) -> Optional[str]:
     if not raw:
         return None
     key = raw.strip().lower()
+    simple = key.replace("　", "").replace(" ", "")
     aliases = {
         "voice": "mic",
         "mic": "mic",
         "microphone": "mic",
         "text": "text",
-        "loop": "loop",
-        "loopback": "loop",
-        "system": "loop",
-        "dual": "dual",
     }
+    jp_aliases = {
+        "モードマイク": "mic",
+        "モードボイス": "mic",
+        "モードこえ": "mic",
+        "モードてきすと": "text",
+        "モードテキスト": "text",
+    }
+    if simple in jp_aliases:
+        return jp_aliases[simple]
     return aliases.get(key)
 
 
@@ -665,7 +669,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
 DEFAULT_SPEED = 1.0           # 読み上げ速度（Seika側の話速に対して倍率）
-DEFAULT_LISTEN = 0            # mic/loop 時の秒数（使わない場合は 0 のまま）
+DEFAULT_LISTEN = 0            # mic 時の秒数（使わない場合は 0 のまま）
 VOICEROID_TITLE = 'VOICEROID＋ 東北きりたん EX'  # 全角プラス（＋）に注意
 
 # SeikaSay2.exe の既定パス（必要なら SEIKA_EXE 環境変数で上書き）
@@ -1133,22 +1137,31 @@ def main():
     system_prompt = compose_system_prompt(conversation_profile, user_profile)
     print(f"[model] {current_model} ({conversation_profile['label']})")
     print(f"[persona] {profile_summary(user_profile)}")
-    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
+    print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。マイク秒数は time N。")
 
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
-    mode = "dual"
+    mode = "text"
     print_cli_usage()
     print("Ctrl+C でいつでも終了できます。")
 
     try:
         while True:
-            if mode == "dual":
+            if mode == "text":
                 bring_powershell_front()
-                user = input("You: " ).strip()
-            elif mode == "text":
-                bring_powershell_front()
-                user = input("You (text): " ).strip()
+                typed = input("You (text) / Enterで音声入力: " ).strip()
+                if typed:
+                    user = typed
+                else:
+                    if wait <= 0:
+                        wait = 6
+                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                    user = listen_mic(client, wait)
+                    if user:
+                        print(f"You (voice→text): {user}")
+                    else:
+                        print("[mic] 音声を認識できませんでした。")
+                        continue
             elif mode == "mic":
                 if wait <= 0:
                     wait = 6
@@ -1158,12 +1171,6 @@ def main():
                     print(f"You (mic): {user}")
                 else:
                     print("[mic] 音声を認識できませんでした。")
-                    continue
-            elif mode == "loop":
-                user = listen_loopback(wait)
-                if user:
-                    print(f"You (loop): {user}")
-                else:
                     continue
             else:
                 bring_powershell_front()
@@ -1186,7 +1193,7 @@ def main():
                 print(f"[model] {current_model} ({conversation_profile['label']})")
                 print(f"[persona] {profile_summary(user_profile)}")
                 continue
-            if low.startswith("profile") or low.startswith("name"):
+            if low.startswith("profile"):
                 parts = user.split(maxsplit=1)
                 if len(parts) >= 2 and parts[1].strip():
                     user_profile.name = parts[1].strip()
@@ -1209,9 +1216,9 @@ def main():
                                 print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                             else:
                                 print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                            print("     音声入力が続きます。音声で『mode text』と言うとテキストモードに戻れます。")
+                            print("     音声入力が続きます。音声で『モードテキスト』と言うとテキストモードに戻れます。")
                         continue
-                print("Usage: mode text|mic|dual|loop")
+                print("Usage: mode text|mic")
                 continue
             quick_mode = normalize_mode_name(low)
             if quick_mode:
@@ -1223,7 +1230,7 @@ def main():
                         print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                     else:
                         print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                    print("     音声入力が続きます。音声で『mode text』と言うとテキストモードに戻れます。")
+                    print("     音声入力が続きます。音声で『モードテキスト』と言うとテキストモードに戻れます。")
                 continue
             if low.startswith("time "):
                 try:
