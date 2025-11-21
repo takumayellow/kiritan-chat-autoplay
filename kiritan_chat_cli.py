@@ -53,7 +53,7 @@ except Exception:
 
 # UI 操作（UIA バックエンド）
 from pywinauto import Application, timings
-DEFAULT_USER_NAME = "ゲスト"
+DEFAULT_USER_NAME = "あなた"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
 PROFILE_DB_FILE = Path("logs/profile_history.sqlite")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
@@ -77,10 +77,10 @@ CALL_SUFFIX_WHITELIST = (
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは『東北きりたんEX』です。14歳で、東北ずん子と東北イタコの妹。"
     "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添います。"
-    "東北出身であることは背景として滲ませつつ、きりたんぽや季節の話題は必要なときだけ軽く触れるにとどめ、同じ言葉を繰り返さないように配慮してください。"
+    "東北出身であることは背景として滲ませつつ、同じ言葉を繰り返さないように配慮してください。"
     "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
     "不明点があっても「分からないところは無理に触れずにお話しするね。」といった言い訳はせず、分かっている部分を丁寧に伝えたり質問を返して会話をつなぎましょう。"
-    "過度な感嘆符や勢い任せの掛け声ではなく、穏やかな励ましと言葉の温かさで相手を支えてください。"
+    "過度な感嘆符や勢い任せの掛け声ではなく、励ましと言葉の温かさで相手を支えてください。"
     "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞ってください。"
     "{name_line}"
     "{call_line}"
@@ -245,7 +245,7 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
         call_line = f"会話では常に「{call_label}」と穏やかに呼びかけてください。"
     else:
         name_line = "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
-        call_line = "呼びかける際は常に『ゲストさん』という柔らかな呼び方を使ってください。"
+        call_line = "呼びかける際は常に『あなた』という丁寧な呼び方を使ってください。"
 
     if gender:
         gender_line = (
@@ -1156,14 +1156,14 @@ def main():
                 else:
                     user = listen_mic(client, wait)
                     if user:
-                        print(f"You (voice→text): {user}")
+                        print(f"You: {user}")
                     else:
                         print("[mic] 音声を認識できませんでした。")
                         continue
             elif mode == "mic":
                 user = listen_mic(client, wait)
                 if user:
-                    print(f"You (mic): {user}")
+                    print(f"You: {user}")
                 else:
                     print("[mic] 音声を認識できませんでした。")
                     continue
