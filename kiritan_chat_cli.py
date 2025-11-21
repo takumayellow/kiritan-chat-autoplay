@@ -1150,20 +1150,15 @@ def main():
                 bring_powershell_front()
                 user = input("You (text): " ).strip()
             elif mode == "mic":
-                bring_powershell_front()
-                typed = input("You (mic) Enterで録音 / コマンド入力可（例: mode text）> ").strip()
-                if typed:
-                    user = typed
+                if wait <= 0:
+                    wait = 6
+                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
+                user = listen_mic(client, wait)
+                if user:
+                    print(f"You (mic): {user}")
                 else:
-                    if wait <= 0:
-                        wait = 6
-                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
-                    user = listen_mic(client, wait)
-                    if user:
-                        print(f"You (mic): {user}")
-                    else:
-                        print("[mic] 音声を認識できませんでした。")
-                        continue
+                    print("[mic] 音声を認識できませんでした。")
+                    continue
             elif mode == "loop":
                 user = listen_loopback(wait)
                 if user:
@@ -1214,7 +1209,7 @@ def main():
                                 print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                             else:
                                 print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                            print("     Enter で録音開始、または 'mode text' などのコマンドを入力できます。")
+                            print("     音声入力が続きます。音声で『mode text』と言うとテキストモードに戻れます。")
                         continue
                 print("Usage: mode text|mic|dual|loop")
                 continue
@@ -1228,7 +1223,7 @@ def main():
                         print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                     else:
                         print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
-                    print("     Enter で録音開始、または 'mode text' などのコマンドを入力できます。")
+                    print("     音声入力が続きます。音声で『mode text』と言うとテキストモードに戻れます。")
                 continue
             if low.startswith("time "):
                 try:
