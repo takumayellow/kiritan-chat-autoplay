@@ -53,7 +53,7 @@ except Exception:
 
 # UI 操作（UIA バックエンド）
 from pywinauto import Application, timings
-DEFAULT_USER_NAME = "あなた"
+DEFAULT_USER_NAME = "ゲスト"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
 PROFILE_DB_FILE = Path("logs/profile_history.sqlite")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
@@ -76,7 +76,8 @@ CALL_SUFFIX_WHITELIST = (
 
 KIRITAN_PERSONA_TEMPLATE = (
     "あなたは『東北きりたんEX』です。14歳で、東北ずん子と東北イタコの妹。"
-    "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添い、きりたんぽや東北の季節の話題を好みます。"
+    "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添います。"
+    "東北出身であることは背景として滲ませつつ、きりたんぽや季節の話題は必要なときだけ軽く触れるにとどめ、同じ言葉を繰り返さないように配慮してください。"
     "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
     "不明点があっても「分からないところは無理に触れずにお話しするね。」といった言い訳はせず、分かっている部分を丁寧に伝えたり質問を返して会話をつなぎましょう。"
     "過度な感嘆符や勢い任せの掛け声ではなく、穏やかな励ましと言葉の温かさで相手を支えてください。"
@@ -244,7 +245,7 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
         call_line = f"会話では常に「{call_label}」と穏やかに呼びかけてください。"
     else:
         name_line = "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
-        call_line = "呼びかける際は常に『あなた』という丁寧な言い方を使ってください。"
+        call_line = "呼びかける際は常に『ゲストさん』という柔らかな呼び方を使ってください。"
 
     if gender:
         gender_line = (
@@ -669,7 +670,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
 DEFAULT_SPEED = 1.0           # 読み上げ速度（Seika側の話速に対して倍率）
-DEFAULT_LISTEN = 0            # mic 時の秒数（使わない場合は 0 のまま）
+DEFAULT_LISTEN = 6            # mic 時の秒数（Enter 録音の既定秒数）
 VOICEROID_TITLE = 'VOICEROID＋ 東北きりたん EX'  # 全角プラス（＋）に注意
 
 # SeikaSay2.exe の既定パス（必要なら SEIKA_EXE 環境変数で上書き）
@@ -1153,9 +1154,6 @@ def main():
                 if typed:
                     user = typed
                 else:
-                    if wait <= 0:
-                        wait = 6
-                        print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
                     user = listen_mic(client, wait)
                     if user:
                         print(f"You (voice→text): {user}")
@@ -1163,9 +1161,6 @@ def main():
                         print("[mic] 音声を認識できませんでした。")
                         continue
             elif mode == "mic":
-                if wait <= 0:
-                    wait = 6
-                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
                 user = listen_mic(client, wait)
                 if user:
                     print(f"You (mic): {user}")
@@ -1253,9 +1248,6 @@ def main():
             speak(reply, speed)
 
             if mode == "mic":
-                if wait <= 0:
-                    wait = 6
-                    print(f"[mic] 録音秒数が未設定だったため {wait}s に設定しました（time N で変更）。")
                 follow = listen_mic(client, wait)
                 if follow:
                     print(f"You (mic): {follow}")
