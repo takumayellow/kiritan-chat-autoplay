@@ -44,7 +44,10 @@ VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキ
 ### 主なコマンド
 | コマンド | 説明 |
 | --- | --- |
-| `mode text/mic/loop/dual` | 入力モード切り替え（`voice`/`system` などの別名あり） |
+| `mode text` | テキスト手入力モード（キーボードで入力して送信） |
+| `mode mic` | マイク録音モード（自動録音→文字起こし→送信。`voice` でもOK） |
+| `mode loop` | システム音（ループバック）モード（`system` でもOK） |
+| `mode dual` | テキスト入力＋マイク連続モード（既定） |
 | `time N` | 録音秒数（mic / loop 共通） |
 | `speed X` | 読み上げ速度。`0.5～4.0` の範囲で制限 |
 | `style` | 会話スタイル（light/normal/deep）を再選択 |
