@@ -29,15 +29,15 @@ VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキ
 - AssistantSeika / SeikaSay2.exe（`SEIKA_EXE` でパスを上書き可能）
 
 ### 実行手順
-1. 仮想環境を有効化し依存パッケージをインストールします。  
+1. 仮想環境を有効化し依存パッケージをインストールします。
    `pip install -r requirements.txt`
-2. 必要な環境変数を設定します。  
-   - `OPENAI_API_KEY`（必須）  
-   - `OPENAI_MODEL`（任意。未設定なら `gpt-4o-mini`→`o4-mini`…の順にフォールバック）  
-   - `SEIKA_EXE`（任意。SeikaSay2.exe のフルパスを上書きしたい場合）  
-   - `KIRITAN_ALLOW_WINDOW_FOCUS`（任意。`1` で VOICEROID を前面化・クリック可能）  
+2. 必要な環境変数を設定します。
+   - `OPENAI_API_KEY`（必須）
+   - `OPENAI_MODEL`（任意。未設定なら `gpt-4o-mini`→`o4-mini`…の順にフォールバック）
+   - `SEIKA_EXE`（任意。SeikaSay2.exe のフルパスを上書きしたい場合）
+   - `KIRITAN_ALLOW_WINDOW_FOCUS`（任意。`1` で VOICEROID を前面化・クリック可能）
    - `KIRITAN_TAB_DEBUG`（任意。`1` でタブ監視ログを PowerShell に出力）
-3. CLI を起動します。  
+3. CLI を起動します。
    `python kiritan_chat_cli.py`
 4. 画面の指示に従ってプロフィールを入力し、`mode dual`（既定）/`mode mic`/`mode loop` などを選びながら会話します。
 
@@ -54,6 +54,52 @@ VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキ
 ### ログと履歴
 - `logs/profile_history.jsonl` にプロフィール入力の履歴を JSONL 形式で追記します。
 - `KIRITAN_TAB_DEBUG=1` を指定すると、VOICEROID が音声効果タブへ遷移したタイミングが `[tab-debug …]` ログに記録されます。
+
+---
+
+## voiceinputting との連携
+
+[voiceinputting](https://github.com/takumayellow/voiceinputting) は OpenAI 音声認識 API を使って音声をテキスト化するブリッジツールです。
+きりたん Chat Autoplay の `mode mic` と組み合わせることで、マイク入力から自動的にテキスト変換→きりたん読み上げという完全ハンズフリーフローを構築できます。
+
+### 連携方法
+
+```
+[マイク入力]
+    |
+    v
+voiceinputting (gpt-4o-mini-transcribe でテキスト化)
+    |
+    v  テキスト文字列
+kiritan_chat_cli.py の標準入力 / mode text
+    |
+    v
+OpenAI API (返答生成)
+    |
+    v
+SeikaSay2.exe → VOICEROID 読み上げ
+```
+
+#### 手順
+
+1. **voiceinputting をセットアップ**（別ウィンドウで起動）:
+   ```powershell
+   cd ..\voiceinputting
+   pip install -r requirements.txt
+   python -m src.voice_to_codex --auto-send
+   ```
+
+2. **このリポジトリを `mode text` で起動**:
+   ```powershell
+   python kiritan_chat_cli.py
+   # 起動後: mode text
+   ```
+
+3. voiceinputting が文字起こしした内容を、きりたん Chat の入力にコピー＆ペーストして送信します。
+
+> **将来的な統合**: 両ツールを 1 プロセスに統合するパイプライン実装も検討中です。`OPENAI_API_KEY` は共通の環境変数を使用します。
+
+---
 
 ## トラブルシューティング
 - **VOICEROID が見つからない**: VOICEROID＋ 東北きりたん EX を起動し、タイトルに「VOICEROID」「きりたん」が含まれていることを確認してください。
