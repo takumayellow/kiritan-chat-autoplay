@@ -670,7 +670,7 @@ def prompt_user_profile(existing: Optional[UserProfile] = None) -> UserProfile:
 # ---------------- 設定 ----------------
 CID_KIRITAN = 1707            # 東北きりたんEX CID
 DEFAULT_SPEED = 1.0           # 読み上げ速度（Seika側の話速に対して倍率）
-DEFAULT_LISTEN = 6            # mic 時の秒数（Enter 録音の既定秒数）
+DEFAULT_LISTEN = 10            # mic 時の秒数（Enter 録音の既定秒数）
 VOICEROID_TITLE = 'VOICEROID＋ 東北きりたん EX'  # 全角プラス（＋）に注意
 
 # SeikaSay2.exe の既定パス（必要なら SEIKA_EXE 環境変数で上書き）
@@ -1207,7 +1207,7 @@ def main():
                         print(f"[mode] -> {mode}")
                         if mode == "mic":
                             if wait <= 0:
-                                wait = 6
+                                wait = 10
                                 print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                             else:
                                 print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
@@ -1221,7 +1221,7 @@ def main():
                 print(f"[mode] -> {mode}")
                 if mode == "mic":
                     if wait <= 0:
-                        wait = 6
+                        wait = 10
                         print(f"  -> Mic conversation mode. 録音秒数を {wait}s に設定しました（time N で変更）。")
                     else:
                         print(f"  -> Mic conversation mode. 録音秒数は {wait}s（time N で変更）。")
