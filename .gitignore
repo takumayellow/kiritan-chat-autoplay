@@ -10,9 +10,9 @@ __pycache__/
 .vscode/
 
 .env
-
-
-.env
-
 .venv/
 
+# Runtime artifacts
+conversation_log.txt
+logs/
+*.pyc
