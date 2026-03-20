@@ -1,3 +1,16 @@
 ﻿openai
 pywinauto
 pywin32
+
+# GUI版（VOICEVOX対応） - kiritan_chat_gui_new.py / kiritan_voicevox.py
+requests              # VOICEVOX HTTP API との通信
+sounddevice           # 音声再生（推奨）
+soundfile             # WAV ファイルの読み書き
+python-dotenv         # .env ファイルからの環境変数読み込み
+
+# 音声再生の代替（sounddevice が使えない場合）
+# simpleaudio         # pip install simpleaudio
+
+# マイク音声入力（オプション）
+# SpeechRecognition   # pip install SpeechRecognition
+# pyaudio             # pip install pyaudio  (SpeechRecognition の依存)
