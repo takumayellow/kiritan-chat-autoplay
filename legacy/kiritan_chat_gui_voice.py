@@ -86,7 +86,7 @@ SYSTEM_PROMPT_AIZUCHI = (
     "あなたは聞き上手なアシスタントです。相手の話に相槌（うん、なるほど、たしかに等）を適度に交え、"
     "文は短め・わかりやすく・端的にまとめて返答してください。"
 )
-LOG_DIR = "logs"
+LOG_DIR = "logs/runtime"
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # ====== 小物 ======

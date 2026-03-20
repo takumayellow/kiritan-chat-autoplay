@@ -36,7 +36,7 @@ PHRASE_TAB_LABEL = "フレーズ編集"
 DEFAULT_MODELS = ["gpt-4o-mini", "o4-mini-high", "o3-mini", "gpt-4o"]
 SYSTEM_PROMPT_DEFAULT = "あなたは気さくで、やさしく短めに返すアシスタントです。"
 
-LOG_DIR = "logs"
+LOG_DIR = "logs/runtime"
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # ---- UTILS ----
