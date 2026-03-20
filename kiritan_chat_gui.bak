@@ -1,0 +1,113 @@
+﻿import os, re, sys, time
+from pywinauto import Desktop, timings
+
+timings.after_clickinput_wait = 0.05
+
+# 検出を緩く。最初はEX*優先→次に「VOICEROID と きりたん を含む」を許容
+WINDOW_PATTERNS = [
+    r'VOICEROID[＋\+].*きりたん.*EX\*?$',   # 例: VOICEROID＋ 東北きりたん EX*
+    r'VOICEROID[＋\+].*きりたん.*$',        # EX が付かない/別製品でも拾う
+    r'VOICEROID.*きりたん.*$',              # さらに緩く
+]
+
+def find_voiceroid_window(timeout: float = 6.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        wins = Desktop(backend="uia").windows()
+        for w in wins:
+            title = (w.window_text() or "").strip()
+            for pat in WINDOW_PATTERNS:
+                if re.search(pat, title):
+                    return w
+        time.sleep(0.25)
+    return None
+
+def ensure_phrase_tab(win):
+    tabs = [t for t in win.descendants(control_type="TabItem")]
+    target = None
+    for t in tabs:
+        name = (t.window_text() or "").strip()
+        if "フレーズ編集" in name:
+            target = t; break
+    if not target: return
+    w = target.wrapper_object()
+    for fn in (getattr(w,"select",None), getattr(w,"invoke",None), getattr(w,"click_input",None)):
+        if not fn: continue
+        try: fn(); time.sleep(0.05); return
+        except: pass
+
+def set_phrase_text(win, text: str) -> bool:
+    try:
+        edit = win.child_window(control_type="Edit").wrapper_object()
+    except:
+        try:
+            edit = win.child_window(control_type="Document").wrapper_object()
+        except:
+            return False
+    try:
+        edit.set_focus()
+        edit.select()
+        edit.type_keys("^a{BACKSPACE}", set_foreground=True, pause=0.01)
+        edit.set_edit_text(text)
+        return True
+    except:
+        return False
+
+def click_play(win) -> bool:
+    try:
+        for b in win.descendants(control_type="Button"):
+            name = (b.window_text() or "")
+            if ("再生" in name) and b.is_enabled() and b.is_visible():
+                btn = b.wrapper_object()
+                try: btn.click_input()
+                except:
+                    try: btn.invoke()
+                    except: pass
+                return True
+    except: pass
+    try:
+        win.set_focus(); win.type_keys("{SPACE}"); return True
+    except:
+        try: win.type_keys("{F5}"); return True
+        except: return False
+
+def focus_console():
+    try:
+        Desktop(backend="uia").window(title_re=r"(Windows PowerShell|Terminal|コマンド プロンプト).*").set_focus()
+    except: pass
+
+def main():
+    print("[ GUI版 ] VOICEROID を直接操作して読み上げ（AssistantSeika 非依存）")
+    print("使い方: VOICEROID＋ 東北きりたん EX を起動→本スクリプトを実行")
+    print("コマンド: exit / quit（それ以外は会話）")
+
+    while True:
+        win = find_voiceroid_window(timeout=2.0)
+        if not win:
+            print("VOICEROID＋ 東北きりたん EX のウィンドウが見つかりません。起動してから再実行してください。")
+            return
+
+        ensure_phrase_tab(win)
+
+        try:
+            user = input("あなた > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(); return
+
+        if user.lower() in {"exit","quit"}:
+            print("終了します。"); return
+        if not user: continue
+
+        reply = user  # まずは入力をそのまま読む
+        if not set_phrase_text(win, reply):
+            print("本文エリアの検出/入力に失敗。画面レイアウトを確認してください。", file=sys.stderr)
+            continue
+        if not click_play(win):
+            print("『再生』に失敗（Space/F5 も不発）。", file=sys.stderr)
+            continue
+
+        ensure_phrase_tab(win)
+        focus_console()
+
+if __name__ == "__main__":
+    main()
