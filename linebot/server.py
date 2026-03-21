@@ -42,7 +42,7 @@ from linebot.v3.webhooks import (
 )
 from linebot.v3.exceptions import InvalidSignatureError
 
-import kiritan_core as core
+from core import kiritan_core as core
 
 # ── ログ設定 ──────────────────────────────────────────────
 logging.basicConfig(

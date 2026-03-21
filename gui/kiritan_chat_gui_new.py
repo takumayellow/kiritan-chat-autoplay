@@ -49,7 +49,7 @@ except ImportError:
     _OPENAI_AVAILABLE = False
 
 # VOICEVOX モジュール
-import kiritan_voicevox as vvox
+from core import kiritan_voicevox as vvox
 
 # ── ペルソナ設定（kiritan_chat_cli.py から引き継ぎ） ───────────────
 DEFAULT_USER_NAME = "あなた"
@@ -553,7 +553,7 @@ class KiritanChatGUINew:
     def _load_images(self):
         if not _PIL_AVAILABLE:
             return
-        assets = Path(__file__).parent / "assets"
+        assets = Path(__file__).parent.parent / "assets"
 
         # ヘッダーアイコン（40x40）
         icon_path = assets / "kiritan_small.png"
@@ -601,7 +601,7 @@ class KiritanChatGUINew:
 
         # アイコン（存在する場合）
         try:
-            icon_path = Path(__file__).parent / "assets" / "kiritan_icon.ico"
+            icon_path = Path(__file__).parent.parent / "assets" / "kiritan_icon.ico"
             if icon_path.exists():
                 self.root.iconbitmap(str(icon_path))
         except Exception:
