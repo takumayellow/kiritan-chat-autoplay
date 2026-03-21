@@ -200,8 +200,67 @@ def callback():
     except InvalidSignatureError:
         logger.warning("Invalid signature")
         abort(400)
+    except Exception as e:
+        logger.error(f"Webhook handler error: {e}")
+        # SDK パースエラーでも 200 を返す（LINE側のリトライを防ぐ）
+        # 実際のメッセージ処理はフォールバックで行う
+        try:
+            import json as _json
+            data = _json.loads(body)
+            for event in data.get("events", []):
+                if event.get("type") == "message" and event.get("message", {}).get("type") == "text":
+                    _handle_message_fallback(event)
+                elif event.get("type") == "follow":
+                    _handle_follow_fallback(event)
+        except Exception as e2:
+            logger.error(f"Fallback handler error: {e2}")
 
     return "OK"
+
+
+def _handle_message_fallback(event: dict):
+    """SDK パースに失敗した場合のフォールバック処理"""
+    user_id = event.get("source", {}).get("userId", "")
+    text = event.get("message", {}).get("text", "").strip()
+    reply_token = event.get("replyToken", "")
+    if not user_id or not text or not reply_token:
+        return
+    logger.info(f"Fallback message from {user_id}: {text[:100]}")
+
+    if text.startswith("/"):
+        reply_text = handle_command(user_id, text)
+    else:
+        reply_text = generate_reply(user_id, text)
+
+    with ApiClient(configuration) as api_client:
+        api = MessagingApi(api_client)
+        api.reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[TextMessage(text=reply_text)],
+            )
+        )
+
+
+def _handle_follow_fallback(event: dict):
+    """フォローイベントのフォールバック"""
+    reply_token = event.get("replyToken", "")
+    if not reply_token:
+        return
+    welcome = (
+        "はじめまして、東北きりたんです。\n"
+        "わたしとおしゃべりしましょう！\n\n"
+        "メッセージを送ってくれたら、お返事するね。\n"
+        "/help でコマンド一覧も見れるよ。"
+    )
+    with ApiClient(configuration) as api_client:
+        api = MessagingApi(api_client)
+        api.reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[TextMessage(text=welcome)],
+            )
+        )
 
 
 @handler.add(FollowEvent)
