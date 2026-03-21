@@ -26,6 +26,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from typing import Any, Dict, List, Optional
 
+# 画像表示用
+try:
+    from PIL import Image, ImageTk
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
 # .env 読み込み（python-dotenv が入っていれば）
 try:
     from dotenv import load_dotenv
@@ -342,18 +349,18 @@ class ProfileDialog(simpledialog.Dialog):
         super().__init__(parent, title="プロフィール編集")
 
     def body(self, master):
-        master.configure(bg="#2b2b3b")
+        master.configure(bg="#ffffff")
 
         def _lbl(text, row):
             tk.Label(
-                master, text=text, bg="#2b2b3b", fg="#d4b8e0",
-                font=("Yu Gothic UI", 10),
+                master, text=text, bg="#ffffff", fg=THEME["text"],
+                font=(_FONT, 10),
             ).grid(row=row, column=0, sticky="w", padx=8, pady=4)
 
         _lbl("お名前:", 0)
         self.name_var = tk.StringVar(value=self.profile.name)
-        tk.Entry(master, textvariable=self.name_var, bg="#3c3c50", fg="#ffffff",
-                 insertbackground="#ffffff", font=("Yu Gothic UI", 10)).grid(
+        tk.Entry(master, textvariable=self.name_var, bg="#f9fafb", fg=THEME["text"],
+                 insertbackground=THEME["accent"], font=(_FONT, 10)).grid(
             row=0, column=1, sticky="ew", padx=8, pady=4)
 
         _lbl("性別・ジェンダー:", 1)
@@ -361,7 +368,7 @@ class ProfileDialog(simpledialog.Dialog):
         gender_combo = ttk.Combobox(
             master, textvariable=self.gender_var,
             values=["", "男性", "女性", "その他"],
-            font=("Yu Gothic UI", 10), width=20,
+            font=(_FONT, 10), width=20,
         )
         gender_combo.grid(row=1, column=1, sticky="ew", padx=8, pady=4)
 
@@ -370,7 +377,7 @@ class ProfileDialog(simpledialog.Dialog):
         age_combo = ttk.Combobox(
             master, textvariable=self.age_var,
             values=["", "学生", "20代", "30代", "40代以上", "その他"],
-            font=("Yu Gothic UI", 10), width=20,
+            font=(_FONT, 10), width=20,
         )
         age_combo.grid(row=2, column=1, sticky="ew", padx=8, pady=4)
 
@@ -393,63 +400,63 @@ class SettingsDialog(simpledialog.Dialog):
         super().__init__(parent, title="設定")
 
     def body(self, master):
-        master.configure(bg="#2b2b3b")
+        master.configure(bg="#ffffff")
 
         def _lbl(text, row):
             tk.Label(
-                master, text=text, bg="#2b2b3b", fg="#d4b8e0",
-                font=("Yu Gothic UI", 10),
+                master, text=text, bg="#ffffff", fg=THEME["text"],
+                font=(_FONT, 10),
             ).grid(row=row, column=0, sticky="w", padx=8, pady=4)
 
         # VOICEVOX URL
         _lbl("VOICEVOX URL:", 0)
         self.url_var = tk.StringVar(value=self.settings.voicevox_url)
-        tk.Entry(master, textvariable=self.url_var, bg="#3c3c50", fg="#ffffff",
-                 insertbackground="#ffffff", font=("Yu Gothic UI", 10), width=32).grid(
+        tk.Entry(master, textvariable=self.url_var, bg="#f9fafb", fg=THEME["text"],
+                 insertbackground=THEME["accent"], font=(_FONT, 10), width=32).grid(
             row=0, column=1, sticky="ew", padx=8, pady=4)
 
         # Speaker ID
         _lbl("Speaker ID:", 1)
         self.speaker_var = tk.IntVar(value=self.settings.voicevox_speaker_id)
         tk.Spinbox(master, from_=0, to=999, textvariable=self.speaker_var,
-                   bg="#3c3c50", fg="#ffffff", buttonbackground="#4a4a60",
-                   font=("Yu Gothic UI", 10), width=8).grid(
+                   bg="#f9fafb", fg=THEME["text"], buttonbackground=THEME["border"],
+                   font=(_FONT, 10), width=8).grid(
             row=1, column=1, sticky="w", padx=8, pady=4)
 
         # 話速
         _lbl("話速 (0.5〜2.0):", 2)
         self.speed_var = tk.DoubleVar(value=self.settings.speed_scale)
         tk.Scale(master, from_=0.5, to=2.0, resolution=0.1, orient="horizontal",
-                 variable=self.speed_var, bg="#2b2b3b", fg="#d4b8e0",
-                 highlightbackground="#2b2b3b", troughcolor="#4a4a60",
-                 activebackground="#9b59b6", length=200).grid(
+                 variable=self.speed_var, bg="#ffffff", fg=THEME["text_sub"],
+                 highlightbackground="#ffffff", troughcolor=THEME["border"],
+                 activebackground=THEME["accent"], length=200).grid(
             row=2, column=1, sticky="ew", padx=8, pady=4)
 
         # 音高
         _lbl("音高 (-0.15〜0.15):", 3)
         self.pitch_var = tk.DoubleVar(value=self.settings.pitch_scale)
         tk.Scale(master, from_=-0.15, to=0.15, resolution=0.01, orient="horizontal",
-                 variable=self.pitch_var, bg="#2b2b3b", fg="#d4b8e0",
-                 highlightbackground="#2b2b3b", troughcolor="#4a4a60",
-                 activebackground="#9b59b6", length=200).grid(
+                 variable=self.pitch_var, bg="#ffffff", fg=THEME["text_sub"],
+                 highlightbackground="#ffffff", troughcolor=THEME["border"],
+                 activebackground=THEME["accent"], length=200).grid(
             row=3, column=1, sticky="ew", padx=8, pady=4)
 
         # 抑揚
         _lbl("抑揚 (0.0〜2.0):", 4)
         self.intonation_var = tk.DoubleVar(value=self.settings.intonation_scale)
         tk.Scale(master, from_=0.0, to=2.0, resolution=0.1, orient="horizontal",
-                 variable=self.intonation_var, bg="#2b2b3b", fg="#d4b8e0",
-                 highlightbackground="#2b2b3b", troughcolor="#4a4a60",
-                 activebackground="#9b59b6", length=200).grid(
+                 variable=self.intonation_var, bg="#ffffff", fg=THEME["text_sub"],
+                 highlightbackground="#ffffff", troughcolor=THEME["border"],
+                 activebackground=THEME["accent"], length=200).grid(
             row=4, column=1, sticky="ew", padx=8, pady=4)
 
         # 音量
         _lbl("音量 (0.0〜2.0):", 5)
         self.volume_var = tk.DoubleVar(value=self.settings.volume_scale)
         tk.Scale(master, from_=0.0, to=2.0, resolution=0.1, orient="horizontal",
-                 variable=self.volume_var, bg="#2b2b3b", fg="#d4b8e0",
-                 highlightbackground="#2b2b3b", troughcolor="#4a4a60",
-                 activebackground="#9b59b6", length=200).grid(
+                 variable=self.volume_var, bg="#ffffff", fg=THEME["text_sub"],
+                 highlightbackground="#ffffff", troughcolor=THEME["border"],
+                 activebackground=THEME["accent"], length=200).grid(
             row=5, column=1, sticky="ew", padx=8, pady=4)
 
         master.grid_columnconfigure(1, weight=1)
@@ -470,28 +477,32 @@ class SettingsDialog(simpledialog.Dialog):
         )
 
 
-# ── カラーテーマ ──────────────────────────────────────────
+# ── カラーテーマ（白ベース・モダン） ─────────────────────
+_FONT = "Segoe UI"  # Windows モダンフォント
+
 THEME = {
-    "bg":           "#1e1e2e",   # 背景（深い紫紺）
-    "bg2":          "#2b2b3b",   # セカンダリ背景
-    "bg3":          "#3c3c50",   # 入力欄など
-    "accent":       "#9b59b6",   # きりたん紫
-    "accent_light": "#d4b8e0",   # 薄めの紫（ラベル）
-    "accent_hover": "#7d3f9a",   # ホバー
-    "kiritan_fg":   "#e8d5f5",   # きりたん発言
-    "kiritan_bg":   "#3d2a52",   # きりたん発言背景
-    "user_fg":      "#a8d8ea",   # ユーザー発言
-    "user_bg":      "#1a3a4a",   # ユーザー発言背景
-    "system_fg":    "#888899",   # システムメッセージ
-    "text":         "#e0e0ee",   # 通常テキスト
-    "border":       "#4a4a60",   # ボーダー
-    "status_ok":    "#2ecc71",   # 接続OK
-    "status_ng":    "#e74c3c",   # 接続NG
-    "status_wait":  "#f39c12",   # 待機中
-    "font":         ("Yu Gothic UI", 10),
-    "font_bold":    ("Yu Gothic UI", 10, "bold"),
-    "font_title":   ("Yu Gothic UI", 14, "bold"),
-    "font_chat":    ("Yu Gothic UI", 11),
+    "bg":           "#ffffff",   # メイン背景（白）
+    "bg2":          "#f7f7f8",   # ヘッダー/ステータス背景
+    "bg3":          "#f0f0f2",   # 入力欄背景
+    "accent":       "#8b5cf6",   # きりたん紫（バイオレット）
+    "accent_light": "#a78bfa",   # 薄め紫
+    "accent_hover": "#7c3aed",   # ホバー
+    "accent_bg":    "#f5f3ff",   # 紫の超薄い背景
+    "kiritan_fg":   "#1e1b4b",   # きりたん発言テキスト（濃紺）
+    "kiritan_bg":   "#ede9fe",   # きりたん発言背景（ラベンダー）
+    "user_fg":      "#1e3a5f",   # ユーザー発言テキスト
+    "user_bg":      "#e0f2fe",   # ユーザー発言背景（水色）
+    "system_fg":    "#9ca3af",   # システムメッセージ
+    "text":         "#1f2937",   # 通常テキスト（ほぼ黒）
+    "text_sub":     "#6b7280",   # サブテキスト
+    "border":       "#e5e7eb",   # ボーダー
+    "input_border": "#d1d5db",   # 入力欄ボーダー
+    "input_focus":  "#8b5cf6",   # 入力欄フォーカス色
+    "status_ok":    "#10b981",   # 接続OK（エメラルド）
+    "status_ng":    "#ef4444",   # 接続NG
+    "status_wait":  "#f59e0b",   # 待機中
+    "send_bg":      "#8b5cf6",   # 送信ボタン
+    "send_hover":   "#7c3aed",   # 送信ボタンホバー
 }
 
 
@@ -504,6 +515,10 @@ class KiritanChatGUINew:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.settings = load_settings()
+
+        # 画像参照を保持（GC防止）
+        self._images: Dict[str, Any] = {}
+        self._load_images()
 
         # 会話状態
         self.client: Optional[Any] = None
@@ -528,16 +543,61 @@ class KiritanChatGUINew:
 
         # 起動メッセージ
         self._add_system_message(
-            "きりたんとの会話を開始しましょう！\n"
-            "テキストを入力して「送信」ボタンを押すか、Enter キーで送信できます。"
+            "きりたんとの会話を開始しましょう！"
         )
+        self._add_system_message(
+            "下の入力欄にメッセージを入力して Enter で送信できます。"
+        )
+
+    # ── 画像読み込み ────────────────────────────────────
+    def _load_images(self):
+        if not _PIL_AVAILABLE:
+            return
+        assets = Path(__file__).parent / "assets"
+
+        # ヘッダーアイコン（40x40）
+        icon_path = assets / "kiritan_small.png"
+        if icon_path.exists():
+            try:
+                img = Image.open(icon_path)
+                img = img.resize((40, 40), Image.LANCZOS)
+                self._images["icon"] = ImageTk.PhotoImage(img)
+            except Exception:
+                pass
+
+        # 立ち絵（元画像を保持、表示時にリサイズ）
+        stand_path = assets / "kiritan_stand.png"
+        if stand_path.exists():
+            try:
+                self._stand_pil = Image.open(stand_path).copy()
+                # 初期サイズ（後でウィンドウに合わせてリサイズ）
+                ratio = 350 / self._stand_pil.height
+                new_w = int(self._stand_pil.width * ratio)
+                resized = self._stand_pil.resize((new_w, 350), Image.LANCZOS)
+                self._images["stand"] = ImageTk.PhotoImage(resized)
+            except Exception:
+                pass
+
+    def _resize_stand(self, panel):
+        """立ち絵をパネルの高さに合わせてリサイズ"""
+        if not hasattr(self, "_stand_pil"):
+            return
+        panel_h = panel.winfo_height()
+        if panel_h < 50:
+            return
+        target_h = max(100, panel_h - 16)
+        ratio = target_h / self._stand_pil.height
+        new_w = int(self._stand_pil.width * ratio)
+        resized = self._stand_pil.resize((new_w, target_h), Image.LANCZOS)
+        self._images["stand"] = ImageTk.PhotoImage(resized)
+        self._stand_label.configure(image=self._images["stand"])
 
     # ── ウィンドウ設定 ────────────────────────────────────
     def _setup_window(self):
-        self.root.title("きりたんチャット  [VOICEVOX版]")
+        self.root.title("きりたんチャット")
         self.root.configure(bg=THEME["bg"])
-        self.root.geometry("720x600")
-        self.root.minsize(500, 400)
+        self.root.geometry("800x700")
+        self.root.minsize(560, 480)
 
         # アイコン（存在する場合）
         try:
@@ -549,21 +609,43 @@ class KiritanChatGUINew:
 
     # ── UI 構築 ───────────────────────────────────────────
     def _setup_ui(self):
+        self._apply_styles()
         self._setup_menubar()
         self._setup_header()
-        self._setup_chat_area()
-        self._setup_input_area()
+        # ステータスバーと入力エリアを先にpack（bottomから）
+        # → チャットエリアが残りスペースを埋める
         self._setup_statusbar()
+        self._setup_input_area()
+        self._setup_chat_area()
+
+    def _apply_styles(self):
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("TCombobox",
+                         fieldbackground=THEME["bg"],
+                         background=THEME["bg"],
+                         foreground=THEME["text"],
+                         selectbackground=THEME["accent"],
+                         selectforeground="#ffffff",
+                         arrowcolor=THEME["text_sub"])
+        style.configure("TCheckbutton",
+                         background=THEME["bg2"],
+                         foreground=THEME["text"])
+        style.map("TCheckbutton",
+                   background=[("active", THEME["bg2"])],
+                   foreground=[("active", THEME["accent"])])
 
     def _setup_menubar(self):
         menubar = tk.Menu(self.root, bg=THEME["bg2"], fg=THEME["text"],
                           activebackground=THEME["accent"],
-                          activeforeground=THEME["text"])
+                          activeforeground="#ffffff",
+                          font=(_FONT, 9))
         self.root.config(menu=menubar)
 
         # ファイルメニュー
-        file_menu = tk.Menu(menubar, tearoff=0, bg=THEME["bg2"], fg=THEME["text"],
-                            activebackground=THEME["accent"], activeforeground=THEME["text"])
+        file_menu = tk.Menu(menubar, tearoff=0, bg="#ffffff", fg=THEME["text"],
+                            activebackground=THEME["accent"], activeforeground="#ffffff",
+                            font=(_FONT, 9))
         file_menu.add_command(label="会話履歴を保存", command=self._save_history_as)
         file_menu.add_command(label="会話履歴を読み込み", command=self._load_history_from)
         file_menu.add_separator()
@@ -573,8 +655,9 @@ class KiritanChatGUINew:
         menubar.add_cascade(label="ファイル", menu=file_menu)
 
         # 設定メニュー
-        settings_menu = tk.Menu(menubar, tearoff=0, bg=THEME["bg2"], fg=THEME["text"],
-                                 activebackground=THEME["accent"], activeforeground=THEME["text"])
+        settings_menu = tk.Menu(menubar, tearoff=0, bg="#ffffff", fg=THEME["text"],
+                                 activebackground=THEME["accent"], activeforeground="#ffffff",
+                                 font=(_FONT, 9))
         settings_menu.add_command(label="プロフィール編集", command=self._edit_profile)
         settings_menu.add_command(label="VOICEVOX・音声設定", command=self._edit_settings)
         settings_menu.add_separator()
@@ -582,104 +665,114 @@ class KiritanChatGUINew:
         menubar.add_cascade(label="設定", menu=settings_menu)
 
     def _setup_header(self):
-        header_frame = tk.Frame(self.root, bg=THEME["bg2"], pady=6)
+        header_frame = tk.Frame(self.root, bg=THEME["bg2"], pady=10)
         header_frame.pack(fill="x")
 
-        # タイトル
+        # 左: アイコン + タイトル
+        title_frame = tk.Frame(header_frame, bg=THEME["bg2"])
+        title_frame.pack(side="left", padx=16)
+        if "icon" in self._images:
+            tk.Label(
+                title_frame, image=self._images["icon"],
+                bg=THEME["bg2"],
+            ).pack(side="left", padx=(0, 8))
         tk.Label(
-            header_frame,
-            text="  きりたんチャット",
-            bg=THEME["bg2"],
-            fg=THEME["accent_light"],
-            font=THEME["font_title"],
-        ).pack(side="left", padx=8)
-
-        # 右側コントロール
-        right_frame = tk.Frame(header_frame, bg=THEME["bg2"])
-        right_frame.pack(side="right", padx=8)
-
-        # VOICEVOX 接続状態インジケーター
-        self.voicevox_status_label = tk.Label(
-            right_frame,
-            text="● VOICEVOX",
-            bg=THEME["bg2"],
-            fg=THEME["status_wait"],
-            font=THEME["font"],
-            cursor="hand2",
+            title_frame, text="きりたんチャット",
+            bg=THEME["bg2"], fg=THEME["text"],
+            font=(_FONT, 18, "bold"),
+        ).pack(side="left")
+        # VOICEVOXバッジ
+        badge = tk.Label(
+            title_frame, text=" VOICEVOX ",
+            bg=THEME["accent"], fg="#ffffff",
+            font=(_FONT, 8, "bold"),
+            padx=6, pady=1,
         )
-        self.voicevox_status_label.pack(side="right", padx=(8, 0))
+        badge.pack(side="left", padx=(8, 0), pady=(4, 0))
+
+        # 右: コントロール群
+        right_frame = tk.Frame(header_frame, bg=THEME["bg2"])
+        right_frame.pack(side="right", padx=16)
+
+        # VOICEVOX 接続インジケーター
+        self.voicevox_status_label = tk.Label(
+            right_frame, text="●",
+            bg=THEME["bg2"], fg=THEME["status_wait"],
+            font=(_FONT, 10), cursor="hand2",
+        )
+        self.voicevox_status_label.pack(side="right", padx=(12, 0))
         self.voicevox_status_label.bind("<Button-1>", lambda e: self._check_voicevox_manual())
 
-        # 音声ON/OFFトグル
+        # 音声ON/OFF
         self.voice_var = tk.BooleanVar(value=self.settings.voice_enabled)
         voice_cb = ttk.Checkbutton(
-            right_frame,
-            text="音声",
+            right_frame, text="音声",
             variable=self.voice_var,
             command=self._on_voice_toggle,
-            style="Switch.TCheckbutton",
         )
-        voice_cb.pack(side="right", padx=4)
+        voice_cb.pack(side="right", padx=8)
 
-        # 会話スタイル選択
+        # スタイル選択
         tk.Label(
-            right_frame, text="スタイル:",
-            bg=THEME["bg2"], fg=THEME["accent_light"], font=THEME["font"],
-        ).pack(side="right", padx=(8, 2))
+            right_frame, text="スタイル",
+            bg=THEME["bg2"], fg=THEME["text_sub"],
+            font=(_FONT, 9),
+        ).pack(side="right", padx=(8, 4))
 
         self.style_var = tk.StringVar(value=self._model_profile_label(self.model_profile))
         self.style_combo = ttk.Combobox(
             right_frame,
             textvariable=self.style_var,
             values=[self._model_profile_label(p) for p in MODEL_PROFILES],
-            state="readonly",
-            width=20,
-            font=THEME["font"],
+            state="readonly", width=22,
+            font=(_FONT, 9),
         )
         self.style_combo.pack(side="right")
         self.style_combo.bind("<<ComboboxSelected>>", self._on_style_change)
 
-        self._apply_combobox_style()
-
-    def _apply_combobox_style(self):
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure(
-            "TCombobox",
-            fieldbackground=THEME["bg3"],
-            background=THEME["bg3"],
-            foreground=THEME["text"],
-            selectbackground=THEME["accent"],
-            selectforeground=THEME["text"],
-            arrowcolor=THEME["accent_light"],
-        )
-        style.configure(
-            "TCheckbutton",
-            background=THEME["bg2"],
-            foreground=THEME["text"],
-        )
-        style.map("TCheckbutton",
-                  background=[("active", THEME["bg2"])],
-                  foreground=[("active", THEME["accent_light"])])
+        # 区切り線
+        tk.Frame(self.root, bg=THEME["border"], height=1).pack(fill="x")
 
     def _setup_chat_area(self):
-        chat_frame = tk.Frame(self.root, bg=THEME["bg"])
-        chat_frame.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+        # メインコンテンツ: チャット + 立ち絵
+        main_frame = tk.Frame(self.root, bg=THEME["bg"])
+        main_frame.pack(fill="both", expand=True, padx=0, pady=0)
 
-        # チャット表示エリア
+        # 右側: 立ち絵パネル
+        if "stand" in self._images:
+            stand_panel = tk.Frame(main_frame, bg=THEME["accent_bg"])
+            stand_panel.pack(side="right", fill="y")
+            self._stand_label = tk.Label(
+                stand_panel, image=self._images["stand"],
+                bg=THEME["accent_bg"],
+            )
+            self._stand_label.pack(side="bottom", pady=(0, 8))
+            # ウィンドウリサイズ時に立ち絵をフィットさせる
+            def _on_resize(event, panel=stand_panel):
+                self._resize_stand(panel)
+            self.root.bind("<Configure>", _on_resize)
+            # 区切り線
+            tk.Frame(main_frame, bg=THEME["border"], width=1).pack(side="right", fill="y")
+
+        chat_frame = tk.Frame(main_frame, bg=THEME["bg"])
+        chat_frame.pack(side="left", fill="both", expand=True)
+
         self.chat_text = tk.Text(
             chat_frame,
             bg=THEME["bg"],
             fg=THEME["text"],
-            font=THEME["font_chat"],
+            font=(_FONT, 11),
             state="disabled",
             wrap="word",
             relief="flat",
             borderwidth=0,
-            selectbackground=THEME["accent"],
-            selectforeground=THEME["text"],
+            selectbackground=THEME["accent_light"],
+            selectforeground="#ffffff",
             spacing1=2,
-            spacing3=6,
+            spacing3=4,
+            padx=20,
+            pady=12,
+            cursor="arrow",
         )
         scrollbar = ttk.Scrollbar(chat_frame, orient="vertical", command=self.chat_text.yview)
         self.chat_text.configure(yscrollcommand=scrollbar.set)
@@ -691,157 +784,176 @@ class KiritanChatGUINew:
         self.chat_text.tag_configure(
             "kiritan_name",
             foreground=THEME["accent"],
-            font=THEME["font_bold"],
+            font=(_FONT, 10, "bold"),
+            spacing1=12,
         )
         self.chat_text.tag_configure(
             "kiritan_text",
             foreground=THEME["kiritan_fg"],
             background=THEME["kiritan_bg"],
-            lmargin1=16, lmargin2=16,
-            rmargin=16,
+            font=(_FONT, 11),
+            lmargin1=12, lmargin2=12,
+            rmargin=80,
+            spacing1=2, spacing3=6,
         )
         self.chat_text.tag_configure(
             "user_name",
-            foreground=THEME["user_fg"],
-            font=THEME["font_bold"],
+            foreground="#2563eb",
+            font=(_FONT, 10, "bold"),
+            spacing1=12,
         )
         self.chat_text.tag_configure(
             "user_text",
             foreground=THEME["user_fg"],
-            lmargin1=16, lmargin2=16,
-            rmargin=16,
+            background=THEME["user_bg"],
+            font=(_FONT, 11),
+            lmargin1=80, lmargin2=80,
+            rmargin=12,
+            spacing1=2, spacing3=6,
         )
         self.chat_text.tag_configure(
             "system_text",
             foreground=THEME["system_fg"],
-            font=("Yu Gothic UI", 9, "italic"),
-            lmargin1=8, lmargin2=8,
+            font=(_FONT, 9),
+            justify="center",
+            spacing1=6, spacing3=6,
         )
         self.chat_text.tag_configure(
             "timestamp",
-            foreground="#555566",
-            font=("Yu Gothic UI", 8),
+            foreground="#c0c0c8",
+            font=(_FONT, 8),
         )
 
     def _setup_input_area(self):
-        input_outer = tk.Frame(self.root, bg=THEME["bg"], pady=4)
-        input_outer.pack(fill="x", padx=8, pady=4)
+        # 区切り線
+        tk.Frame(self.root, bg=THEME["border"], height=1).pack(fill="x")
 
-        # 入力欄フレーム
-        input_inner = tk.Frame(input_outer, bg=THEME["bg3"], relief="flat", bd=0)
-        input_inner.pack(fill="x")
+        # 入力エリア全体の背景
+        input_bg = tk.Frame(self.root, bg=THEME["bg2"], pady=8)
+        input_bg.pack(fill="x")
 
-        self.input_text = tk.Text(
-            input_inner,
-            bg=THEME["bg3"],
-            fg=THEME["text"],
-            font=THEME["font_chat"],
-            height=3,
-            wrap="word",
-            relief="flat",
-            borderwidth=0,
-            insertbackground=THEME["accent_light"],
-            selectbackground=THEME["accent"],
-            selectforeground=THEME["text"],
+        # ── メイン入力行: テキスト + 送信ボタン ──
+        input_row = tk.Frame(input_bg, bg=THEME["bg2"])
+        input_row.pack(fill="x", padx=16)
+
+        # ボーダー付き入力欄コンテナ
+        input_border = tk.Frame(
+            input_row, bg=THEME["input_border"],
+            highlightthickness=0,
         )
-        self.input_text.pack(fill="both", expand=True, padx=4, pady=4)
-        self.input_text.bind("<Return>", self._on_return_key)
-        self.input_text.bind("<Shift-Return>", lambda e: None)  # Shift+Enterは改行
+        input_border.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
-        # ボタン行
-        btn_frame = tk.Frame(self.root, bg=THEME["bg"])
-        btn_frame.pack(fill="x", padx=8, pady=(0, 4))
+        # 入力テキストウィジェット（直接配置、ネスト最小化）
+        self.input_text = tk.Text(
+            input_border,
+            bg="#ffffff",
+            fg=THEME["text"],
+            font=(_FONT, 12),
+            height=2,
+            wrap="word",
+            relief="solid",
+            borderwidth=1,
+            insertbackground=THEME["accent"],
+            selectbackground=THEME["accent_light"],
+            selectforeground="#ffffff",
+            padx=12,
+            pady=8,
+        )
+        self.input_text.pack(fill="both", expand=True, padx=1, pady=1)
+        self.input_text.bind("<Return>", self._on_return_key)
+        self.input_text.bind("<Shift-Return>", lambda e: None)
+
+        # フォーカス時のビジュアルフィードバック
+        def _on_focus_in(e):
+            input_border.configure(bg=THEME["input_focus"])
+        def _on_focus_out(e):
+            input_border.configure(bg=THEME["input_border"])
+        self.input_text.bind("<FocusIn>", _on_focus_in)
+        self.input_text.bind("<FocusOut>", _on_focus_out)
 
         # 送信ボタン
         self.send_btn = tk.Button(
-            btn_frame,
-            text="送信  ↵",
+            input_row,
+            text="  送信  ",
             command=self._on_send,
-            bg=THEME["accent"],
+            bg=THEME["send_bg"],
             fg="#ffffff",
-            font=THEME["font_bold"],
-            activebackground=THEME["accent_hover"],
+            font=(_FONT, 14, "bold"),
+            activebackground=THEME["send_hover"],
             activeforeground="#ffffff",
             relief="flat",
             cursor="hand2",
-            padx=16,
-            pady=4,
+            padx=28,
+            pady=14,
         )
-        self.send_btn.pack(side="right", padx=(4, 0))
+        self.send_btn.pack(side="right", fill="y")
 
-        # マイクボタン
+        # ── サブボタン行 ──
+        sub_frame = tk.Frame(input_bg, bg=THEME["bg2"])
+        sub_frame.pack(fill="x", padx=16, pady=(6, 0))
+
+        for text, cmd in [("プロフィール", self._edit_profile), ("クリア", self._clear_input)]:
+            tk.Button(
+                sub_frame, text=text, command=cmd,
+                bg=THEME["bg2"], fg=THEME["text_sub"],
+                font=(_FONT, 9),
+                activebackground=THEME["bg3"],
+                activeforeground=THEME["text"],
+                relief="flat", cursor="hand2",
+                padx=8, pady=1,
+            ).pack(side="left", padx=(0, 4))
+
+        # マイク
         self.mic_btn = tk.Button(
-            btn_frame,
-            text="マイク 🎤",
+            sub_frame, text="マイク",
             command=self._on_mic,
-            bg=THEME["bg2"],
-            fg=THEME["accent_light"],
-            font=THEME["font"],
+            bg=THEME["bg2"], fg=THEME["accent"],
+            font=(_FONT, 9),
             activebackground=THEME["bg3"],
-            activeforeground=THEME["accent_light"],
-            relief="flat",
-            cursor="hand2",
-            padx=12,
-            pady=4,
+            activeforeground=THEME["accent_hover"],
+            relief="flat", cursor="hand2",
+            padx=8, pady=1,
         )
-        self.mic_btn.pack(side="right", padx=4)
+        self.mic_btn.pack(side="right")
 
-        # クリアボタン
-        tk.Button(
-            btn_frame,
-            text="クリア",
-            command=self._clear_input,
-            bg=THEME["bg2"],
-            fg=THEME["system_fg"],
-            font=THEME["font"],
-            activebackground=THEME["bg3"],
-            activeforeground=THEME["text"],
-            relief="flat",
-            cursor="hand2",
-            padx=12,
-            pady=4,
-        ).pack(side="left")
+        tk.Label(
+            sub_frame,
+            text="Enter 送信 ・ Shift+Enter 改行",
+            bg=THEME["bg2"], fg="#c0c0c8",
+            font=(_FONT, 8),
+        ).pack(side="right", padx=12)
 
-        # プロフィールボタン
-        tk.Button(
-            btn_frame,
-            text="プロフィール",
-            command=self._edit_profile,
-            bg=THEME["bg2"],
-            fg=THEME["accent_light"],
-            font=THEME["font"],
-            activebackground=THEME["bg3"],
-            activeforeground=THEME["accent_light"],
-            relief="flat",
-            cursor="hand2",
-            padx=12,
-            pady=4,
-        ).pack(side="left", padx=(4, 0))
+        # 確実にフォーカスを設定
+        self.root.after(200, self._force_focus_input)
+
+    def _force_focus_input(self):
+        """入力欄にフォーカスを強制設定"""
+        self.input_text.focus_force()
+        self.input_text.mark_set("insert", "1.0")
 
     def _setup_statusbar(self):
-        status_frame = tk.Frame(self.root, bg=THEME["bg2"], pady=2)
+        status_frame = tk.Frame(self.root, bg=THEME["bg3"], pady=3)
         status_frame.pack(fill="x", side="bottom")
 
         self.status_var = tk.StringVar(value="準備中...")
         tk.Label(
             status_frame,
             textvariable=self.status_var,
-            bg=THEME["bg2"],
-            fg=THEME["system_fg"],
-            font=("Yu Gothic UI", 9),
+            bg=THEME["bg3"],
+            fg=THEME["text_sub"],
+            font=(_FONT, 8),
             anchor="w",
-        ).pack(side="left", padx=8)
+        ).pack(side="left", padx=16)
 
-        # モデル表示
         self.model_label_var = tk.StringVar(value="")
         tk.Label(
             status_frame,
             textvariable=self.model_label_var,
-            bg=THEME["bg2"],
-            fg=THEME["accent_light"],
-            font=("Yu Gothic UI", 9),
+            bg=THEME["bg3"],
+            fg=THEME["accent"],
+            font=(_FONT, 8, "bold"),
             anchor="e",
-        ).pack(side="right", padx=8)
+        ).pack(side="right", padx=16)
 
     # ── 初期化 ────────────────────────────────────────────
     def _init_client(self):

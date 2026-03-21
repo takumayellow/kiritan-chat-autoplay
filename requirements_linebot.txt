@@ -1,0 +1,5 @@
+# LINE Bot サーバー用依存パッケージ
+flask
+line-bot-sdk>=3.0
+openai
+python-dotenv
