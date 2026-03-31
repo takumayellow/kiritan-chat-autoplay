@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>きりたんのゲーム&ツール</title>
+  <style>
+    :root {
+      --bg: #0f0f17;
+      --surface: #1a1a2e;
+      --card: #22223a;
+      --accent: #e84a7a;
+      --accent-light: #ff6b9d;
+      --text: #eaeaf0;
+      --text-muted: #9a9ab0;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .header {
+      text-align: center;
+      padding: 2.5rem 1rem 1.5rem;
+      background: linear-gradient(135deg, #1a1a2e 0%, #2d1b3d 100%);
+      border-bottom: 1px solid rgba(232, 74, 122, 0.2);
+    }
+
+    .header-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 3px solid var(--accent);
+      margin-bottom: 0.75rem;
+      object-fit: cover;
+    }
+
+    .header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .header p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+    }
+
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.5rem 1rem;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      display: block;
+    }
+
+    .card:active {
+      transform: scale(0.97);
+    }
+
+    @media (hover: hover) {
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(232, 74, 122, 0.15);
+      }
+    }
+
+    .card-banner {
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card-banner .emoji {
+      font-size: 3.5rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card-body {
+      padding: 1rem 1.25rem 1.25rem;
+    }
+
+    .card-body h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-body p {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+      margin-top: 0.6rem;
+      font-weight: 600;
+    }
+
+    .tag-rhythm { background: rgba(127, 90, 240, 0.2); color: #b08df8; }
+    .tag-slot { background: rgba(255, 183, 77, 0.2); color: #ffb74d; }
+    .tag-memory { background: rgba(67, 181, 129, 0.2); color: #43b581; }
+
+    .banner-rhythm { background: linear-gradient(135deg, #2d1b4e 0%, #4a1942 100%); }
+    .banner-slot { background: linear-gradient(135deg, #2a1f00 0%, #4a2800 100%); }
+    .banner-memory { background: linear-gradient(135deg, #0a2e1f 0%, #1a3a2e 100%); }
+
+    .footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .footer a {
+      color: var(--accent-light);
+      text-decoration: none;
+    }
+
+    .back-to-line {
+      display: block;
+      text-align: center;
+      margin: 0 auto 1.5rem;
+      max-width: 480px;
+      padding: 0.85rem;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-left: 1rem;
+      margin-right: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>きりたんのゲーム&ツール</h1>
+    <p>東北きりたんがお届けするプロダクト集</p>
+  </div>
+
+  <div class="cards">
+
+    <a class="card" href="https://takumayellow.github.io/syncadence-rhythm/" target="_blank" rel="noopener">
+      <div class="card-banner banner-rhythm">
+        <span class="emoji">🎵</span>
+      </div>
+      <div class="card-body">
+        <h2>SynCadence Rhythm</h2>
+        <p>プロセカ風のブラウザリズムゲーム。MusicXML/MIDI対応で、お気に入りの曲をプレイできます。</p>
+        <span class="card-tag tag-rhythm">リズムゲーム</span>
+      </div>
+    </a>
+
+    <a class="card" href="https://takumayellow.github.io/slot-game/" target="_blank" rel="noopener">
+      <div class="card-banner banner-slot">
+        <span class="emoji">🎰</span>
+      </div>
+      <div class="card-body">
+        <h2>Slot Game</h2>
+        <p>ネオン路地テーマの3リールスロットゲーム。ブラウザで手軽に遊べます。</p>
+        <span class="card-tag tag-slot">カジュアルゲーム</span>
+      </div>
+    </a>
+
+    <a class="card" href="https://takumayellow.github.io/memory-cards/" target="_blank" rel="noopener">
+      <div class="card-banner banner-memory">
+        <span class="emoji">🃏</span>
+      </div>
+      <div class="card-body">
+        <h2>Memory Cards</h2>
+        <p>記憶力を鍛えるメモリーカードゲーム。集中力アップにもおすすめです。</p>
+        <span class="card-tag tag-memory">トレーニング</span>
+      </div>
+    </a>
+
+  </div>
+
+  <a class="back-to-line" href="https://line.me/R/" rel="noopener">
+    LINEに戻る
+  </a>
+
+  <div class="footer">
+    <p>Powered by <a href="https://github.com/takumayellow/kiritan-chat-autoplay">きりたんチャット</a></p>
+  </div>
+
+</body>
+</html>

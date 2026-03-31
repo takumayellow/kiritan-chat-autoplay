@@ -3,3 +3,7 @@ flask
 line-bot-sdk>=3.0
 openai
 python-dotenv
+requests
+
+# リッチメニュー画像生成（オプション）
+# Pillow
