@@ -299,15 +299,14 @@ def handle_message(event: MessageEvent):
         reply_text = generate_reply(user_id, text)
 
     with ApiClient(configuration) as api_client:
-        from linebot.v3.messaging import PushMessageRequest
         api = MessagingApi(api_client)
-        api.push_message(
-            PushMessageRequest(
-                to=user_id,
+        api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
                 messages=[TextMessage(text=reply_text)],
             )
         )
-    logger.info(f"Push message sent to {user_id}")
+    logger.info(f"Reply sent to {user_id}")
 
 
 # ── ヘルスチェック ────────────────────────────────────────
