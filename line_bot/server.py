@@ -55,8 +55,6 @@ logger = logging.getLogger(__name__)
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 
-logging.getLogger(__name__).info(f"Token loaded: length={len(CHANNEL_ACCESS_TOKEN)}, starts={CHANNEL_ACCESS_TOKEN[:10]}...")
-
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     logger.warning(
         "LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET が未設定です。\n"
