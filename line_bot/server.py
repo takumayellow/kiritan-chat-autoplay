@@ -55,6 +55,8 @@ logger = logging.getLogger(__name__)
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 
+logging.getLogger(__name__).info(f"Token loaded: length={len(CHANNEL_ACCESS_TOKEN)}, starts={CHANNEL_ACCESS_TOKEN[:10]}...")
+
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     logger.warning(
         "LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET が未設定です。\n"
@@ -233,13 +235,15 @@ def _handle_message_fallback(event: dict):
         reply_text = generate_reply(user_id, text)
 
     with ApiClient(configuration) as api_client:
+        from linebot.v3.messaging import PushMessageRequest
         api = MessagingApi(api_client)
-        api.reply_message(
-            ReplyMessageRequest(
-                reply_token=reply_token,
+        api.push_message(
+            PushMessageRequest(
+                to=user_id,
                 messages=[TextMessage(text=reply_text)],
             )
         )
+    logger.info(f"Fallback push sent to {user_id}")
 
 
 def _handle_follow_fallback(event: dict):
@@ -297,13 +301,15 @@ def handle_message(event: MessageEvent):
         reply_text = generate_reply(user_id, text)
 
     with ApiClient(configuration) as api_client:
+        from linebot.v3.messaging import PushMessageRequest
         api = MessagingApi(api_client)
-        api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
+        api.push_message(
+            PushMessageRequest(
+                to=user_id,
                 messages=[TextMessage(text=reply_text)],
             )
         )
+    logger.info(f"Push message sent to {user_id}")
 
 
 # ── ヘルスチェック ────────────────────────────────────────
