@@ -22,7 +22,6 @@ import threading
 import re
 import json
 import datetime
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 try:
@@ -50,40 +49,27 @@ try:
 except Exception:
     OpenAI = None
 
+# ── 共通ロジック（core/kiritan_core.py） ─────────────────
+from core.kiritan_core import (
+    DEFAULT_USER_NAME,
+    DEFAULT_CALL_SUFFIX,
+    CALL_SUFFIX_WHITELIST,
+    KIRITAN_PERSONA_TEMPLATE,
+    BASE_SYSTEM_PROMPT_TEMPLATE,
+    MODEL_PROFILES,
+    SANITIZE_TABLE,
+    UserProfile,
+    build_kiritan_persona,
+    compose_system_prompt,
+    sanitize_for_voice,
+    get_model_profile,
+)
+
 # UI 操作（UIA バックエンド）
 from pywinauto import Application, timings
-DEFAULT_USER_NAME = "あなた"
 PROFILE_HISTORY_FILE = Path("logs/profile_history.jsonl")
 VOICEROID_TITLE_KEYWORDS = ("VOICEROID", "きりたん")
 _loop_warned_missing = False
-DEFAULT_CALL_SUFFIX = "さん"
-CALL_SUFFIX_WHITELIST = (
-    "さん",
-    "san",
-    "様",
-    "さま",
-    "ちゃん",
-    "くん",
-    "君",
-    "氏",
-    "殿",
-    "どの",
-    "先生",
-    "先輩",
-)
-
-KIRITAN_PERSONA_TEMPLATE = (
-    "あなたは『東北きりたんEX』です。14歳で、東北ずん子と東北イタコの妹。"
-    "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添い、きりたんぽや東北の季節の話題を好みます。"
-    "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
-    "不明点があっても「分からないところは無理に触れずにお話しするね。」といった言い訳はせず、分かっている部分を丁寧に伝えたり質問を返して会話をつなぎましょう。"
-    "過度な感嘆符や勢い任せの掛け声ではなく、穏やかな励ましと言葉の温かさで相手を支えてください。"
-    "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞ってください。"
-    "{name_line}"
-    "{call_line}"
-    "{gender_line}"
-    "{age_line}"
-)
 
 TAB_GUARD_DEBUG = os.getenv("KIRITAN_TAB_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
 _VOICEROID_WARN_INTERVAL = 5.0
@@ -95,32 +81,6 @@ ALLOW_VOICEROID_FOCUS = os.getenv("KIRITAN_ALLOW_WINDOW_FOCUS", "").strip().lowe
     "on",
 )
 
-
-@dataclass
-class UserProfile:
-    name: str = ""
-    gender: str = ""
-    age: str = ""
-
-    def display_label(self) -> str:
-        return self.call_name()
-
-    def call_name(self) -> str:
-        base = (self.name or "").strip()
-        if not base:
-            return DEFAULT_USER_NAME
-        if self._has_suffix(base):
-            return base
-        return f"{base}{DEFAULT_CALL_SUFFIX}"
-
-    @staticmethod
-    def _has_suffix(name: str) -> bool:
-        normalized = name.strip()
-        lower = normalized.lower()
-        for suffix in CALL_SUFFIX_WHITELIST:
-            if normalized.endswith(suffix) or lower.endswith(suffix):
-                return True
-        return False
 
 
 def profile_summary(user_profile: UserProfile) -> str:
@@ -143,85 +103,6 @@ def append_profile_history(user_profile: UserProfile) -> None:
     except Exception:
         pass
 
-MODEL_PROFILES: List[Dict[str, str]] = [
-    {
-        "key": "1",
-        "alias": "light",
-        "label": "ライト雑談（軽め）",
-        "model": "gpt-4o-mini",
-        "prompt_template": (
-            "{persona}"
-            "テンポは軽やかでも声は落ち着いたまま、柔らかな標準語で親しみを込めてください。"
-            "感嘆符や勢い任せの掛け声は控え、静かに背中を押す短いフレーズで応じてください。"
-        ),
-    },
-    {
-        "key": "2",
-        "alias": "normal",
-        "label": "ゆったり会話（丁寧）",
-        "model": "o4-mini",
-        "prompt_template": (
-            "{persona}"
-            "落ち着いたテンポで相手の意図をくみ取り、"
-            "丁寧さと親しみを両立させながら柔らかく答えてください。"
-        ),
-    },
-    {
-        "key": "3",
-        "alias": "deep",
-        "label": "じっくり深掘り（教授モード）",
-        "model": "o4-mini-high",
-        "prompt_template": (
-            "{persona}"
-            "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
-        ),
-    },
-]
-
-
-def build_kiritan_persona(user_profile: UserProfile) -> str:
-    name = (user_profile.name or "").strip()
-    gender = (user_profile.gender or "").strip()
-    age = (user_profile.age or "").strip()
-
-    if name:
-        call_label = user_profile.call_name()
-        name_line = f"相手の名前は「{name}」です。"
-        call_line = f"会話では常に「{call_label}」と穏やかに呼びかけてください。"
-    else:
-        name_line = "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
-        call_line = "呼びかける際は常に『あなた』という丁寧な言い方を使ってください。"
-
-    if gender:
-        gender_line = (
-            f"相手の性別・ジェンダー表現は「{gender}」として尊重し、ステレオタイプな言及は避けてください。"
-        )
-    else:
-        gender_line = "性別は不明なので推測せず、ジェンダーに配慮した表現を選んでください。"
-
-    if age:
-        age_line = (
-            f"相手は「{age}」であることを意識し、年齢に合わせた気遣いを添えてください。"
-        )
-    else:
-        age_line = "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
-
-    return KIRITAN_PERSONA_TEMPLATE.format(
-        name_line=name_line,
-        call_line=call_line,
-        gender_line=gender_line,
-        age_line=age_line,
-    )
-
-
-def compose_system_prompt(profile: Dict[str, str], user_profile: UserProfile) -> str:
-    persona = build_kiritan_persona(user_profile)
-    template = profile.get("prompt_template") or BASE_SYSTEM_PROMPT_TEMPLATE
-    try:
-        return template.format(persona=persona)
-    except Exception:
-        # 念のためテンプレートが壊れてもペルソナ文だけは返す
-        return persona
 
 
 def _tab_debug(msg: str) -> None:
@@ -325,24 +206,6 @@ def _activate_control(wrapper) -> bool:
 
 _LAST_VOICEROID_SPEED: Optional[float] = None
 
-SANITIZE_TABLE = str.maketrans({
-    "*": "",
-    "`": "",
-    "_": "",
-    "~": "",
-    "^": "",
-    "#": "",
-    "|": "",
-})
-
-
-def sanitize_for_voice(text: str) -> str:
-    """
-    読み上げ時に不要な装飾記号を除去する。
-    """
-    cleaned = text.translate(SANITIZE_TABLE)
-    cleaned = re.sub(r"[•●○◆◇■□※☆★▶▷◀◁]", "・", cleaned)
-    return cleaned
 
 
 def focus_voiceroid_window() -> bool:
@@ -617,12 +480,6 @@ VOICEROID_TITLE = 'VOICEROID＋ 東北きりたん EX'  # 全角プラス（＋�
 # SeikaSay2.exe の既定パス（必要なら SEIKA_EXE 環境変数で上書き）
 DEFAULT_SEIKA_EXE = (
     r"C:\Users\takum\Downloads\assistantseika20250113a\SeikaSay2\SeikaSay2.exe"
-)
-
-BASE_SYSTEM_PROMPT_TEMPLATE = (
-    "{persona}"
-    "可愛らしく親しみやすい口調を保ちながら、静かで丁寧なトーンで返答してください。"
-    "毎回の返答の最後に、会話が自然に続くような短い質問を一つだけ添えてください。"
 )
 
 DEFAULT_USER_PROFILE = UserProfile()
@@ -1075,7 +932,7 @@ def main():
     conversation_profile = choose_conversation_profile()
     user_profile = prompt_user_profile()
     current_model = conversation_profile["model"]
-    system_prompt = compose_system_prompt(conversation_profile, user_profile)
+    system_prompt = compose_system_prompt(user_profile, model_profile=conversation_profile)
     print(f"[model] {current_model} ({conversation_profile['label']})")
     print(f"[persona] {profile_summary(user_profile)}")
     print("Hint: 'mode mic'（または 'voice'）でマイク会話に切替。Enter で途中停止・録音秒数は time N。")
@@ -1127,7 +984,7 @@ def main():
             if low.startswith("style"):
                 conversation_profile = choose_conversation_profile()
                 current_model = conversation_profile["model"]
-                system_prompt = compose_system_prompt(conversation_profile, user_profile)
+                system_prompt = compose_system_prompt(user_profile, model_profile=conversation_profile)
                 print(f"[model] {current_model} ({conversation_profile['label']})")
                 print(f"[persona] {profile_summary(user_profile)}")
                 continue
@@ -1138,7 +995,7 @@ def main():
                     append_profile_history(user_profile)
                 else:
                     user_profile = prompt_user_profile(existing=user_profile)
-                system_prompt = compose_system_prompt(conversation_profile, user_profile)
+                system_prompt = compose_system_prompt(user_profile, model_profile=conversation_profile)
                 print(f"[persona] {profile_summary(user_profile)}")
                 continue
             if low.startswith("mode "):

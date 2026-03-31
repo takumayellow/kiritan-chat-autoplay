@@ -16,7 +16,6 @@ import io
 import json
 import os
 import queue
-import re
 import sys
 import threading
 import tkinter as tk
@@ -40,111 +39,26 @@ try:
 except ImportError:
     pass
 
-# OpenAI
-try:
-    from openai import OpenAI
-    _OPENAI_AVAILABLE = True
-except ImportError:
-    OpenAI = None
-    _OPENAI_AVAILABLE = False
-
 # VOICEVOX モジュール
 from core import kiritan_voicevox as vvox
 
-# ── ペルソナ設定（kiritan_chat_cli.py から引き継ぎ） ───────────────
-DEFAULT_USER_NAME = "あなた"
-DEFAULT_CALL_SUFFIX = "さん"
-
-CALL_SUFFIX_WHITELIST = (
-    "さん", "san", "様", "さま", "ちゃん", "くん", "君",
-    "氏", "殿", "どの", "先生", "先輩",
+# ── 共通ロジック（core/kiritan_core.py） ─────────────────
+from core.kiritan_core import (
+    DEFAULT_USER_NAME,
+    DEFAULT_CALL_SUFFIX,
+    CALL_SUFFIX_WHITELIST,
+    KIRITAN_PERSONA_TEMPLATE,
+    BASE_SYSTEM_PROMPT_TEMPLATE,
+    MODEL_PROFILES,
+    SANITIZE_TABLE,
+    UserProfile,
+    build_kiritan_persona,
+    compose_system_prompt,
+    sanitize_for_voice,
+    get_model_profile,
+    create_openai_client,
+    chat_with_history,
 )
-
-KIRITAN_PERSONA_TEMPLATE = (
-    "あなたは『東北きりたんEX』です。14歳で、東北ずん子と東北イタコの妹。"
-    "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添い、きりたんぽや東北の季節の話題を好みます。"
-    "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
-    "不明点があっても「分からないところは無理に触れずにお話しするね。」といった言い訳はせず、分かっている部分を丁寧に伝えたり質問を返して会話をつなぎましょう。"
-    "過度な感嘆符や勢い任せの掛け声ではなく、穏やかな励ましと言葉の温かさで相手を支えてください。"
-    "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞ってください。"
-    "{name_line}"
-    "{call_line}"
-    "{gender_line}"
-    "{age_line}"
-)
-
-BASE_SYSTEM_PROMPT_TEMPLATE = (
-    "{persona}"
-    "可愛らしく親しみやすい口調を保ちながら、静かで丁寧なトーンで返答してください。"
-    "毎回の返答の最後に、会話が自然に続くような短い質問を一つだけ添えてください。"
-)
-
-MODEL_PROFILES: List[Dict[str, str]] = [
-    {
-        "key": "1",
-        "alias": "light",
-        "label": "ライト雑談（軽め）",
-        "model": "gpt-4o-mini",
-        "prompt_template": (
-            "{persona}"
-            "テンポは軽やかでも声は落ち着いたまま、柔らかな標準語で親しみを込めてください。"
-            "感嘆符や勢い任せの掛け声は控え、静かに背中を押す短いフレーズで応じてください。"
-        ),
-    },
-    {
-        "key": "2",
-        "alias": "normal",
-        "label": "ゆったり会話（丁寧）",
-        "model": "o4-mini",
-        "prompt_template": (
-            "{persona}"
-            "落ち着いたテンポで相手の意図をくみ取り、"
-            "丁寧さと親しみを両立させながら柔らかく答えてください。"
-        ),
-    },
-    {
-        "key": "3",
-        "alias": "deep",
-        "label": "じっくり深掘り（教授モード）",
-        "model": "o4-mini-high",
-        "prompt_template": (
-            "{persona}"
-            "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
-        ),
-    },
-]
-
-SANITIZE_TABLE = str.maketrans({
-    "*": "", "`": "", "_": "", "~": "", "^": "", "#": "", "|": "",
-})
-
-
-# ── データクラス ──────────────────────────────────────────
-@dataclass
-class UserProfile:
-    name: str = ""
-    gender: str = ""
-    age: str = ""
-
-    def call_name(self) -> str:
-        base = (self.name or "").strip()
-        if not base:
-            return DEFAULT_USER_NAME
-        if self._has_suffix(base):
-            return base
-        return f"{base}{DEFAULT_CALL_SUFFIX}"
-
-    def display_label(self) -> str:
-        return self.call_name()
-
-    @staticmethod
-    def _has_suffix(name: str) -> bool:
-        normalized = name.strip()
-        lower = normalized.lower()
-        for suffix in CALL_SUFFIX_WHITELIST:
-            if normalized.endswith(suffix) or lower.endswith(suffix):
-                return True
-        return False
 
 
 @dataclass
@@ -171,64 +85,6 @@ class AppSettings:
         settings = cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
         settings.user_profile = profile
         return settings
-
-
-# ── ペルソナ構築関数 ──────────────────────────────────────
-def _has_suffix(name: str) -> bool:
-    normalized = name.strip()
-    lower = normalized.lower()
-    for suffix in CALL_SUFFIX_WHITELIST:
-        if normalized.endswith(suffix) or lower.endswith(suffix):
-            return True
-    return False
-
-
-def build_kiritan_persona(user_profile: UserProfile) -> str:
-    name = (user_profile.name or "").strip()
-    gender = (user_profile.gender or "").strip()
-    age = (user_profile.age or "").strip()
-
-    if name:
-        call_label = user_profile.call_name()
-        name_line = f"相手の名前は「{name}」です。"
-        call_line = f"会話では常に「{call_label}」と穏やかに呼びかけてください。"
-    else:
-        name_line = "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
-        call_line = "呼びかける際は常に『あなた』という丁寧な言い方を使ってください。"
-
-    if gender:
-        gender_line = (
-            f"相手の性別・ジェンダー表現は「{gender}」として尊重し、ステレオタイプな言及は避けてください。"
-        )
-    else:
-        gender_line = "性別は不明なので推測せず、ジェンダーに配慮した表現を選んでください。"
-
-    if age:
-        age_line = f"相手は「{age}」であることを意識し、年齢に合わせた気遣いを添えてください。"
-    else:
-        age_line = "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
-
-    return KIRITAN_PERSONA_TEMPLATE.format(
-        name_line=name_line,
-        call_line=call_line,
-        gender_line=gender_line,
-        age_line=age_line,
-    )
-
-
-def compose_system_prompt(model_profile: Dict[str, str], user_profile: UserProfile) -> str:
-    persona = build_kiritan_persona(user_profile)
-    template = model_profile.get("prompt_template") or BASE_SYSTEM_PROMPT_TEMPLATE
-    try:
-        return template.format(persona=persona)
-    except Exception:
-        return persona
-
-
-def sanitize_for_voice(text: str) -> str:
-    cleaned = text.translate(SANITIZE_TABLE)
-    cleaned = re.sub(r"[•●○◆◇■□※☆★▶▷◀◁]", "・", cleaned)
-    return cleaned
 
 
 # ── 設定の保存/ロード ─────────────────────────────────────
@@ -274,71 +130,6 @@ def load_chat_history(path: Optional[Path] = None) -> List[Dict[str, str]]:
     except Exception:
         pass
     return []
-
-
-# ── OpenAI チャット ───────────────────────────────────────
-def create_openai_client() -> Optional[Any]:
-    if not _OPENAI_AVAILABLE:
-        return None
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if not key:
-        return None
-    try:
-        return OpenAI(api_key=key)
-    except Exception:
-        return None
-
-
-def chat_with_history(
-    client: Any,
-    user_text: str,
-    history: List[Dict[str, str]],
-    system_prompt: str,
-    preferred_model: str,
-    history_max: int = 20,
-) -> str:
-    """
-    会話履歴を含めて OpenAI API に送信し、返答を取得する。
-    フォールバックモデルリストを使用。
-    """
-    fallback_models = [
-        os.environ.get("OPENAI_MODEL", "").strip(),
-        preferred_model,
-        "gpt-4o-mini",
-        "o4-mini",
-        "gpt-4o",
-    ]
-    models = [m for m in fallback_models if m]
-
-    # 重複を除きつつ順序維持
-    seen = set()
-    ordered_models = []
-    for m in models:
-        if m not in seen:
-            seen.add(m)
-            ordered_models.append(m)
-
-    # 送信メッセージを構築（system + 直近の履歴 + 今回のユーザー入力）
-    messages = [{"role": "system", "content": system_prompt}]
-    # 直近の会話ペアだけ含める
-    recent = history[-(history_max * 2):]
-    messages.extend(recent)
-    messages.append({"role": "user", "content": user_text})
-
-    last_err = None
-    for model_name in ordered_models:
-        try:
-            resp = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-            return sanitize_for_voice(raw)
-        except Exception as e:
-            last_err = e
-            continue
-
-    raise RuntimeError(f"全モデルで失敗しました: {last_err}")
 
 
 # ── ダイアログ：プロフィール編集 ──────────────────────────
@@ -529,7 +320,7 @@ class KiritanChatGUINew:
         # コンテキスト：現在のモデルプロファイル
         self.model_profile: Dict[str, str] = self._get_model_profile(self.settings.model_key)
         self.system_prompt: str = compose_system_prompt(
-            self.model_profile, self.settings.user_profile
+            self.settings.user_profile, model_profile=self.model_profile
         )
 
         # キュー（バックグラウンドスレッド → UIスレッド）
@@ -1190,10 +981,7 @@ class KiritanChatGUINew:
 
     # ── モデル関連 ────────────────────────────────────────
     def _get_model_profile(self, key: str) -> Dict[str, str]:
-        for p in MODEL_PROFILES:
-            if p["key"] == key or p["alias"] == key:
-                return p
-        return MODEL_PROFILES[0]
+        return get_model_profile(key)
 
     def _model_profile_label(self, profile: Dict[str, str]) -> str:
         return f"{profile['key']}: {profile['label']}"
@@ -1203,7 +991,7 @@ class KiritanChatGUINew:
         key = selected.split(":")[0].strip()
         self.model_profile = self._get_model_profile(key)
         self.settings.model_key = self.model_profile["key"]
-        self.system_prompt = compose_system_prompt(self.model_profile, self.settings.user_profile)
+        self.system_prompt = compose_system_prompt(self.settings.user_profile, model_profile=self.model_profile)
         save_settings(self.settings)
         self._set_status(f"会話スタイルを変更: {self.model_profile['label']}")
         self.model_label_var.set(f"model: {self.model_profile.get('model', '')}")
@@ -1219,7 +1007,7 @@ class KiritanChatGUINew:
         dlg = ProfileDialog(self.root, self.settings.user_profile)
         if dlg.result_profile is not None:
             self.settings.user_profile = dlg.result_profile
-            self.system_prompt = compose_system_prompt(self.model_profile, self.settings.user_profile)
+            self.system_prompt = compose_system_prompt(self.settings.user_profile, model_profile=self.model_profile)
             save_settings(self.settings)
             name = self.settings.user_profile.display_label()
             self._add_system_message(f"プロフィールを更新しました。呼び名: {name}")
