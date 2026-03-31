@@ -28,7 +28,7 @@ if %errorlevel%==0 (
 
 REM ngrok起動
 echo [4/4] ngrok トンネルを起動中...
-start "ngrok" cmd /k "ngrok http 5000"
+start "ngrok" cmd /k "ngrok http 5000 --url=epigenous-anne-synonymical.ngrok-free.dev"
 timeout /t 5 /nobreak >nul
 
 REM URL取得
@@ -39,9 +39,8 @@ echo ===================================
 echo.
 echo  サーバー: http://localhost:5000/
 echo.
-echo  ngrok の URL をコピーして
-echo  LINE Developers の Webhook URL に設定してください:
-echo  https://xxxxx.ngrok-free.dev/callback
+echo  Webhook URL (固定):
+echo  https://epigenous-anne-synonymical.ngrok-free.dev/callback
 echo.
 echo  ngrok の Web UI: http://localhost:4040
 echo.
