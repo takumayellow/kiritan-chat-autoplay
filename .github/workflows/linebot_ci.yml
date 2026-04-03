@@ -1,0 +1,80 @@
+name: LINE Bot CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - line_bot/**
+      - core/**
+      - run_linebot.py
+      - Dockerfile
+      - Procfile
+      - render.yaml
+      - .github/workflows/linebot_ci.yml
+  pull_request:
+    branches: [main, master]
+    paths:
+      - line_bot/**
+      - core/**
+      - run_linebot.py
+      - Dockerfile
+      - Procfile
+      - render.yaml
+      - .github/workflows/linebot_ci.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r line_bot/requirements.txt
+
+      - name: Import check
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: "dummy"
+          LINE_CHANNEL_SECRET: "dummy"
+          OPENAI_API_KEY: "dummy"
+        run: |
+          python -c "
+          import sys, os
+          sys.path.insert(0, '.')
+          # 環境変数がセットされていればサーバーモジュールをインポートできることを確認
+          from line_bot.server import app
+          assert app is not None
+          print('Import OK')
+          "
+
+      - name: Health check endpoint test
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: "dummy"
+          LINE_CHANNEL_SECRET: "dummy"
+          OPENAI_API_KEY: "dummy"
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from line_bot.server import app
+          client = app.test_client()
+          resp = client.get('/')
+          assert resp.status_code == 200, f'Expected 200, got {resp.status_code}'
+          print('Health check OK:', resp.data.decode())
+          "
+
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t kiritan-chat-linebot:ci .

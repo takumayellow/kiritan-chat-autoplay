@@ -59,7 +59,12 @@
 ### LINE Bot - 追加機能
 - [ ] 音声メッセージ返信（VOICEVOX → WAV → m4a → LINE AudioMessage）
 - [ ] リッチメニュー画像作成・設定
-- [ ] 本番デプロイ（Railway / Render）
+- [x] 本番デプロイ設定（Railway / Render）
+  - `Dockerfile` 作成済み（gunicorn で起動）
+  - `Procfile` 作成済み（Railway / Render 両対応）
+  - `render.yaml` 作成済み（Render ワンクリックデプロイ用）
+  - GitHub Actions CI ワークフロー作成済み（`.github/workflows/linebot_ci.yml`）
+  - デプロイ手順 → `docs/deploy.md` 参照
 
 ### GUI版
 - [ ] テキスト入力が一部環境で効かない問題の根本原因調査
