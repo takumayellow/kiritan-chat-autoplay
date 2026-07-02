@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: kiritan-chat-linebot
+    runtime: python
+    buildCommand: pip install -r line_bot/requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 run_linebot:app
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINEBOT_DB_PATH
+        value: /app/data/linebot_chat.sqlite
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    disk:
+      name: linebot-data
+      mountPath: /app/data
+      sizeGB: 1

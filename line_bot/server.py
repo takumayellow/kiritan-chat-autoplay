@@ -69,7 +69,9 @@ handler = WebhookHandler(CHANNEL_SECRET)
 
 # ── きりたんチャット初期化 ────────────────────────────────
 openai_client = core.create_openai_client()
-chat_store = core.ChatStore(db_path="linebot_chat.sqlite")
+# DB パスは環境変数 LINEBOT_DB_PATH で上書き可能（Render ディスクマウント等）
+_db_path = os.environ.get("LINEBOT_DB_PATH", "linebot_chat.sqlite")
+chat_store = core.ChatStore(db_path=_db_path)
 
 if openai_client:
     logger.info("OpenAI クライアント初期化OK")

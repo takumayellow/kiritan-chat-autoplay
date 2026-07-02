@@ -1,5 +1,6 @@
 # LINE Bot サーバー用依存パッケージ
 flask
+gunicorn          # 本番 WSGI サーバー（Railway / Render）
 line-bot-sdk>=3.0
 openai
 python-dotenv
