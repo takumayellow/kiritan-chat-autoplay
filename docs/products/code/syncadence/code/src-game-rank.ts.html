@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/game/rank.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html" class="current">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 14 行</p>
+<h1><code>src/game/rank.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>スコア（0〜1,000,000）から SSS〜D のランクを決める表と、それを引く関数です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>ランクと、そのランクになる最低のスコアの表 <code>RANKS</code>（L2-10）。</li>
+<li>スコアを受け取ってランクの文字を返す <code>rankOf</code>（L12-14）。</li>
+</ul>
+<p>スコアの計算そのものは <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L170 にあります。判定ごとの重み（PERFECT 1・GREAT 0.75・GOOD 0.35・MISS 0、<a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a> の L16）の合計を、譜面全体の判定の数（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L61）で割り、1,000,000 を掛けて整数に丸めた値です。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L2, L382-384, L392</td>
+<td>プレイ中の左上のスコアの枠。ゲージの上に各ランクの境目の目盛りを打ち（<code>RANKS</code>）、いまのランクの文字を出す（<code>rankOf</code>）</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/ui/format.ts</code>（キットに写しが無い）が <code>rankOf</code> をそのまま取り次ぎ、<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L46 と <a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L110・L146 が使う</td>
+<td>結果画面のランク、選曲画面の自己ベストのランク</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>なし</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L3 <code>990_000</code> — 数の中の <code>_</code>（桁の区切り）</li>
+<li>L13 <code>RANKS.find((r) =&gt; …)</code> — 配列の <code>find</code></li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L10</p><p><code>RANKS</code> の型 <code>readonly { readonly rank: string; readonly min: number }[]</code> は、外側から読むと「書き換えない配列で、その要素は <code>rank</code>（文字列）と <code>min</code>（数）の 2 つの欄を持つ物」です。<code>{ … }</code> の部分は、<code>interface</code> で名前を付けずに、物の形をその場で書いたものです（文法の索引の「kind で見分ける合併型」「interface と readonly」）。</p>
+<blockquote>
+<p><strong>文法: 数の中の <code>_</code></strong></p>
+<p><code>990_000</code> は <code>990000</code> と同じ数です。<code>_</code> は桁を読みやすくするための区切りで、値には何の影響もありません。3 桁ごとに入れるのが普通です。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>ランク</th>
+<th>最低のスコア</th>
+<th>満点に対する割合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSS</td>
+<td>990,000</td>
+<td>99%</td>
+</tr>
+<tr>
+<td>SS</td>
+<td>970,000</td>
+<td>97%</td>
+</tr>
+<tr>
+<td>S</td>
+<td>940,000</td>
+<td>94%</td>
+</tr>
+<tr>
+<td>A</td>
+<td>880,000</td>
+<td>88%</td>
+</tr>
+<tr>
+<td>B</td>
+<td>800,000</td>
+<td>80%</td>
+</tr>
+<tr>
+<td>C</td>
+<td>700,000</td>
+<td>70%</td>
+</tr>
+<tr>
+<td>D</td>
+<td>0</td>
+<td>0%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>数で感じをつかむと。</strong> スコアは重みの平均 × 1,000,000 なので、たとえば判定の数（ロングノーツは始点と終点で 2 つ）が 400 の曲で SSS を取るには、失える重みが 400 × 0.01 = 4 までです。GREAT は 1 つで 0.25、MISS は 1 つで 1 を失うので、ほかが全部 PERFECT なら、GREAT 16 個か MISS 4 個までが SSS です。</p>
+<p><strong>高い順に並べてあることが大事です。</strong> 次の <code>rankOf</code> は先頭から順に見て、最初に条件を満たしたものを返すからです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="cm">/** ランクと、そのランクになる最低のスコア（高い順）。 */</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">RANKS</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">}</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;SSS&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">990_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;SS&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">970_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;S&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">940_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;A&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">880_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;B&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">800_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;C&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">700_000</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nx">rank</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;D&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">min</span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="w"> </span><span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="p">]</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L14</p><blockquote>
+<p><strong>文法: 配列の find</strong></p>
+<p><code>配列.find(関数)</code> は、要素を先頭から順に関数に渡し、関数が初めて真を返した<strong>要素そのもの</strong>を返します。最後まで真にならなければ <code>undefined</code> を返します。見つかった時点で残りは見ません。</p>
+<p><code>filter</code>（文法の索引の「map・filter・reduce」）が「当てはまるもの全部の配列」を返すのに対し、<code>find</code> は「最初の 1 つ」だけを返します。</p>
+</blockquote>
+<p><code>rankOf(score)</code> の流れ:</p>
+<ol>
+<li><code>RANKS.find((r) =&gt; score &gt;= r.min)</code> — 高い方から見て、<code>score</code> が最低のスコア以上になる最初のランクの行を探す</li>
+<li><code>?.rank</code> — 見つかればその行の <code>rank</code>（文字列）</li>
+<li><code>?? "D"</code> — 見つからなければ <code>"D"</code></li>
+</ol>
+<p><code>?.</code> と <code>??</code> は文法の索引の「オプショナルチェーン <code>?.</code> と <code>??</code>」です。</p>
+<p>たとえばスコア 955,000 なら、SSS（990,000）でも SS（970,000）でもなく、S（940,000）で初めて条件を満たすので <code>"S"</code> です。ちょうど 940,000 でも <code>&gt;=</code> なので S になります。</p>
+<p>D の最低は 0 なので、スコアが 0 以上なら必ずどれかが見つかります。<code>?? "D"</code> が効くのは負のスコアのときだけで、スコアの計算からは負にならないので、念のための備えです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">rankOf</span><span class="p">(</span><span class="nx">score</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">RANKS</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">score</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">min</span><span class="p">)</span><span class="o">?</span><span class="p">.</span><span class="nx">rank</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">&quot;D&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

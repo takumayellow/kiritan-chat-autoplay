@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tools/build_songs.py | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html" class="current">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">Python · 全 98 行</p>
+<h1><code>tools/build_songs.py</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>保存してある楽譜から、ゲームが読み込む曲データ（<code>public/songs/&lt;曲ID&gt;.json</code>）と曲の一覧（<code>public/songs/index.json</code>）を書き出すファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<p><code>tools/</code> の 3 つの道具をつなぐ、最後の工程です。</p>
+<ol>
+<li><a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> が保存した楽譜（MIDI と LilyPond）と出どころの記録（<code>meta.json</code>）を読む。</li>
+<li><a class="xref" href="tools-score.py.html"><code>tools/score.py</code></a> の <code>load_score</code> で、楽譜を秒で扱える <code>Score</code> にする。</li>
+<li><a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> で 4 つの難易度の譜面を作る。</li>
+<li>鳴らす音（<code>events</code>）・譜面（<code>charts</code>）・小節線・拍・出典などを 1 つの辞書にまとめ、JSON で書き出す。</li>
+<li>全曲の要約を集めて、曲選びの画面が読む一覧を書き出す。</li>
+</ol>
+<p>docstring（L5-6）のとおり、鳴らす音と譜面は<strong>同じ楽譜から同じ時間軸で</strong>作るので、ノーツを叩くタイミングと鳴る音が作りの上でずれません。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="tools-score.py.html"><code>tools/score.py</code></a> の <code>load_score</code></td>
+<td>MIDI と LilyPond から <code>Score</code> を作る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の <code>event_order</code>・<code>build_candidates</code>・<code>build_chart</code>・<code>DIFFICULTIES</code></td>
+<td>鳴らす音の並びと、4 つの譜面を作る</td>
+</tr>
+<tr>
+<td>読む</td>
+<td><code>tools/songs.json</code></td>
+<td>収録する 12 曲の一覧（曲名・作曲者など）</td>
+</tr>
+<tr>
+<td>読む</td>
+<td><code>sources/mutopia/&lt;曲ID&gt;/meta.json</code></td>
+<td>出典の記録と、楽譜ファイルの名前</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a>・<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a></td>
+<td>曲データと一覧を取り込み、形を確かめる（validate.ts の L40・L55 で <code>version</code> が 2 か確かめる）</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L113・L129・L144-145</td>
+<td>一覧のレベル・BPM・曲の長さ・ノーツ数を表示する</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L64・L132、<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L413-414</td>
+<td>音を鳴らす・小節線と拍の線を描く</td>
+</tr>
+</tbody>
+</table>
+<p>人が手で動かす道具で、ゲームが動いている間に呼ばれることはありません。</p>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L88-91 <code>{…} | {…}</code> — 辞書の合体</li>
+<li>L92 <code>f"{x:22s}"</code>・<code>f"{x:6.1f}"</code> — f 文字列の書式指定</li>
+<li>L92 <code>"  ".join(…)</code> — 文字列をつなぐ</li>
+<li>L98 <code>sys.argv</code> — コマンドに付けた引数</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>song_payload</code>（L29-69）。曲データの JSON の形がすべてここに書かれています。ブラウザ側の型（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a>）と見比べると、どの値がどこで使われるかが分かります。</li>
+<li>L39 の 1 行。<code>ChartNote</code> の 6 つの項目のうち 4 つだけを、小さな配列にして書き出します。</li>
+<li>L63-67 の <code>events</code>。ペダルで伸びる分も含めた「鳴っている長さ」を書くので、ブラウザ側はペダルを知らなくても正しく音を伸ばせます。</li>
+<li>L81-85。指定した曲だけを作り直し、作らなかった曲は前に書いたファイルから読み直して、一覧を毎回すべての曲で作り直します。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong><code>bpm</code> は 4 分音符の速さ。</strong> 1 拍が 8 分音符の曲（<code>fur-elise</code> は 3/8 拍子）でも、4 分音符で数えます。<code>fur-elise</code> の <code>bpm</code> は 72 ですが、1 拍（8 分音符 0.417 秒）で数えれば 144 です。曲の途中でテンポが変わっても、一覧に出るのは曲の頭の速さだけです（L41）。</li>
+<li><strong>曲 ID を指定しても、全曲の <code>meta.json</code> と曲データを読む。</strong> L79 はすべての曲で <code>meta.json</code> を読み、L85 はすべての曲で書き出し済みの JSON を読みます。一度も作っていない曲があると、そこでファイルが見つからずに止まります。</li>
+<li><strong>曲データは改行も空白も無い 1 行。</strong> L84 で区切りの空白を省いているので、<code>fur-elise.json</code> は 1 行で約 56 KB です（空白ありなら約 67 KB）。人が読むには整形して開く必要があります。一覧の <code>index.json</code> の方は、1 文字ずつ字下げして読みやすく書きます（L93）。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L8</p><p>docstring（文法の索引の『ドキュメント文字列』）です。使い方の行（L3）の <code>[曲ID ...]</code> は、「曲 ID を 0 個以上付けられる」という意味の書き方です。何も付けなければ全 12 曲、付ければその曲だけを作り直します（L81）。</p>
+<div class="codehilite"><pre><span></span><code>python tools/build_songs.py
+python tools/build_songs.py fur-elise clair-de-lune
+</code></pre></div>
+
+<p>L5-6 が、このファイルの設計の要点です。音ゲームでは、音源の録音と譜面を別々に作ると、両者の時刻を合わせる作業（オフセットの調整）が必要になります。このゲームは録音を使わず、楽譜の音をその場でピアノ音源で鳴らすので、同じ楽譜から作った <code>events</code> と <code>charts</code> は最初から一致しています（docs/design.md の 1 節）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;sources/mutopia の楽譜から、ゲームが読む曲データ public/songs/&lt;id&gt;.json と一覧 index.json を作る。</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="sd">使い方: python tools/build_songs.py [曲ID ...]</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="sd">曲データには、鳴らす音（events）と難易度別の譜面（charts）が同じ時間軸で入る。</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="sd">ブラウザは events をピアノ音源で鳴らし、charts をノーツとして流すので、両者は作りの上で一致する。</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L9–L17</p><p>取り込みです（文法の索引の『Python の基本（import・def・型注釈・字下げ）』、『<code>from __future__ import annotations</code>』）。</p>
+<ul>
+<li><code>json</code> は JSON の読み書き、<code>sys</code> はコマンドの引数（L98）、<code>Path</code> はファイルの場所（文法の索引の『パスの組み立て（<code>Path</code> と <code>/</code>）』）に使います。</li>
+<li>L15-16 で、同じ <code>tools/</code> フォルダの <code>chart.py</code> と <code>score.py</code> から、使う名前だけを取り込みます。<code>python tools/build_songs.py</code> と動かすと、動かしたファイルのあるフォルダが取り込み先の候補に入るので、<code>chart</code> や <code>score</code> という名前で見つかります。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">json</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">chart</span><span class="w"> </span><span class="kn">import</span> <span class="n">DIFFICULTIES</span><span class="p">,</span> <span class="n">build_candidates</span><span class="p">,</span> <span class="n">build_chart</span><span class="p">,</span> <span class="n">event_order</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">score</span><span class="w"> </span><span class="kn">import</span> <span class="n">Score</span><span class="p">,</span> <span class="n">load_score</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L18–L24</p><p>場所の定数と、曲データの形式の版です。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>場所</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ROOT</code></td>
+<td>このファイルの 2 つ上のフォルダ</td>
+<td>リポジトリの一番上</td>
+</tr>
+<tr>
+<td><code>CATALOG</code></td>
+<td><code>tools/songs.json</code></td>
+<td>収録曲の一覧</td>
+</tr>
+<tr>
+<td><code>SOURCES</code></td>
+<td><code>sources/mutopia</code></td>
+<td><a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> が楽譜を保存した場所</td>
+</tr>
+<tr>
+<td><code>OUT</code></td>
+<td><code>public/songs</code></td>
+<td>書き出し先。Vite がそのままブラウザに配る</td>
+</tr>
+</tbody>
+</table>
+<p>L18 の <code>Path(__file__).resolve().parent.parent</code> は、<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L21 と同じ組み立て方です。どのフォルダから動かしても、同じ場所を指します。</p>
+<p><code>FORMAT_VERSION = 2</code> は、曲データと一覧の形の版です。ブラウザ側は <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L40 と L55 で、この数が 2 でなければ読み込みを止めます。形を変えたのに古いブラウザ側が読んで誤動作する、ということを防ぐ目印です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="n">ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="n">CATALOG</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">tools</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">songs.json</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="n">SOURCES</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">sources</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">mutopia</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="n">OUT</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">public</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">songs</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="n">FORMAT_VERSION</span> <span class="o">=</span> <span class="mi">2</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L25–L28</p><p><code>ms</code> は、秒を小数第 3 位（1000 分の 1 秒 = ミリ秒）までに丸めます（文法の索引の『桁を指定した四捨五入 <code>round(x, 3)</code>』）。</p>
+<p>JSON に <code>0.41666666666666663</code> のような長い小数を書くと、ファイルが大きくなります。一番狭い判定（PERFECT）の幅でも ±42 ミリ秒なので（docs/design.md の 6 節）、1 ミリ秒の精度で足ります。名前の <code>ms</code> は「ミリ秒に丸める」という意味で、返す値の単位は秒のままです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">ms</span><span class="p">(</span><span class="n">seconds</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">float</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl">    <span class="k">return</span> <span class="nb">round</span><span class="p">(</span><span class="n">seconds</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L71</p><p><code>song_payload</code> は、1 曲の曲データ（辞書）を作ります。</p>
+<p><strong>準備（L30-32）。</strong></p>
+<ol>
+<li>L30: <code>meta.json</code> を読む。<code>(SOURCES / entry["id"] / "meta.json")</code> で場所を作り、<code>.read_text</code> で文字列として読み、<code>json.loads</code> で辞書にする（文法の索引の『リストと辞書』）。</li>
+<li>L31: 鳴らす音を <code>event_order</code> の順（早い順、同じなら低い順）に並べる。譜面の <code>links</code> はこの並びの番号を指します（<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L81-83）。</li>
+<li>L32: 譜面の候補を 1 回だけ作る。4 つの難易度で使い回します。</li>
+</ol>
+<p><strong>譜面（L33-40）。</strong> 難易度ごとに <code>build_chart</code> で譜面を作り、難易度の名前をキーにして辞書に入れます。1 つの譜面は次の形です。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>level</code></td>
+<td>目安のレベル（<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L330-343）</td>
+</tr>
+<tr>
+<td><code>lanes</code></td>
+<td>レーンの数（4 か 6）</td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td>ノーツの並び。1 つのノーツは <code>[時刻, レーン, ロングノーツの長さ, 鳴らす音の番号の並び]</code></td>
+</tr>
+</tbody>
+</table>
+<p>L39 のリスト内包表記（文法の索引の『リスト内包表記』）は、<code>chart.notes</code> の各ノーツ <code>n</code> から、4 つの値を並べた小さなリストを作ります。<code>list(n.links)</code> はタプルをリストに直しています。JSON にはタプルが無く、どちらも <code>[…]</code> で書かれるので、結果は同じですが、型をそろえるためです。<code>n.pitch</code> と <code>n.role</code> は書き出しません。ゲームには要らないからです。</p>
+<p><code>fur-elise</code> の EASY の最初の 3 つのノーツは <code>[0.0, 3, 0.0, [0]]</code>・<code>[0.417, 2, 0.0, [2]]</code>・<code>[1.667, 1, 0.0, [9]]</code> です。3 つ目の <code>[9]</code> は、<code>events</code> の 10 番目（0 から数えて 9）の音、1.667 秒の右手のラを指します（同じ時刻の左手のラは、低いので先に並んで 8 番）。</p>
+<p><strong>曲の速さと長さ（L41-42）。</strong> L41 を評価の順に分けると:</p>
+<ol>
+<li><code>score.tempo.seconds_per_tick(0)</code> — 曲の頭（tick 0）での、1 tick の秒数。</li>
+<li><code>× score.tpb</code> — 4 分音符 1 つ分の tick 数（収録曲はすべて 384）を掛けて、4 分音符 1 つの秒数。</li>
+<li><code>60 / …</code> — 1 分あたりの 4 分音符の数、つまり BPM。</li>
+</ol>
+<p><code>fur-elise</code> では 4 分音符が 0.833 秒なので 60 / 0.833 = 72 です。収録 12 曲の値は、一覧の順に 72・60・60・56・60・72・120・138・144・60・160・168 です。</p>
+<p>L42 の <code>duration</code> は、すべての音の「鳴り終わる秒」のうち一番遅いものです。<code>sounding_end</code> はペダルで伸びる分を含めた終わりの tick（<a class="xref" href="tools-score.py.html"><code>tools/score.py</code></a> の L145-150）で、それを <code>seconds</code> で秒にします（ジェネレータ式を <code>max</code> に渡しています。文法の索引の『ジェネレータ式』）。<code>fur-elise</code> は 130.417 秒です。</p>
+<p><strong>曲データの辞書（L43-69）。</strong> 1 つの大きな辞書を、<code>{</code> から <code>}</code> まで何行にも分けて書いています（かっこの中では改行しても文が続きます。文法の索引の『かっこの中の改行』）。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>中身</th>
+<th><code>fur-elise</code> の値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>version</code></td>
+<td>形式の版（L22）</td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>id</code> から <code>composerYears</code></td>
+<td><code>tools/songs.json</code> の曲の情報をそのまま</td>
+<td><code>"エリーゼのために"</code>・<code>"1770–1827"</code> など</td>
+</tr>
+<tr>
+<td><code>credit</code></td>
+<td>出典。<code>meta.json</code> から 5 つと、固定の <code>"Mutopia Project"</code></td>
+<td>楽譜の管理者・版・<code>"Public Domain"</code> など</td>
+</tr>
+<tr>
+<td><code>bpm</code></td>
+<td>L41 の速さを整数に丸めたもの</td>
+<td>72</td>
+</tr>
+<tr>
+<td><code>duration</code></td>
+<td>曲の長さ（秒）</td>
+<td>130.417</td>
+</tr>
+<tr>
+<td><code>bars</code></td>
+<td>小節線の秒の並び</td>
+<td>104 本（最初は 0.417 秒）</td>
+</tr>
+<tr>
+<td><code>beats</code></td>
+<td>拍の線の秒の並び</td>
+<td>312 本</td>
+</tr>
+<tr>
+<td><code>events</code></td>
+<td>鳴らす音の並び</td>
+<td>905 個</td>
+</tr>
+<tr>
+<td><code>charts</code></td>
+<td>4 つの譜面</td>
+<td>L33-40</td>
+</tr>
+</tbody>
+</table>
+<p>L59 の <code>round(first_tempo)</code> は、桁を指定しない <code>round</code> なので、結果は整数になります。</p>
+<p><code>credit</code> は、プレイ画面の開始前に「楽譜: Mutopia Project #931（浄書者, Public Domain）」のように出典を表示するために入れています（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L233-238、docs/design.md の 7 節）。※ 推測: パブリックドメインの楽譜には表示の義務はありませんが、どの版をだれが浄書したかを示しておくと、楽譜の出どころをたどれます。</p>
+<p><code>bars</code> と <code>beats</code> は、レーンに横線を引くためのもので（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L413-414）、判定には使いません。<code>bars</code> は <a class="xref" href="tools-score.py.html"><code>tools/score.py</code></a> の <code>bar_lines</code> が返す小節線なので、弱起の始まり（0 秒）は入りません。</p>
+<p><strong><code>events</code>（L63-67）。</strong> 1 つの音を、5 つの数の並びにします。</p>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>中身</th>
+<th>作り方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>押す秒</td>
+<td><code>score.seconds(n.start)</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td>音の高さ（MIDI の番号。60 が真ん中のド）</td>
+<td><code>n.pitch</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>鳴っている長さ（秒、ペダル込み）</td>
+<td>鳴り終わる秒 − 押す秒</td>
+</tr>
+<tr>
+<td>3</td>
+<td>強さ（ベロシティ、1〜127）</td>
+<td><code>n.velocity</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>手（0 が右手、1 が左手）</td>
+<td><code>0 if n.hand == "R" else 1</code>（文法の索引の『<code>None</code> と条件式 <code>A if 条件 else B</code>』）</td>
+</tr>
+</tbody>
+</table>
+<p>長さは、tick の差を秒にするのではなく、両端をそれぞれ秒にしてから引いています。途中でテンポが変わる音でも、正しい秒になります。<code>fur-elise</code> の最初の音は <code>[0.0, 76, 0.208, 62, 0]</code> で、右手のミを強さ 62 で 0.208 秒鳴らします。</p>
+<p>ブラウザ側の型（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の L11-12）も同じ 5 つの並びで、<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> は長さが 5 の数の並びであることを確かめます。位置 4 の手は、今のブラウザ側のコードでは読まれていません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">song_payload</span><span class="p">(</span><span class="n">entry</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">score</span><span class="p">:</span> <span class="n">Score</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">dict</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl">    <span class="n">meta</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="p">(</span><span class="n">SOURCES</span> <span class="o">/</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">meta.json</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl">    <span class="n">events</span> <span class="o">=</span> <span class="n">event_order</span><span class="p">(</span><span class="n">score</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl">    <span class="n">candidates</span> <span class="o">=</span> <span class="n">build_candidates</span><span class="p">(</span><span class="n">score</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">    <span class="n">charts</span> <span class="o">=</span> <span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl">    <span class="k">for</span> <span class="n">diff</span> <span class="ow">in</span> <span class="n">DIFFICULTIES</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl">        <span class="n">chart</span> <span class="o">=</span> <span class="n">build_chart</span><span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="n">diff</span><span class="p">,</span> <span class="n">candidates</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl">        <span class="n">charts</span><span class="p">[</span><span class="n">diff</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">level</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">chart</span><span class="o">.</span><span class="n">level</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">lanes</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">diff</span><span class="o">.</span><span class="n">lanes</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">notes</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">[</span><span class="p">[</span><span class="n">ms</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">time</span><span class="p">)</span><span class="p">,</span> <span class="n">n</span><span class="o">.</span><span class="n">lane</span><span class="p">,</span> <span class="n">ms</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">duration</span><span class="p">)</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">links</span><span class="p">)</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">chart</span><span class="o">.</span><span class="n">notes</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl">        <span class="p">}</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl">    <span class="n">first_tempo</span> <span class="o">=</span> <span class="mi">60</span> <span class="o">/</span> <span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">tempo</span><span class="o">.</span><span class="n">seconds_per_tick</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">*</span> <span class="n">score</span><span class="o">.</span><span class="n">tpb</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl">    <span class="n">duration</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">sounding_end</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">events</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl">    <span class="k">return</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">version</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">FORMAT_VERSION</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">title</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">title</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">titleEn</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">titleEn</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">composer</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">composer</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">composerEn</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">composerEn</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">composerYears</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">composerYears</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">credit</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">source</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">Mutopia Project</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">mutopiaId</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">mutopiaId</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">pieceUrl</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">pieceUrl</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">maintainer</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">maintainer</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">edition</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">edition</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">license</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">license</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl">        <span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">bpm</span><span class="s2">&quot;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">first_tempo</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">duration</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">ms</span><span class="p">(</span><span class="n">duration</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">bars</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">ms</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">score</span><span class="o">.</span><span class="n">bar_lines</span><span class="p">(</span><span class="p">)</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">beats</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">ms</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">score</span><span class="o">.</span><span class="n">beat_lines</span><span class="p">(</span><span class="p">)</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">events</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">[</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl">            <span class="p">[</span><span class="n">ms</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">start</span><span class="p">)</span><span class="p">)</span><span class="p">,</span> <span class="n">n</span><span class="o">.</span><span class="n">pitch</span><span class="p">,</span> <span class="n">ms</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">score</span><span class="o">.</span><span class="n">sounding_end</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="p">)</span> <span class="o">-</span> <span class="n">score</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">start</span><span class="p">)</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl">             <span class="n">n</span><span class="o">.</span><span class="n">velocity</span><span class="p">,</span> <span class="mi">0</span> <span class="k">if</span> <span class="n">n</span><span class="o">.</span><span class="n">hand</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">R</span><span class="s2">&quot;</span> <span class="k">else</span> <span class="mi">1</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl">            <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">events</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl">        <span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">charts</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">charts</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">    <span class="p">}</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L72–L96</p><blockquote>
+<p><strong>文法: 辞書の合体 <code>|</code></strong></p>
+<p><code>辞書A | 辞書B</code> は、A のキーと値に B のキーと値を足した、<strong>新しい</strong>辞書を作ります（A も B も変わりません）。同じキーがあれば B の値が勝ちます。L88-91 では、8 つのキーを抜き出した辞書に、<code>levels</code> と <code>noteCounts</code> の 2 つのキーを足しています。Python 3.9 からの書き方です。</p>
+<p><strong>文法: f 文字列の書式指定</strong></p>
+<p>f 文字列（文法の索引の『f 文字列』）の <code>{ }</code> の中で、値の後に <code>:</code> と書式を書くと、表示の形を指定できます。</p>
+<ul>
+<li><code>{entry['id']:22s}</code> — 文字列（<code>s</code>）を 22 文字の幅で左寄せにし、足りない分を空白で埋める。曲 ID の長さが違っても、次の列がそろう。</li>
+<li><code>{payload['duration']:6.1f}</code> — 小数（<code>f</code>）を小数第 1 位までに丸め、全体を 6 文字の幅で右寄せにする。130.417 は <code>" 130.4"</code>。</li>
+</ul>
+<p><strong>文法: 文字列をつなぐ <code>join</code></strong></p>
+<p><code>"  ".join(並び)</code> は、並びの文字列を、間に <code>"  "</code>（空白 2 つ）をはさんでつないだ 1 つの文字列にします。区切りの文字列の方に <code>.join</code> を付けるのが Python の書き方です。</p>
+</blockquote>
+<p><code>main</code> は、全曲の曲データと一覧を書き出します。</p>
+<ol>
+<li>L73: <code>tools/songs.json</code> を読んで、曲の情報の辞書のリストにする。</li>
+<li>L74: コマンドに付けた曲 ID を集合にする（文法の索引の『集合とスライス』）。集合にすると、<code>in</code> で「含まれるか」をすぐ確かめられます。</li>
+<li>L75: 書き出し先のフォルダを、無ければ作る（<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L58 と同じ）。</li>
+<li>L76: 一覧に入れる要約のリスト。</li>
+</ol>
+<p><strong>曲ごと（L77-92）。</strong></p>
+<ol>
+<li>L78-80: 曲のフォルダ、<code>meta.json</code>、書き出すファイルの場所。</li>
+<li>L81: 曲 ID が何も付いていない（<code>not wanted</code> が真。空の集合は偽です。文法の索引の『<code>not</code>』）か、この曲の ID が付いていれば、作り直す。
+   - L82: <code>meta.json</code> に書いてある MIDI と LilyPond のファイル名から <code>Score</code> を作る（<a class="xref" href="tools-score.py.html"><code>tools/score.py</code></a> の L168-230）。
+   - L83: 曲データの辞書を作る。
+   - L84: JSON にして書く。<code>ensure_ascii=False</code> は日本語をそのまま書く指定（<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L87 と同じ）、<code>separators=(",", ":")</code> は区切りの <code>,</code> と <code>:</code> の後ろに空白を入れない指定です。何も指定しないと <code>", "</code> と <code>": "</code> になり、<code>fur-elise</code> は約 67 KB になります。空白を省くと約 56 KB で、ブラウザが曲ごとに読み込むデータが 2 割弱小さくなります。最後に改行を 1 つ付けます。</li>
+<li>L85: 書いたファイル（作り直さなかった曲なら、前に書いたファイル）を読み直す。こうすると、作り直した曲もそうでない曲も、一覧の作り方が 1 通りで済みます。</li>
+<li>L86-87: 難易度ごとのレベルとノーツ数の辞書を作る（文法の索引の『辞書内包表記』）。<code>fur-elise</code> なら <code>{"easy": 7, "normal": 9, "hard": 15, "expert": 23}</code> と <code>{"easy": 184, "normal": 225, "hard": 452, "expert": 635}</code>。</li>
+<li>L88-91: 曲データから 8 つのキーを抜き出した辞書（辞書内包表記）に、レベルとノーツ数を合体して、一覧に足す。曲選びの画面は、この要約だけで曲を並べられるので、全曲の大きな曲データを先に読み込まずに済みます。</li>
+<li>L92: 進み具合を 1 行表示する。</li>
+</ol>
+<p><code>fur-elise</code> の行は次のように表示されます。</p>
+<div class="codehilite"><pre><span></span><code>fur-elise               130.4s  easy:Lv7/184  normal:Lv9/225  hard:Lv15/452  expert:Lv23/635
+</code></pre></div>
+
+<p>L92 の後半を評価の順に分けると:</p>
+<ol>
+<li><code>for k in levels</code> — 辞書を <code>for</code> で回すとキーが出るので、<code>"easy"</code>・<code>"normal"</code>・<code>"hard"</code>・<code>"expert"</code> の順。</li>
+<li><code>f"{k}:Lv{levels[k]}/{counts[k]}"</code> — 1 つの難易度の <code>easy:Lv7/184</code>。</li>
+<li><code>"  ".join(…)</code> — 4 つを空白 2 つでつなぐ。</li>
+<li>前半の <code>f"…"</code> と <code>+</code> でつなぎ、<code>print</code> で表示する。</li>
+</ol>
+<p><strong>一覧（L93）。</strong> <code>{"version": 2, "songs": [要約…]}</code> を <code>public/songs/index.json</code> に書きます。<code>indent=1</code> で 1 文字ずつ字下げするので、人が開いても読めます（12 曲で約 5.7 KB）。</p>
+<p>L94 の <code>return 0</code> は「正常に終わった」を表す終了コードです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="n">argv</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl">    <span class="n">catalog</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">CATALOG</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl">    <span class="n">wanted</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">argv</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl">    <span class="n">OUT</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl">    <span class="n">index</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl">    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">catalog</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl">        <span class="n">song_dir</span> <span class="o">=</span> <span class="n">SOURCES</span> <span class="o">/</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl">        <span class="n">meta</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="p">(</span><span class="n">song_dir</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">meta.json</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl">        <span class="n">target</span> <span class="o">=</span> <span class="n">OUT</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">id</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">.json</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">wanted</span> <span class="ow">or</span> <span class="n">entry</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span> <span class="ow">in</span> <span class="n">wanted</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl">            <span class="n">score</span> <span class="o">=</span> <span class="n">load_score</span><span class="p">(</span><span class="n">song_dir</span> <span class="o">/</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">files</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">mid</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">name</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span> <span class="n">song_dir</span> <span class="o">/</span> <span class="n">meta</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">files</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">ly</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">name</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl">            <span class="n">payload</span> <span class="o">=</span> <span class="n">song_payload</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">score</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl">            <span class="n">target</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">separators</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">,</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">:</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl">        <span class="n">payload</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">target</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl">        <span class="n">levels</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">c</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">level</span><span class="s2">&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">charts</span><span class="s2">&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl">        <span class="n">counts</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">notes</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">charts</span><span class="s2">&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl">        <span class="n">index</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl">            <span class="n">key</span><span class="p">:</span> <span class="n">payload</span><span class="p">[</span><span class="n">key</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl">            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">title</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">titleEn</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">composer</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">composerEn</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">composerYears</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">bpm</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">duration</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl">        <span class="p">}</span> <span class="o">|</span> <span class="p">{</span><span class="s2">&quot;</span><span class="s2">levels</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">levels</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">noteCounts</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">counts</span><span class="p">}</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">id</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">:</span><span class="s2">22s</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">payload</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">duration</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">:</span><span class="s2">6.1f</span><span class="si">}</span><span class="s2">s  </span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="s2">  </span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">:Lv</span><span class="si">{</span><span class="n">levels</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">counts</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">levels</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl">    <span class="p">(</span><span class="n">OUT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">index.json</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="p">{</span><span class="s2">&quot;</span><span class="s2">version</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">FORMAT_VERSION</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">songs</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">index</span><span class="p">}</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl">    <span class="k">return</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L97–L98</p><blockquote>
+<p><strong>文法: コマンドに付けた引数 <code>sys.argv</code></strong></p>
+<p><code>sys.argv</code> は、Python を動かしたときのコマンドの単語のリストです。<code>python tools/build_songs.py fur-elise clair-de-lune</code> なら <code>["tools/build_songs.py", "fur-elise", "clair-de-lune"]</code> で、先頭は動かしたファイルの名前です。<code>sys.argv[1:]</code> はスライス（文法の索引の『集合とスライス』）で、先頭を除いた曲 ID だけのリストになります。</p>
+</blockquote>
+<p>直接動かしたときだけ <code>main</code> を呼び、その戻り値を終了コードにします（文法の索引の『<code>if __name__ == "__main__":</code>』）。<code>main</code> に引数のリストを渡す形にしてあるので、テストなどから <code>main(["fur-elise"])</code> と呼ぶこともできます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl"><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">__main__</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl">    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">main</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="p">]</span><span class="p">)</span><span class="p">)</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

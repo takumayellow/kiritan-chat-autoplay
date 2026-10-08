@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音と画面と入力の時刻をそろえる仕組み | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html" class="current">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="_1">音と画面と入力の時刻をそろえる仕組み</h1>
+<p>リズムゲームでいちばん難しいのは、<strong>聞こえている音・見えているノーツ・押した瞬間</strong>の 3 つを同じ時間軸に載せることです。ブラウザの中には時計が 2 種類あり、しかも音はスピーカーから出るまでに遅れます。このゲームはそれを次のように扱います。</p>
+<h2 id="2">ブラウザにある 2 つの時計</h2>
+<table>
+<thead>
+<tr>
+<th>時計</th>
+<th>何の時刻か</th>
+<th>使う所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AudioContext.currentTime</code>（秒）</td>
+<td>音を作る仕組み（Web Audio）の時刻。音の予約はすべてこの時刻で書く</td>
+<td>音を鳴らす</td>
+</tr>
+<tr>
+<td><code>performance.now()</code>（ミリ秒）</td>
+<td>ページを開いてからの経過時間。キーを押した時刻 <code>e.timeStamp</code> も、画面を書き換える時刻もこの時計</td>
+<td>描画・判定</td>
+</tr>
+</tbody>
+</table>
+<p>2 つは別々に進むので、そのままでは「キーを押した瞬間に、曲の何秒目が聞こえていたか」が分かりません。</p>
+<h2 id="1">基準は音の時計 1 つ</h2>
+<p>このゲームは、<strong>曲の時刻はすべて音の時計から決める</strong>と決めています。開始のときに「曲の 0 秒を鳴らす <code>AudioContext</code> の時刻」を 1 つ決め（<a href="../code/src-game-engine.ts.html#L89">engine.ts L89</a>）、各音はそこからの相対時刻で予約します（<code>contextTimeOf</code>、<a href="../code/src-audio-clock.ts.html#L65">clock.ts L65</a>）。</p>
+<div class="codehilite"><pre><span></span><code>音を鳴らす時刻 = 曲の 0 秒の時刻 + 楽譜上の時刻 ÷ 再生速度
+</code></pre></div>
+
+<p>予約は毎フレーム、音の時計の今から 0.4 秒先までだけ行います（<a href="../code/src-audio-scheduler.ts.html#L17">scheduler.ts L17-30</a>）。1 曲分を一度に予約すると、一時停止や途中でやめたときに取り消すのが大変になるうえ、ブラウザが抱える音の数も増えるためです。予約した音はブラウザが時刻どおりに鳴らすので、画面の処理が重くなっても音のリズムは崩れません。</p>
+<h2 id="songclock">「いま聞こえている位置」を出す — <code>SongClock</code></h2>
+<p>音の時計の「今」は、音を<strong>作っている</strong>時刻です。スピーカーから<strong>聞こえる</strong>のはそれより少し後です（Bluetooth のイヤホンなら 100 ms を超えることもあります）。ノーツを判定線に届かせたいのは、聞こえるタイミングです。</p>
+<p><code>SongClock</code> の <code>sampleOffset</code>（<a href="../code/src-audio-clock.ts.html#L15">clock.ts L15-28</a>）は、「聞こえている音の時計の時刻 − <code>performance.now()</code>」の差を求めます。</p>
+<ol>
+<li>ブラウザが <code>getOutputTimestamp()</code> を持っていれば、「この <code>performance.now()</code> の瞬間に、音の時計のこの時刻がスピーカーから出ていた」という組を教えてくれるので、その差を使います。</li>
+<li>その値が音の時計の今から 0.5 秒以上離れていれば壊れているとみなし、<code>currentTime − baseLatency − outputLatency</code>（ブラウザが申告する遅れを引いた値）で代わりにします。古い Safari では 1. の値がおかしいことが知られているためです。</li>
+</ol>
+<p>ブラウザごとにどの値が信用できるかは、調べた結果を <a href="https://github.com/takumayellow/syncadence-v2/blob/main/docs/research/03-web-audio-timing.md">docs/research/03-web-audio-timing.md</a> にまとめています。</p>
+<p>差が分かれば、<code>performance.now()</code> のどの時刻でも曲の位置に直せます（<code>songTimeAt</code>、<a href="../code/src-audio-clock.ts.html#L58">clock.ts L58-62</a>）。</p>
+<div class="codehilite"><pre><span></span><code>曲の位置 = (performance.now()/1000 + 差 − 曲の 0 秒の時刻) × 再生速度
+</code></pre></div>
+
+<p>この差は毎フレーム測り直しますが、測るたびに数 ms 揺れます。そのまま使うとノーツが小刻みに震えるので、新しい値に 5% ずつ寄せてならします（<a href="../code/src-audio-clock.ts.html#L49">L49</a>）。ただし 25 ms を超えて変わったときは、音が途切れたなどで本当にずれたとみなし、すぐ新しい値に切り替えます（<a href="../code/src-audio-clock.ts.html#L46">L46-47</a>）。</p>
+<h2 id="3">3 つをこの時計でつなぐ</h2>
+<table>
+<thead>
+<tr>
+<th>何を</th>
+<th>どの時刻で</th>
+<th>どこ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>音を鳴らす</td>
+<td>曲の 0 秒の時刻 + 楽譜の時刻</td>
+<td><code>EventScheduler</code> → <code>contextTimeOf</code></td>
+</tr>
+<tr>
+<td>ノーツを描く</td>
+<td>描くときの <code>performance.now()</code> を曲の位置に直し、表示の補正を引く</td>
+<td><code>engine.frame</code></td>
+</tr>
+<tr>
+<td>判定する</td>
+<td>キーが押された瞬間の <code>e.timeStamp</code> を曲の位置に直し、入力の補正を引く</td>
+<td><code>engine.judgeTime</code></td>
+</tr>
+</tbody>
+</table>
+<p>判定に <code>e.timeStamp</code> を使うのは、描画で忙しくて処理が遅れても、押した瞬間で判定できるからです。端末によってはこの値が壊れていることがあるので、0 や未来の値、1 秒以上前の値は今の時刻で代用します（<code>eventTimeMs</code>、<a href="../code/src-game-engine.ts.html#L19">engine.ts L19-21</a>）。</p>
+<h2 id="_2">それでも残るずれは、遊ぶ人が補正する</h2>
+<p>ブラウザが申告しない遅れ（OS の音の処理、一部の Bluetooth）と、押す人の癖は、コードからは分かりません。そこで 2 つの補正を設定に置いています。</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>効き方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>入力の補正</td>
+<td>判定に使う時刻から引く。正の値にすると、遅めに押しても合う</td>
+</tr>
+<tr>
+<td>表示の補正</td>
+<td>描画に使う時刻から引く。正の値にすると、ノーツが遅れて判定線に届く</td>
+</tr>
+</tbody>
+</table>
+<p>値を決める方法も 2 つ用意しています。</p>
+<ul>
+<li><strong>タイミング調整の画面</strong>（<a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a>）— 0.6 秒おきのクリック音を 20 回鳴らし、合わせて叩いてもらいます。最初の 4 回は耳慣らしとして数えず、残りの「叩いた時刻 − クリックの時刻」の中央値を入力の補正にします（<a href="../code/src-game-stats.ts.html#L29">stats.ts L29-39</a>）。平均ではなく中央値なのは、1 回だけ大きく外した叩きに引きずられないためです。</li>
+<li><strong>結果画面の提案</strong>（<a href="../code/src-ui-Result.tsx.html">Result.tsx</a>）— 20 回以上叩いて、ずれの中央値が 12 ms 以上あれば、補正をその分動かすボタンを出します。</li>
+</ul>
+<figure><img alt="結果画面。スコア・ランク・判定の内訳の下に、押したタイミングの中央値と、入力の補正を動かすボタンが出る" src="../assets/shots/result.webp" /><figcaption>結果画面。スコア・ランク・判定の内訳の下に、押したタイミングの中央値と、入力の補正を動かすボタンが出る</figcaption></figure>
+<h2 id="_3">一時停止で時計を止める</h2>
+<p>一時停止では <code>AudioContext</code> そのものを止めます（<code>ctx.suspend()</code>）。音の時計が止まるので、予約済みの音も鳴らず、曲の位置も進みません。再開（<code>ctx.resume()</code>）すると、音の時計は止めた時刻の続きから進むので、曲も止めた位置から続きます。ただし <code>performance.now()</code> との差は止めていた時間の分だけ変わるので、<code>SongClock</code> は覚えていた差を捨てて測り直します（<code>reset</code>、<a href="../code/src-game-engine.ts.html#L102">engine.ts L102</a>）。</p>
+<p>ただし <code>performance.now()</code> は止まっている間も進みます。描画にそれをそのまま使うと、止まっているはずのノーツが動いて見えます。そこで止めた瞬間の <code>performance.now()</code> を覚えておき、止まっている間はその時刻で描きます（<a href="../code/src-game-engine.ts.html#L95">engine.ts L95</a>、<a href="../code/src-game-engine.ts.html#L195">L195</a>）。</p>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#2">ブラウザにある 2 つの時計</a></li><li class="d2"><a href="#1">基準は音の時計 1 つ</a></li><li class="d2"><a href="#songclock">「いま聞こえている位置」を出す — SongClock</a></li><li class="d2"><a href="#3">3 つをこの時計でつなぐ</a></li><li class="d2"><a href="#_2">それでも残るずれは、遊ぶ人が補正する</a></li><li class="d2"><a href="#_3">一時停止で時計を止める</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

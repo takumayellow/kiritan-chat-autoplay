@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/game/engine.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html" class="current">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 220 行</p>
+<h1><code>src/game/engine.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>1 プレイ分の進行役 <code>PlayEngine</code> です。曲の 0 秒をいつ鳴らすかを決めて音を予約し、入力の時刻を「そのとき聞こえていた曲の位置」に直して判定に回し、毎フレーム描画に渡す材料をまとめます。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li><strong>開始</strong>: 音の時計（<code>AudioContext</code>）を動かし、曲の 0 秒を鳴らす時刻を決めて <code>SongClock</code> を作る（<code>start</code>、L80-90）。</li>
+<li><strong>音の予約</strong>: 毎フレーム、少し先までの曲の音をピアノの音源で予約する（<code>tick</code> の L183 から <code>EventScheduler</code> 経由、実際に鳴らすのは <code>sound</code> の L75-78）。</li>
+<li><strong>判定</strong>: キーやタッチの時刻を、入力の補正を入れた曲の位置（<code>judgeTime</code>、L121-125）に直して <code>GameSession</code> に渡す（<code>press</code> / <code>release</code>、L145-159）。見逃しやロングノーツの終わりは毎フレーム確定させる（L186）。</li>
+<li><strong>オートプレイ</strong>と<strong>キー音</strong>（叩いたときだけ鳴る音）（L161-175, L127-139）。</li>
+<li><strong>一時停止</strong>: 音の時計を止め、描画の時刻を止めた瞬間に固定する（<code>pause</code> / <code>resume</code> / <code>pausedAtMs</code>）。</li>
+<li><strong>描画の材料</strong>: 表示の補正を入れた曲の位置、押しているレーン、判定の光などを 1 つの <code>Frame</code> にまとめる（<code>frame</code>、L194-215）。</li>
+</ul>
+<p>判定の幅やスコアの計算は <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> と <a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a>、時計の換算は <a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a>、絵を描くのは <a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の仕事です。このファイルはそれらを<strong>時刻でつなぐ</strong>役です。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L57 で作る。L36・L40・L108・L136・L141・L153・L159・L81・L84・L95・L65）</td>
+<td>進行役の作成、<code>resume</code> / <code>pause</code> / <code>start</code> / <code>press</code> / <code>release</code> / <code>tick</code> / <code>stats</code> / <code>frame</code> / <code>dispose</code></td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L4, L66</td>
+<td><code>eventTimeMs</code> だけを借りて、タップの時刻を確かめる</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の <code>SongClock</code></td>
+<td><code>performance.now()</code> の時刻と曲の位置の換算（<code>songTimeAt</code>）、曲の位置と <code>AudioContext</code> の時刻の換算（<code>contextTimeOf</code>）、毎フレームの合わせ直し（<code>update</code>）、一時停止明けの作り直し（<code>reset</code>）</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a> の <code>EventScheduler</code></td>
+<td>曲の音を 0.4 秒（曲の時間）先まで順に取り出す</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の <code>Sampler.play</code></td>
+<td>音を、指定した <code>AudioContext</code> の時刻に鳴らす</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の <code>GameSession</code></td>
+<td>押す・離す・時間経過の判定、成績の集計</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-keys.ts.html"><code>src/game/keys.ts</code></a> の <code>keyLabels</code></td>
+<td>レーンの下に出すキーの名前（D・F・J・K など）</td>
+</tr>
+<tr>
+<td>型だけ使う</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の <code>Flash</code> / <code>Frame</code></td>
+<td>描画に渡す材料の形</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L18 <code>/** … */</code> — 説明用のコメント</li>
+<li>L32 <code>export class PlayEngine { … }</code>、L49 <code>constructor(…)</code>、<code>this.</code> — クラス</li>
+<li>L35 <code>private readonly bus</code>、L49 <code>constructor(private readonly opts: …)</code> — <code>private</code> と、コンストラクタの引数をそのまま中身にする書き方</li>
+<li>L54 <code>Array.from({ length: n }, () =&gt; false)</code> — 長さを決めて配列を作る</li>
+<li>L62 <code>for (const note of chart.notes)</code> — 配列を 1 つずつ取り出す繰り返し</li>
+<li>L67 <code>chart.notes.reduce(…)</code>、L106 <code>forEach</code>、L142 <code>map</code> — 配列の map・filter・reduce と forEach</li>
+<li>L71 <code>get state(): EngineState</code> — ゲッター</li>
+<li>L80 <code>async start(): Promise&lt;void&gt;</code> — <code>async</code> のメソッド（文法の索引の「async / await と Promise」）</li>
+<li>L96 <code>void this.opts.ctx.suspend()</code> — void 演算子</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong><code>start</code> の L85-89</strong>。曲の 0 秒を鳴らす <code>AudioContext</code> の時刻を 1 つ決める式です。この 1 つの数から、音の予約・判定・描画の時刻がすべて決まります。</li>
+<li><strong><code>judgeTime</code>（L121-125）と <code>frame</code> の L204</strong>。入力の補正は判定にだけ、表示の補正は描画にだけ効きます。</li>
+<li><strong><code>tick</code>（L178-192）</strong>。1 フレームでやることの順番（時計の合わせ直し → 音の予約 → オートプレイ → 見逃しの確定 → 終わりの判定）。</li>
+<li><strong><code>pausedAtMs</code>（L39, L95, L103, L195）</strong>。一時停止中にノーツが流れ続けないための 1 つの変数です。</li>
+</ul>
+<h2 id="3">3 つの時刻（先に読んでください）</h2>
+<p>このファイルには、物差しの違う時刻が 3 種類出てきます。取り違えると全部が分からなくなるので、先に整理します。</p>
+<table>
+<thead>
+<tr>
+<th>物差し</th>
+<th>単位</th>
+<th>どこで出てくるか</th>
+<th>性質</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>performance.now()</code></td>
+<td>ミリ秒</td>
+<td>描画のループの時刻（<code>nowMs</code>・<code>drawMs</code>）、入力の <code>e.timeStamp</code>、判定の光の <code>atMs</code></td>
+<td>ページを開いてからの経過時間。細かく、止まらず、巻き戻らない</td>
+</tr>
+<tr>
+<td><code>AudioContext</code> の <code>currentTime</code></td>
+<td>秒</td>
+<td><code>ctx.currentTime</code>、<code>startContextTime</code>、音を鳴らす時刻 <code>when</code></td>
+<td>音を作る仕組みの時計。音の部品を 128 サンプル（48 kHz なら約 2.7 ms）ずつ作るので刻みが粗い。<code>suspend()</code> すると<strong>止まる</strong></td>
+</tr>
+<tr>
+<td>曲の位置</td>
+<td>秒（曲の中の時間）</td>
+<td>ノーツの時刻 <code>note.time</code>、音の開始 <code>event[0]</code>、<code>judgeTime</code>、<code>Frame.songTime</code></td>
+<td>楽譜の上の時刻。テンポ <code>rate</code> を 0.75 にすると、曲の 1 秒が実時間の 1/0.75 ≈ 1.33 秒になる</td>
+</tr>
+</tbody>
+</table>
+<p><strong>音の時計と曲の位置</strong>は、<code>start</code> で決める <code>startContextTime</code>（曲の 0 秒を鳴らす <code>AudioContext</code> の時刻）でつながります。</p>
+<ul>
+<li>曲の位置 → 音の時計: <code>startContextTime + 曲の位置 / rate</code>（<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L65-67、<code>contextTimeOf</code>）</li>
+<li>音の時計 → 曲の位置: <code>(音の時計 − startContextTime) × rate</code></li>
+</ul>
+<p><strong><code>performance.now()</code> と音の時計</strong>は、<code>SongClock</code> が毎フレーム対応を取ります（<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L15-28, L44-51）。ブラウザの <code>getOutputTimestamp()</code> は「いまスピーカーから出ている音は、音の時計でいうと何秒のものか」と「それは <code>performance.now()</code> でいうと何ミリ秒か」の組を返します。その差 <code>offset</code> を覚えておけば、どの <code>performance.now()</code> の時刻についても、<strong>そのとき聞こえていた</strong>曲の位置を</p>
+<div class="codehilite"><pre><span></span><code>曲の位置 = (offset + performance.now() / 1000 − startContextTime) × rate
+</code></pre></div>
+
+<p>で出せます（<code>songTimeAt</code>、<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L58-62）。<code>ctx.currentTime</code> は「いま作っている音」の時刻で、スピーカーから聞こえるのはそれより出力の遅れ（数 ms〜数十 ms、Bluetooth なら 100 ms を超えることも）だけ後です。判定と描画は<strong>聞こえている位置</strong>、音の予約は<strong>作っている位置</strong>を基準にする、というのがこのファイルの使い分けです。</p>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>一時停止の直後は、曲の位置がわずかに先へ飛ぶことがあります。</strong> <code>pause</code> は <code>ctx.suspend()</code> の完了を待たずに <code>pausedAtMs</code> を記録します（L95-96）。止まるまでの間に音の時計が少し進むと、その分だけ再開後の位置が、止めた瞬間に描いていた位置より先になります。※ 推測: 止まるまでの時間はブラウザ次第で、どれくらい進むかは測っていません。</li>
+<li><strong><code>tick</code> は、片付け（<code>dispose</code>）の後に呼ばれると <code>true</code>（曲が終わった）を返します</strong>（L180）。いまは <code>Play.tsx</code> が片付けと同時に描画のループを止めるので問題になりませんが、ループを止めずに片付けると結果画面へ進んでしまいます。</li>
+<li><strong>オートプレイも入力の補正の影響を受けます</strong>（L184-185）。オートプレイは補正を入れた <code>judgeTime</code> がノーツの時刻を過ぎたら押すので、入力の補正を +50 ms にしていると、聞こえている音より 50 ms 遅れて押します（判定は PERFECT のまま）。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L10</p><p>取り込みと、進行役の状態の型です。L2・L4・L5・L6・L8 の <code>type</code> は型だけの取り込みです（文法の索引の「import type」）。</p>
+<p><code>EngineState</code>（L10）は 4 つの状態のどれかです（文法の索引の「型の別名 type と合併型 <code>|</code>」）。</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>意味</th>
+<th>次に進む先</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"ready"</code></td>
+<td>作ったばかり。開始の合図待ち</td>
+<td><code>start</code> で <code>playing</code></td>
+</tr>
+<tr>
+<td><code>"playing"</code></td>
+<td>プレイ中</td>
+<td><code>pause</code> で <code>paused</code>、曲が終わると <code>finished</code></td>
+</tr>
+<tr>
+<td><code>"paused"</code></td>
+<td>一時停止中</td>
+<td><code>resume</code> で <code>playing</code></td>
+</tr>
+<tr>
+<td><code>"finished"</code></td>
+<td>曲が終わった、または片付けた</td>
+<td>戻らない</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">SongClock</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../audio/clock&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Sampler</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../audio/sampler&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">EventScheduler</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../audio/scheduler&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Flash</span><span class="p">,</span><span class="w"> </span><span class="nx">Frame</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../render/highway&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="nx">MusicEvent</span><span class="p">,</span><span class="w"> </span><span class="nx">Song</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../song/types&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../storage&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">keyLabels</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./keys&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">GameSession</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">NoteResult</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">SessionStats</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./session&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">EngineState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ready&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;paused&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;finished&quot;</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L16</p><p>時間の定数です。</p>
+<table>
+<thead>
+<tr>
+<th>定数</th>
+<th>値</th>
+<th>物差し</th>
+<th>使う所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>START_DELAY</code></td>
+<td>0.15 秒</td>
+<td>実時間</td>
+<td>開始の操作から、音の時計で 0.15 秒後を時計の起点にする（L89）。予約が間に合う余裕</td>
+</tr>
+<tr>
+<td><code>LEAD_IN</code></td>
+<td>0.8 秒</td>
+<td>実時間</td>
+<td>最初のノーツが奥から流れ始める（または最初の音が鳴る）までの間（L88）</td>
+</tr>
+<tr>
+<td><code>TAIL_SECONDS</code></td>
+<td>2.5 秒</td>
+<td>曲の時間</td>
+<td>最後のノーツが終わってから、余韻を聞かせる長さ（L68）</td>
+</tr>
+<tr>
+<td><code>MAX_FLASHES</code></td>
+<td>24 個</td>
+<td>—</td>
+<td>判定の光を覚えておく数（L138）</td>
+</tr>
+<tr>
+<td><code>AUTOPLAY_PRESS_MS</code></td>
+<td>70 ms</td>
+<td>実時間</td>
+<td>オートプレイで、タップのノーツを押したままに見せる長さ（L173）</td>
+</tr>
+</tbody>
+</table>
+<p><code>TAIL_SECONDS</code> だけは L68 で曲の時間の値（<code>lastNote</code>）にそのまま足すので、曲の時間の 2.5 秒です。テンポ 50% なら実時間では 5 秒になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">START_DELAY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.15</span><span class="p">;</span><span class="w"> </span><span class="c1">// 秒。開始操作から最初の予約までの余裕</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">LEAD_IN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.8</span><span class="p">;</span><span class="w"> </span><span class="c1">// 秒（実時間）。最初のノーツが流れ始めるまでの間</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">TAIL_SECONDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2.5</span><span class="p">;</span><span class="w"> </span><span class="c1">// 最後のノーツの後、余韻を聞かせる時間</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_FLASHES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">24</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">AUTOPLAY_PRESS_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">70</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L17–L21</p><blockquote>
+<p><strong>文法: 説明コメント <code>/** */</code></strong></p>
+<p><code>//</code> は行末までのコメント、<code>/* … */</code> は範囲のコメントです。<code>/**</code> と星を 2 つにして始めると、すぐ下の関数や変数の<strong>説明書き</strong>として扱われ、エディタでその名前にマウスを重ねたときに表示されます。動きには関係しません。</p>
+</blockquote>
+<p><code>eventTimeMs(timeStamp, nowMs)</code> は、入力イベントの時刻 <code>e.timeStamp</code> を信じてよいかを確かめ、だめなら今の時刻で代わりにします。</p>
+<p>信じる条件は 3 つ全部です（<code>&amp;&amp;</code> で「かつ」）。</p>
+<ol>
+<li><code>timeStamp &gt; 0</code> — 0 や負の値ではない</li>
+<li><code>timeStamp &lt;= nowMs + 1</code> — 未来ではない。1 ms までは丸めの誤差として許す</li>
+<li><code>nowMs - timeStamp &lt; 1000</code> — 1 秒以上前ではない</li>
+</ol>
+<p><code>条件 ? timeStamp : nowMs</code> で、満たせば <code>timeStamp</code>、満たさなければ <code>nowMs</code> を返します（文法の索引の「条件演算子 <code>? :</code>」）。</p>
+<p><strong>なぜ要るのか。</strong> いまのブラウザでは <code>e.timeStamp</code> は <code>performance.now()</code> と同じ物差しですが、古いブラウザには 1970 年からのミリ秒（数兆という大きな数）を入れるものがありました。それを曲の位置に直すと、とんでもない値になって判定が壊れます。条件 2 がそれを弾きます。条件 3 は、タブを裏から戻した直後などに古いイベントが届いたときの備えです。</p>
+<p><code>export</code> が付いているのは、タイミングを測る画面（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L66）でも同じ確かめをするためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="cm">/** 入力イベントの時刻を performance.now() の時間軸で返す。壊れた値は今の時刻で代用する。 */</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">eventTimeMs</span><span class="p">(</span><span class="nx">timeStamp</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">timeStamp</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">timeStamp</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">nowMs</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">nowMs</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">timeStamp</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mf">1000</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">timeStamp</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">nowMs</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L22–L29</p><p><code>PlayEngine</code> を作るときに渡す材料です（文法の索引の「interface と readonly」）。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+<th>渡す側</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx</code></td>
+<td>ページに 1 つだけの <code>AudioContext</code></td>
+<td><code>Play.tsx</code> の L51 で <code>audioKit()</code> から</td>
+</tr>
+<tr>
+<td><code>sampler</code></td>
+<td>音源を読み、鳴らす役</td>
+<td>同上</td>
+</tr>
+<tr>
+<td><code>song</code></td>
+<td>曲のデータ（音のリスト <code>events</code>、難易度ごとの譜面 <code>charts</code>、小節線と拍の時刻など）</td>
+<td><code>Play.tsx</code> の L48</td>
+</tr>
+<tr>
+<td><code>difficulty</code></td>
+<td>難易度</td>
+<td>props</td>
+</tr>
+<tr>
+<td><code>settings</code></td>
+<td>設定（補正・テンポ・音量など）</td>
+<td><code>Play.tsx</code> の <code>settingsRef</code></td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">EngineOptions</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">ctx</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioContext</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">sampler</span><span class="o">:</span><span class="w"> </span><span class="kt">Sampler</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">song</span><span class="o">:</span><span class="w"> </span><span class="kt">Song</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="kt">Difficulty</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">settings</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L30–L48</p><blockquote>
+<p><strong>文法: class と constructor</strong></p>
+<p><code>class 名前 { … }</code> は、<strong>同じ形の物を作るための設計図</strong>です。設計図には次の 2 つを書きます。</p>
+<ul>
+<li><strong>中身（フィールド）</strong>: その物が持つ値。L33-47 の <code>session</code>・<code>lanes</code>・<code>clock</code> など</li>
+<li><strong>メソッド</strong>: その物にできること。L75 の <code>sound</code>、L80 の <code>start</code> など。関数と同じ書き方で、<code>function</code> を付けない</li>
+</ul>
+<p><code>new PlayEngine({ … })</code>（<code>Play.tsx</code> の L57）と書くと、設計図から物（インスタンス）が 1 つ作られます。作るときに 1 回だけ動くのが <code>constructor</code>（L49-69）です。</p>
+<p>メソッドの中の <code>this</code> は「いま操作されている、その物自身」です。<code>this.lanes</code> は「この進行役のレーン数」、<code>this.handle(…)</code> は「この進行役の <code>handle</code> メソッドを呼ぶ」という意味になります。</p>
+<p>フィールドに <code>= 値</code> を書くと、それが最初の値になります（L37 の <code>clock</code> は <code>null</code>、L40 の <code>stateValue</code> は <code>"ready"</code>）。値を書かないフィールドは、<code>constructor</code> の中で必ず入れます。</p>
+</blockquote>
+<p><code>private</code> は L49-69 の囲みで説明します。<code>readonly</code> は「作った後は入れ替えない」印です（文法の索引の「interface と readonly」）。</p>
+<p>フィールドを役割で分けると次のとおりです。</p>
+<table>
+<thead>
+<tr>
+<th>役割</th>
+<th>フィールド</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>外から読む</td>
+<td><code>session</code>（判定と成績）、<code>lanes</code>（レーン数）</td>
+</tr>
+<tr>
+<td>音</td>
+<td><code>bus</code>（音量のつまみ。全部の音がここを通る）、<code>scheduler</code>（音の予約係）、<code>keysound</code>（キー音を使うか）</td>
+</tr>
+<tr>
+<td>時刻</td>
+<td><code>clock</code>（開始するまで <code>null</code>）、<code>pausedAtMs</code>（一時停止中だけ数が入る）、<code>endTime</code>（曲を終える曲の位置）</td>
+</tr>
+<tr>
+<td>状態</td>
+<td><code>stateValue</code>（<code>EngineState</code>）</td>
+</tr>
+<tr>
+<td>描画の材料</td>
+<td><code>pressedLanes</code>（レーンごとに押しているか）、<code>flashes</code>（判定の光）、<code>labels</code>（キーの名前）</td>
+</tr>
+<tr>
+<td>オートプレイ</td>
+<td><code>autoCursor</code>（次に押すノーツの番号）、<code>autoReleaseAt</code>（レーンごとに離す曲の位置）</td>
+</tr>
+</tbody>
+</table>
+<p><code>pressedLanes</code> と <code>flashes</code> は <code>readonly boolean[]</code>（中身を書き換えない配列）で、変えるときは新しい配列を作って入れ替えます（L138, L142, L174）。描画側が受け取った配列が、描いている途中で書き換わらないようにするためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="cm">/** 1 プレイ分の進行。音の予約・時計・判定・入力をまとめ、描画用のフレームを作る。 */</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">PlayEngine</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">session</span><span class="o">:</span><span class="w"> </span><span class="kt">GameSession</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">bus</span><span class="o">:</span><span class="w"> </span><span class="kt">GainNode</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">scheduler</span><span class="o">:</span><span class="w"> </span><span class="kt">EventScheduler</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">clock</span><span class="o">:</span><span class="w"> </span><span class="kt">SongClock</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 一時停止した performance.now()。止まっている間は描画をこの時刻で固定する */</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">pausedAtMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">stateValue</span><span class="o">:</span><span class="w"> </span><span class="kt">EngineState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ready&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">pressedLanes</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">boolean</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">flashes</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">Flash</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">autoCursor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">autoReleaseAt</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">endTime</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">labels</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">string</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">keysound</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L49–L69</p><blockquote>
+<p><strong>文法: private とコンストラクタ引数のプロパティ</strong></p>
+<p><code>private</code> を付けたフィールドやメソッドは、<strong>このクラスの中からしか使えません</strong>。<code>Play.tsx</code> から <code>engine.clock</code> や <code>engine.handle(…)</code> と書くと、TypeScript が止めます。外に見せるのは、<code>private</code> の付いていない <code>session</code>・<code>lanes</code>・<code>start</code>・<code>press</code> などだけです。</p>
+<p>L49 の <code>constructor(private readonly opts: EngineOptions)</code> は、引数の前に <code>private</code> や <code>readonly</code> を付ける書き方です。これは</p>
+<p><code>ts
+private readonly opts: EngineOptions;
+constructor(opts: EngineOptions) {
+  this.opts = opts;
+}</code></p>
+<p>を短く書いたもので、受け取った引数がそのまま <code>this.opts</code> というフィールドになります。</p>
+</blockquote>
+<p>作るときにやること（L50-68）:</p>
+<ol>
+<li>選んだ難易度の譜面 <code>chart</code> を取り出す（L50）</li>
+<li>レーン数と、レーンの下に出すキーの名前を決める（L51-52）</li>
+<li>判定役 <code>GameSession</code> を作る（L53）。ノーツの並び・レーン数・テンポを渡す</li>
+<li>レーンごとの「押しているか」をすべて <code>false</code>、「オートプレイで離す位置」をすべて <code>-Infinity</code>（どんな数より小さい値。「まだ無い」の意味）にする（L54-55）</li>
+<li>音量のつまみ <code>bus</code> を作り、設定の音量にして、スピーカー（<code>ctx.destination</code>）につなぐ（L56-58）。この後の音はすべて <code>bus</code> を通るので、L114-116 でつまみを絞れば全部の音が止まる</li>
+<li>キー音を使うかを決める（L59）。オートプレイ中は使わない</li>
+<li>キー音を使うなら、ノーツが鳴らす音の番号を集める（L60-63）</li>
+<li>音の予約係 <code>EventScheduler</code> を作る（L64-66）</li>
+<li>曲を終える位置 <code>endTime</code> を決める（L67-68）</li>
+</ol>
+<blockquote>
+<p><strong>文法: Array.from</strong></p>
+<p><code>Array.from({ length: 4 }, () =&gt; false)</code> は、長さ 4 の配列を作り、各要素を関数の戻り値で埋めます。結果は <code>[false, false, false, false]</code> です。関数は 0, 1, 2, 3 番目の順に呼ばれます。</p>
+<p><strong>文法: for…of</strong></p>
+<p><code>for (const x of 配列) { … }</code> は、配列の要素を先頭から 1 つずつ <code>x</code> に入れて、中を繰り返します。番号を使わず要素だけが欲しいときの書き方です。L62 は 2 重になっていて、「譜面のノーツ 1 つずつについて、そのノーツが鳴らす音の番号 1 つずつを、集合に入れる」です。</p>
+</blockquote>
+<p><code>new Set&lt;number&gt;()</code>（L60）は文法の索引の「Map と Set」を見てください。同じ番号を 2 回入れても 1 つしか残りません。</p>
+<p><strong>キー音の仕組み（L59-66）。</strong> 譜面のノーツ 1 つ 1 つは <code>[時刻, レーン, 長さ, 鳴らす音の番号の並び]</code> の形で（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の <code>RawChartNote</code>）、4 番目が曲の音のリスト <code>events</code> の何番目の音を担当するかを指します。キー音を使うときは、それらの番号を <code>keysounds</code> に集めて予約係に渡します。予約係はこの集合に入っている音を<strong>予約しません</strong>（<a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a> の L23）。その音は、ノーツを叩けたときにだけ <code>handle</code>（L129-135）が鳴らします。</p>
+<p><strong>予約係に渡す関数（L64-66）。</strong> 予約係は、鳴らす時期が来た音を 1 つずつこの関数に渡します。関数は、音の開始の曲の位置 <code>event[0]</code> を <code>clock.contextTimeOf</code> で <code>AudioContext</code> の時刻に直して <code>sound</code> に渡します。<code>if (this.clock)</code> は、時計ができる前（開始前）に呼ばれても何もしないための確認です。</p>
+<blockquote>
+<p><strong>文法: map・filter・reduce</strong></p>
+<p>配列から別の値を作る道具です。どれも元の配列は書き換えません。</p>
+<table>
+<thead>
+<tr>
+<th>書き方</th>
+<th>結果</th>
+<th>例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>a.map(f)</code></td>
+<td>各要素に <code>f</code> を当てた結果の、同じ長さの新しい配列</td>
+<td><code>[1,2,3].map((x) =&gt; x * 2)</code> → <code>[2,4,6]</code></td>
+</tr>
+<tr>
+<td><code>a.filter(f)</code></td>
+<td><code>f</code> が真を返した要素だけの新しい配列</td>
+<td><code>[1,2,3].filter((x) =&gt; x &gt; 1)</code> → <code>[2,3]</code></td>
+</tr>
+<tr>
+<td><code>a.reduce(f, 初め)</code></td>
+<td><code>初め</code> から始めて、要素を 1 つずつ <code>f(これまで, 要素)</code> でまとめた 1 つの値</td>
+<td><code>[1,2,3].reduce((s, x) =&gt; s + x, 0)</code> → <code>6</code></td>
+</tr>
+<tr>
+<td><code>a.forEach(f)</code></td>
+<td>各要素で <code>f</code> を呼ぶだけ。何も返さない</td>
+<td>L106</td>
+</tr>
+</tbody>
+</table>
+<p><code>map</code> と <code>forEach</code> の関数は、2 つ目の引数に要素の番号を受け取れます（L106 の <code>lane</code>、L142 の <code>i</code>）。</p>
+</blockquote>
+<p>L67 の <code>reduce</code> は、ノーツ <code>n</code> ごとに「始まり <code>n[0]</code> + 長さ <code>n[2]</code>」、つまりそのノーツが終わる位置を求め、これまでの最大と比べて大きい方を残します。最後に残るのは、いちばん遅く終わるノーツの終わりです。ノーツが 1 つも無ければ初めの値 0 になります。</p>
+<p>L68 で、それに余韻の 2.5 秒を足した位置と、曲の長さ <code>song.duration</code> の、早い方を曲の終わりにします。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">  </span><span class="kr">constructor</span><span class="p">(</span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">opts</span><span class="o">:</span><span class="w"> </span><span class="kt">EngineOptions</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">chart</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">opts</span><span class="p">.</span><span class="nx">song</span><span class="p">.</span><span class="nx">charts</span><span class="p">[</span><span class="nx">opts</span><span class="p">.</span><span class="nx">difficulty</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">lanes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">lanes</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">labels</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">keyLabels</span><span class="p">(</span><span class="nx">chart</span><span class="p">.</span><span class="nx">lanes</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">GameSession</span><span class="p">(</span><span class="nx">chart</span><span class="p">.</span><span class="nx">notes</span><span class="p">,</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">lanes</span><span class="p">,</span><span class="w"> </span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Array</span><span class="p">.</span><span class="kr">from</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">length</span><span class="o">:</span><span class="w"> </span><span class="kt">chart.lanes</span><span class="w"> </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">autoReleaseAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Array</span><span class="p">.</span><span class="kr">from</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">length</span><span class="o">:</span><span class="w"> </span><span class="kt">chart.lanes</span><span class="w"> </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="o">-</span><span class="kc">Infinity</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">createGain</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">volume</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">.</span><span class="nx">connect</span><span class="p">(</span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">destination</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">keysound</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">keysound</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">keysounds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Set</span><span class="o">&lt;</span><span class="kt">number</span><span class="o">&gt;</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">keysound</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">note</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">notes</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">link</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">note</span><span class="p">[</span><span class="mf">3</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="nx">keysounds</span><span class="p">.</span><span class="nx">add</span><span class="p">(</span><span class="nx">link</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">scheduler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">EventScheduler</span><span class="p">(</span><span class="nx">opts</span><span class="p">.</span><span class="nx">song</span><span class="p">.</span><span class="nx">events</span><span class="p">,</span><span class="w"> </span><span class="nx">keysounds</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">sound</span><span class="p">(</span><span class="nx">event</span><span class="p">,</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nx">contextTimeOf</span><span class="p">(</span><span class="nx">event</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">lastNote</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">notes</span><span class="p">.</span><span class="nx">reduce</span><span class="p">(</span><span class="p">(</span><span class="nx">m</span><span class="p">,</span><span class="w"> </span><span class="nx">n</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">m</span><span class="p">,</span><span class="w"> </span><span class="nx">n</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">n</span><span class="p">[</span><span class="mf">2</span><span class="p">]</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">endTime</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nx">opts</span><span class="p">.</span><span class="nx">song</span><span class="p">.</span><span class="nx">duration</span><span class="p">,</span><span class="w"> </span><span class="nx">lastNote</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">TAIL_SECONDS</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L70–L73</p><blockquote>
+<p><strong>文法: ゲッター get</strong></p>
+<p><code>get state(): EngineState { … }</code> は、外から <code>engine.state</code> と<strong>値のように</strong>読んだとき、この関数が動いて戻り値が返る、という書き方です。呼ぶ側は <code>engine.state()</code> と括弧を付けません。</p>
+<p><code>set</code> を書いていないので、外から <code>engine.state = "playing"</code> と書き換えることはできません。</p>
+</blockquote>
+<p>本当の状態は <code>private</code> の <code>stateValue</code> にしまい、外には読むことだけを許しています。<code>Play.tsx</code> はキー入力のたびに <code>engine.state</code> を見て、開始・一時停止・判定のどれにするかを決めます（<code>Play.tsx</code> の L116-133）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">  </span><span class="nx">get</span><span class="w"> </span><span class="nx">state</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">EngineState</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L74–L78</p><p>1 つの音を、<code>AudioContext</code> の時刻 <code>when</code> に鳴らします。</p>
+<p>L76 の <code>const [, pitch, duration, velocity] = event;</code> は配列の分割代入です（文法の索引の「分割代入」）。先頭のコンマの前が空なのは、「1 番目（開始の曲の位置）は使わないので取り出さない」という意味です。音の高さ（MIDI の番号）・長さ（曲の秒）・強さ（ベロシティ）を取り出します。</p>
+<p>鳴らす長さは <code>duration / rate</code> です。音のリストの長さは曲の時間なので、テンポ 50% なら実時間で 2 倍の長さ鳴らします。音の高さは録音を速く・遅く再生して変えるので（<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の L53）、テンポを変えても高さは変わりません。</p>
+<p>出口は <code>this.bus</code>（音量のつまみ）です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">sound</span><span class="p">(</span><span class="nx">event</span><span class="o">:</span><span class="w"> </span><span class="kt">MusicEvent</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="p">,</span><span class="w"> </span><span class="nx">duration</span><span class="p">,</span><span class="w"> </span><span class="nx">velocity</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">event</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">sampler</span><span class="p">.</span><span class="nx">play</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="p">,</span><span class="w"> </span><span class="nx">velocity</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="p">,</span><span class="w"> </span><span class="nx">duration</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L79–L90</p><p><strong>曲を始めます。</strong> <code>Play.tsx</code> の <code>begin</code>（L107-109）から、キーかタップの操作の中で呼ばれます。</p>
+<p><code>async</code> のメソッドなので、中の <code>await</code> で待つ間に呼んだ側へ戻ります（文法の索引の「async / await と Promise」）。戻り値の型 <code>Promise&lt;void&gt;</code> は「終わったことだけを知らせ、値は返さない」という意味です。</p>
+<ol>
+<li><strong>二重に始めない</strong>（L81）。開始待ちでなければ何もしない</li>
+<li><strong>状態を先に <code>playing</code> にする</strong>（L83）。<code>await</code> の間にもう一度キーが押されても、1 で弾くため</li>
+<li><strong>音の時計を動かす</strong>（L84）。ブラウザは、利用者の操作の中でしか音を出させないので、ここで動かす</li>
+<li><strong>曲の何秒から始めるかを決める</strong>（L85-88）</li>
+<li><strong>時計を作る</strong>（L89）</li>
+</ol>
+<p>L82 の <code>const { ctx, settings, song } = this.opts;</code> は分割代入で、<code>this.opts.ctx</code> などを短い名前で使えるようにしています。L86 の <code>notes[0]?.[0] ?? 0</code> は「最初のノーツがあればその時刻、無ければ 0」です（文法の索引の「オプショナルチェーン <code>?.</code> と <code>??</code>」。<code>?.[0]</code> は添字で取り出す版）。</p>
+<p><strong>始める位置 <code>startSong</code>（L88）</strong></p>
+<div class="codehilite"><pre><span></span><code>startSong = min(0, 最初のノーツ − ノーツが流れてくる時間 × rate, 最初の音) − LEAD_IN × rate
+</code></pre></div>
+
+<p>ノーツは、判定線に届く <code>approachSeconds</code>（実時間、既定 1.6 秒）前に奥に現れます。曲の時間に直すと <code>approachSeconds × rate</code> です。<code>min</code> の中の 3 つは「曲の 0 秒」「最初のノーツが奥に現れる位置」「最初の音」で、そのいちばん早いものから、さらに <code>LEAD_IN</code>（実時間 0.8 秒）分さかのぼった位置から始めます。こうすると、時計が動き出してから 0.8 秒は何も起きず、その後に最初のノーツが現れるか最初の音が鳴ります。</p>
+<p><strong>時計の起点（L89）</strong></p>
+<div class="codehilite"><pre><span></span><code>startContextTime = ctx.currentTime + START_DELAY − startSong / rate
+</code></pre></div>
+
+<p>時計の起点 <code>startContextTime</code> は「曲の 0 秒を鳴らす音の時計の時刻」です。上の式は、「いまから 0.15 秒後（<code>START_DELAY</code>）に、曲の <code>startSong</code> 秒の位置にいる」ように決めています。曲の位置を音の時計に直す式 <code>startContextTime + 曲の位置 / rate</code> に <code>startSong</code> を入れると、<code>ctx.currentTime + 0.15</code> になることで確かめられます。</p>
+<p><strong>数で追うと</strong>（既定の設定、テンポ 100%、最初のノーツが 1.2 秒、最初の音が 0 秒の曲）:</p>
+<ul>
+<li><code>startSong = min(0, 1.2 − 1.6, 0) − 0.8 = −0.4 − 0.8 = −1.2</code></li>
+<li><code>startContextTime = ctx.currentTime + 0.15 + 1.2 = ctx.currentTime + 1.35</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>音の時計</th>
+<th>曲の位置</th>
+<th>起きること</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>currentTime + 0.15</code></td>
+<td>−1.2 秒</td>
+<td>時計の起点。何も無い</td>
+</tr>
+<tr>
+<td><code>currentTime + 0.95</code></td>
+<td>−0.4 秒</td>
+<td>最初のノーツが奥に現れる</td>
+</tr>
+<tr>
+<td><code>currentTime + 1.35</code></td>
+<td>0 秒</td>
+<td>曲の最初の音が鳴る</td>
+</tr>
+<tr>
+<td><code>currentTime + 2.55</code></td>
+<td>1.2 秒</td>
+<td>最初のノーツが判定線に届く</td>
+</tr>
+</tbody>
+</table>
+<p><strong>なぜ <code>START_DELAY</code> が要るのか。</strong> 時計を作った直後の <code>currentTime</code> ちょうどに鳴らす音を予約しても、予約が届く頃には音の時計はもう先へ進んでいて、鳴らし損ねます。0.15 秒の余裕を取り、最初の予約が必ず未来の時刻になるようにしています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="w">  </span><span class="k">async</span><span class="w"> </span><span class="nx">start</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;ready&quot;</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">song</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">resume</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">rate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">firstNote</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">song</span><span class="p">.</span><span class="nx">charts</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">difficulty</span><span class="p">]</span><span class="p">.</span><span class="nx">notes</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="o">?</span><span class="p">.</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">firstSound</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">song</span><span class="p">.</span><span class="nx">events</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="o">?</span><span class="p">.</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">startSong</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">firstNote</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">rate</span><span class="p">,</span><span class="w"> </span><span class="nx">firstSound</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">LEAD_IN</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">SongClock</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">currentTime</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">START_DELAY</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">startSong</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">rate</span><span class="p">,</span><span class="w"> </span><span class="nx">rate</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L91–L97</p><p><strong>一時停止。</strong> プレイ中で、時計があるときだけ働きます（L93）。</p>
+<ol>
+<li>状態を <code>paused</code> にする</li>
+<li>いまの <code>performance.now()</code> を <code>pausedAtMs</code> に覚える（L95）</li>
+<li>音の時計を止める（L96）</li>
+</ol>
+<blockquote>
+<p><strong>文法: void 演算子</strong></p>
+<p><code>void 式</code> は、式を実行して、その結果を捨てます。L96 の <code>ctx.suspend()</code> は Promise（「止め終わったら知らせる」約束）を返しますが、ここでは止め終わるのを待ちません。何も付けずに書くと、検査ツールが「Promise を待ちも受け止めもしていない。うっかりでは？」と警告します。<code>void</code> を付けて「わざと捨てている」と示します。<code>Play.tsx</code> の L36・L108 の <code>void</code> も同じ意味です。</p>
+</blockquote>
+<p><strong>音の時計を止めると、全部が一緒に止まります。</strong> <code>ctx.suspend()</code> で <code>AudioContext</code> の <code>currentTime</code> が進まなくなり、すでに 0.4 秒先まで予約してあった音も、その時刻のまま待たされます。再開すれば、予約した音は元の間隔のまま鳴り出します。音の予約を取り消して作り直す必要がありません。</p>
+<p><strong>なぜ <code>pausedAtMs</code> が要るのか。</strong> 描画のループ（<code>Play.tsx</code> の L78-98）は一時停止中も回り、毎フレーム <code>frame(performance.now())</code> を呼びます。曲の位置は <code>songTimeAt(nowMs)</code> = <code>(offset + nowMs / 1000 − startContextTime) × rate</code> で出すので、<code>offset</code> を合わせ直さないまま <code>nowMs</code> だけが進むと、<strong>音は止まっているのにノーツが流れ続けます</strong>。一時停止中は <code>tick</code> が <code>clock.update</code> を呼ばないので（L180）、<code>offset</code> は止めた瞬間のままです。そこで <code>frame</code> は、一時停止中は <code>nowMs</code> の代わりに <code>pausedAtMs</code> を使い（L195）、止めた瞬間の絵を描き続けます。判定の光の年齢（<code>nowMs − atMs</code>）も止まるので、光も止まって見えます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl"><span class="w">  </span><span class="nx">pause</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;paused&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pausedAtMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl"><span class="w">    </span><span class="ow">void</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">suspend</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L98–L109</p><p><strong>再開。</strong></p>
+<ol>
+<li>一時停止中でなければ何もしない（L100）</li>
+<li>音の時計を動かし直し、動くまで待つ（L101）</li>
+<li><code>clock.reset()</code>（L102）。<code>offset</code> を捨て、次に使うときに測り直させる</li>
+<li><code>pausedAtMs</code> を空にし、状態を <code>playing</code> に戻す（L103-104）</li>
+<li>一時停止中に離したレーンの終わりを判定する（L105-108）</li>
+</ol>
+<p><strong>3 の <code>reset</code> で何が起きるか。</strong> 一時停止中、音の時計は止まっていたのに <code>performance.now()</code> は進んでいました。たとえば 10 秒止めると、<code>getOutputTimestamp()</code> が返す「音の時計 − <code>performance.now()</code>/1000」は 10 秒小さくなります。測り直した <code>offset</code> を使えば、<code>songTimeAt</code> は止めた位置の続きを返します。</p>
+<p><code>SongClock</code> は普段、毎フレームの測り直しの揺れを少しずつならして使いますが（係数 0.05）、25 ms より大きく変わったときはすぐ新しい値に乗り換えます（<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L44-51）。<code>reset</code> で <code>offset</code> を空にしておけば、次の 1 回目でかならず新しい値を採ります。</p>
+<p><strong>5 の理由。</strong> 一時停止中にキーを離すと、<code>release</code>（L153-159）は「離した」と記録するだけで判定はしません（状態が <code>playing</code> でないため）。ロングノーツを押したまま止め、止まっている間に指を離した場合、再開した時点で「押していないのに押し続けている」ことになります。そこで再開の瞬間に、押していないレーンについて <code>session.release</code> を呼び、ロングノーツの途中なら終わりを判定します。ロングノーツを押していないレーンでは <code>session.release</code> は何もせず <code>null</code> を返し、<code>handle</code> も何もしません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl"><span class="w">  </span><span class="k">async</span><span class="w"> </span><span class="nx">resume</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;paused&quot;</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl"><span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">resume</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="o">?</span><span class="p">.</span><span class="nx">reset</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L103" href="#L103">103</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pausedAtMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L104" href="#L104">104</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L105" href="#L105">105</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L106" href="#L106">106</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="p">.</span><span class="nx">forEach</span><span class="p">(</span><span class="p">(</span><span class="nx">down</span><span class="p">,</span><span class="w"> </span><span class="nx">lane</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L107" href="#L107">107</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">down</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">release</span><span class="p">(</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">judgeTime</span><span class="p">(</span><span class="nx">now</span><span class="p">)</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L108" href="#L108">108</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L109" href="#L109">109</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L110–L118</p><p><strong>片付け。</strong> <code>Play.tsx</code> が閉じられるときに呼ばれます（<code>Play.tsx</code> の L65）。</p>
+<ul>
+<li>L114 <code>cancelScheduledValues(t)</code>: 音量のつまみに予約してあった変化を取り消す</li>
+<li>L115 <code>setTargetAtTime(0, t, 0.03)</code>: いまから音量を 0 に向けてなめらかに下げる。0.03 秒は「残りが約 37% になるまでの時間」で、0.09 秒後には約 5%、0.15 秒後には 1% 未満になる（いきなり 0 にすると「プツッ」と鳴るため）</li>
+<li>L116 0.2 秒後に、つまみをスピーカーから外す。予約済みの音は鳴っても、もう聞こえない</li>
+<li>L117 状態を <code>finished</code> にする</li>
+</ul>
+<p>予約係は 0.4 秒先まで音を予約しているので、片付けずに画面を閉じると、結果画面に切り替わった後も数音鳴り続けます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L110" href="#L110">110</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L111" href="#L111">111</a></td><td class="cl"><span class="w">  </span><span class="nx">dispose</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L112" href="#L112">112</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ctx</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L113" href="#L113">113</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">currentTime</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L114" href="#L114">114</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">cancelScheduledValues</span><span class="p">(</span><span class="nx">t</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L115" href="#L115">115</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">setTargetAtTime</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="mf">0.03</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L116" href="#L116">116</a></td><td class="cl"><span class="w">    </span><span class="nb">window</span><span class="p">.</span><span class="nx">setTimeout</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">bus</span><span class="p">.</span><span class="nx">disconnect</span><span class="p">(</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="mf">200</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L117" href="#L117">117</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;finished&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L118" href="#L118">118</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L119–L125</p><p><strong>判定に使う曲の位置</strong>です。<code>perfMs</code> は <code>performance.now()</code> の物差しの時刻（入力なら <code>e.timeStamp</code>、毎フレームの処理なら描画の時刻）です。</p>
+<div class="codehilite"><pre><span></span><code>judgeTime = (その時刻に聞こえていた曲の位置) − 入力の補正(ms) / 1000 × rate
+</code></pre></div>
+
+<p><strong>入力の補正</strong>（<code>inputOffsetMs</code>、−300〜+300 ms）は、<strong>音が聞こえてから押すまで</strong>のずれを打ち消します。正の値にすると、判定に使う位置が手前（早い側）にずれるので、「聞こえた音より遅めに押しても合う」ことになります。たとえば +30 ms なら、ノーツの音が聞こえてから 30 ms 後に押したときに差が 0 になります。</p>
+<p>補正はミリ秒（実時間）で持っているので、<code>/ 1000</code> で秒に、<code>× rate</code> で曲の時間に直してから引きます。テンポ 50% のとき、実時間の 30 ms は曲の時間の 15 ms です。</p>
+<p>時計がまだ無い（開始前）なら <code>-Infinity</code> を返します。<code>GameSession.press</code> はこれをどのノーツからも遠すぎる押下とみなして無視します（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L99-101、判定の幅の外は <code>null</code>）。</p>
+<p>この値はタイミングを測る画面（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a>）や結果画面の提案（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L27, L74）で決まります。どちらも「押した時刻 − 正しい時刻」の中央値を使います（<a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a>）。タイミングを測る画面は測った中央値をそのまま補正にし（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L115）、結果画面の提案はいまの補正に中央値を足します（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L119" href="#L119">119</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L120" href="#L120">120</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 入力の補正を入れた、判定に使う曲の位置。 */</span></td></tr><tr><td class="ln"><a id="L121" href="#L121">121</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">judgeTime</span><span class="p">(</span><span class="nx">perfMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L122" href="#L122">122</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L123" href="#L123">123</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">clock</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="kc">Infinity</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L124" href="#L124">124</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">songTimeAt</span><span class="p">(</span><span class="nx">perfMs</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L125" href="#L125">125</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L126–L139</p><p>判定の結果 <code>result</code> を受け取り、<strong>キー音</strong>と<strong>判定の光</strong>を出します。<code>atMs</code> は <code>performance.now()</code> の物差しの、処理した時刻です。</p>
+<p><strong>キー音（L129-135）</strong>: 始点（<code>head</code>）を MISS 以外で叩けたら、そのノーツが担当する音を<strong>いますぐ</strong>（<code>ctx.currentTime</code>）鳴らします。曲の音のように先に予約するのではないので、叩いてから音が出るまでに出力の遅れの分だけかかります。MISS や見逃しでは鳴らないので、叩かなかった音は聞こえません。</p>
+<p><strong>判定の光（L136-138）</strong>: ロングノーツの終わりを上手に離せた（<code>tail</code> の <code>perfect</code>）ときは光を出さずに戻ります（L136）。それ以外は、レーン・判定・ずれ・時刻を <code>flash</code> にまとめ、光の並びの後ろに足します。</p>
+<p>L138 の <code>[...this.flashes.slice(-(MAX_FLASHES - 1)), flash]</code> は、</p>
+<ol>
+<li><code>slice(-23)</code> で、いまの並びの<strong>後ろから 23 個</strong>を取り出す（23 個より少なければ全部）</li>
+<li><code>...</code> でその中身を並べ、最後に新しい <code>flash</code> を足した新しい配列を作る（文法の索引の「スプレッド構文 <code>...</code>」）</li>
+</ol>
+<p>で、常に新しい方から最大 24 個だけを残します。古い光は描画側で消えるので（判定の光は 0.32 秒、文字は 0.6 秒。<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L28-30）、24 個あれば足ります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L126" href="#L126">126</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L127" href="#L127">127</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">handle</span><span class="p">(</span><span class="nx">result</span><span class="o">:</span><span class="w"> </span><span class="kt">NoteResult</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nx">atMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L128" href="#L128">128</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">result</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L129" href="#L129">129</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">part</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;head&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">result</span><span class="p">.</span><span class="nx">judgement</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;miss&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">keysound</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L130" href="#L130">130</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">currentTime</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L131" href="#L131">131</a></td><td class="cl"><span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">link</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">result</span><span class="p">.</span><span class="nx">note</span><span class="p">.</span><span class="nx">links</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L132" href="#L132">132</a></td><td class="cl"><span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">event</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">song</span><span class="p">.</span><span class="nx">events</span><span class="p">[</span><span class="nx">link</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L133" href="#L133">133</a></td><td class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">sound</span><span class="p">(</span><span class="nx">event</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L134" href="#L134">134</a></td><td class="cl"><span class="w">      </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L135" href="#L135">135</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L136" href="#L136">136</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">result</span><span class="p">.</span><span class="nx">part</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;tail&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">result</span><span class="p">.</span><span class="nx">judgement</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;perfect&quot;</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L137" href="#L137">137</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">flash</span><span class="o">:</span><span class="w"> </span><span class="kt">Flash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">lane</span><span class="o">:</span><span class="w"> </span><span class="kt">result.note.lane</span><span class="p">,</span><span class="w"> </span><span class="nx">judgement</span><span class="o">:</span><span class="w"> </span><span class="kt">result.judgement</span><span class="p">,</span><span class="w"> </span><span class="nx">deltaMs</span><span class="o">:</span><span class="w"> </span><span class="kt">result.deltaMs</span><span class="p">,</span><span class="w"> </span><span class="nx">atMs</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L138" href="#L138">138</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">flashes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="p">...</span><span class="k">this</span><span class="p">.</span><span class="nx">flashes</span><span class="p">.</span><span class="nx">slice</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="nx">MAX_FLASHES</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">flash</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L139" href="#L139">139</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L140–L143</p><p>レーン <code>lane</code> の「押しているか」を <code>down</code> に変えた<strong>新しい配列</strong>を作って入れ替えます。<code>map</code> の 2 つ目の引数 <code>i</code> は要素の番号で、<code>i === lane</code> の要素だけを <code>down</code> に、ほかは元の値 <code>v</code> のままにします。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L140" href="#L140">140</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L141" href="#L141">141</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">setPressed</span><span class="p">(</span><span class="nx">lane</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">down</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L142" href="#L142">142</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">lane</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">down</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">v</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L143" href="#L143">143</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L144–L159</p><p><strong>押す・離す。</strong> <code>Play.tsx</code> のキーやタッチのハンドラから、レーン番号とイベントの時刻（<code>e.timeStamp</code>）を受け取ります。</p>
+<p><strong>押す（L145-151）</strong></p>
+<ol>
+<li>レーンが範囲外か、すでに押しているなら何もしない（L146）。同じレーンを 2 本の指で押しても判定は 1 回だけ</li>
+<li>「押している」にする（L147）。レーンが光るのはこのため。一時停止中や開始前でも光る</li>
+<li>プレイ中でない、またはオートプレイ中なら、ここで終わり（L148）</li>
+<li><code>eventTimeMs</code> で時刻を確かめ、<code>judgeTime</code> で曲の位置に直し、<code>session.press</code> で判定して、<code>handle</code> で光とキー音を出す（L149-150）</li>
+</ol>
+<p>L150 は内側から順に評価されます。</p>
+<ol>
+<li><code>eventTimeMs(timeStamp, now)</code> — イベントの時刻（だめなら今の時刻）</li>
+<li><code>this.judgeTime(…)</code> — そのとき聞こえていた曲の位置から入力の補正を引いた値</li>
+<li><code>this.session.press(lane, …)</code> — そのレーンのいちばん手前の未判定ノーツとの差を実時間のミリ秒に直し、判定の幅に入っていれば PERFECT〜MISS を返す。幅（±160 ms）の外なら <code>null</code>（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L90-111、<a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a>）</li>
+<li><code>this.handle(…, now)</code> — 光の時刻は、処理した今の時刻にする</li>
+</ol>
+<p><strong>離す（L153-159）</strong> も同じ流れです。範囲外でなければ「離した」にし、プレイ中でオートプレイでなければ、<code>session.release</code> でロングノーツの終わりを判定します。終わりの 150 ms 前より後に離せば成功です（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L114-121、<a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a> の L14）。</p>
+<p><strong>時刻の流れのまとめ</strong>: キーを押した瞬間の <code>e.timeStamp</code>（<code>performance.now()</code> の物差し）→ <code>songTimeAt</code> でそのとき聞こえていた曲の位置 → 入力の補正を引く → ノーツの時刻との差 → <code>÷ rate</code> で実時間のミリ秒 → 判定。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L144" href="#L144">144</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L145" href="#L145">145</a></td><td class="cl"><span class="w">  </span><span class="nx">press</span><span class="p">(</span><span class="nx">lane</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">timeStamp</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L146" href="#L146">146</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">lane</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">lane</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">lanes</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="p">[</span><span class="nx">lane</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L147" href="#L147">147</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">setPressed</span><span class="p">(</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L148" href="#L148">148</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L149" href="#L149">149</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L150" href="#L150">150</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">press</span><span class="p">(</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">judgeTime</span><span class="p">(</span><span class="nx">eventTimeMs</span><span class="p">(</span><span class="nx">timeStamp</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L151" href="#L151">151</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L152" href="#L152">152</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L153" href="#L153">153</a></td><td class="cl"><span class="w">  </span><span class="nx">release</span><span class="p">(</span><span class="nx">lane</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">timeStamp</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L154" href="#L154">154</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">lane</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">lane</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">lanes</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L155" href="#L155">155</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">setPressed</span><span class="p">(</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L156" href="#L156">156</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L157" href="#L157">157</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L158" href="#L158">158</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">release</span><span class="p">(</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">judgeTime</span><span class="p">(</span><span class="nx">eventTimeMs</span><span class="p">(</span><span class="nx">timeStamp</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L159" href="#L159">159</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L160–L175</p><p><strong>オートプレイ。</strong> 毎フレーム <code>tick</code> から、判定に使う曲の位置 <code>judgeTime</code> と今の時刻 <code>nowMs</code> を受け取ります。</p>
+<p><strong>押す（L164-171）</strong>: ノーツは時刻の順に並んでいるので（<code>GameSession</code> が並べ替える）、<code>autoCursor</code> が指すノーツから順に、時刻が <code>judgeTime</code> を過ぎたものを全部押します。1 フレームの間に何個過ぎていても、<code>while</code> で全部処理します。</p>
+<ol>
+<li><code>session.update(note.time)</code> で、そのノーツの時刻までの時間経過を先に確定させる（L167）。前のロングノーツの終わりがこのノーツより前なら、ここで終わりが PERFECT になる。フレームが詰まって 1 度に何個も進むときに、終わりと次の始点の順番が入れ替わらないようにするためです</li>
+<li><code>session.press(note.lane, note.time)</code> で、<strong>ノーツの時刻ちょうど</strong>に押したことにする（L168）。差は 0 なので必ず PERFECT</li>
+<li>そのレーンを離す位置を、ノーツの終わり（タップなら始点と同じ）にする（L169）</li>
+<li>次のノーツへ（L170）</li>
+</ol>
+<p>L164 の <code>notes[this.autoCursor]!</code> の <code>!</code> は文法の索引の「非 null 表明 <code>!</code>」です。直前の <code>this.autoCursor &lt; notes.length</code> で範囲内だと分かっているので、「<code>undefined</code> ではない」と TypeScript に伝えています。</p>
+<p><strong>離す</strong>: オートプレイは <code>session.release</code> を呼びません。ロングノーツの終わりは <code>tick</code> の L186 の <code>session.update</code> が、終わりの位置を過ぎた時点で PERFECT として確定させます（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L134-138）。</p>
+<p><strong>押しているように見せる（L173-174）</strong>: レーンを光らせるかどうかは、「<code>judgeTime</code> が離す位置 + 70 ms 以内か」で決めます。70 ms は実時間なので、曲の時間に直すため <code>/ 1000 × rate</code> しています。タップのノーツでは 70 ms だけ光り、ロングノーツでは終わりから 70 ms 後まで光ります。<code>autoReleaseAt</code> の最初の値 <code>-Infinity</code> は、どんな位置と比べても「過ぎている」ので、一度も押していないレーンは光りません。</p>
+<p>利用者のキー入力は、オートプレイ中は判定に使いません（L148, L156）。押したレーンは一瞬光りますが、次のフレームで L174 が上書きします。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L160" href="#L160">160</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L161" href="#L161">161</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">autoplay</span><span class="p">(</span><span class="nx">judgeTime</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L162" href="#L162">162</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">notes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">notes</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L163" href="#L163">163</a></td><td class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">releaseAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">autoReleaseAt</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L164" href="#L164">164</a></td><td class="cl"><span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">autoCursor</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">notes</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">notes</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">autoCursor</span><span class="p">]</span><span class="o">!</span><span class="p">.</span><span class="nx">time</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">judgeTime</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L165" href="#L165">165</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">note</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">notes</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">autoCursor</span><span class="p">]</span><span class="o">!</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L166" href="#L166">166</a></td><td class="cl"><span class="w">      </span><span class="c1">// フレームが詰まって前のロングノーツの終点を飛び越えても、先に終点を確定させてから押す</span></td></tr><tr><td class="ln"><a id="L167" href="#L167">167</a></td><td class="cl"><span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">result</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">note</span><span class="p">.</span><span class="nx">time</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="nx">result</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L168" href="#L168">168</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">press</span><span class="p">(</span><span class="nx">note</span><span class="p">.</span><span class="nx">lane</span><span class="p">,</span><span class="w"> </span><span class="nx">note</span><span class="p">.</span><span class="nx">time</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L169" href="#L169">169</a></td><td class="cl"><span class="w">      </span><span class="nx">releaseAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">releaseAt</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">v</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">note</span><span class="p">.</span><span class="nx">lane</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">note</span><span class="p">.</span><span class="nx">time</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">note.duration</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">v</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L170" href="#L170">170</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">autoCursor</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mf">1</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L171" href="#L171">171</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L172" href="#L172">172</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">autoReleaseAt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">releaseAt</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L173" href="#L173">173</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">holdSong</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">AUTOPLAY_PRESS_MS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L174" href="#L174">174</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">pressedLanes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">releaseAt</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">until</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">judgeTime</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">until</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">holdSong</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L175" href="#L175">175</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L176–L192</p><p><strong>毎フレーム呼ばれる進行</strong>です。<code>Play.tsx</code> の L81 から、描画のループの時刻 <code>nowMs</code>（<code>performance.now()</code>）で呼ばれます。曲が終わったら <code>true</code> を返します。</p>
+<ol>
+<li><strong>プレイ中でなければ何もしない</strong>（L180）。開始前・一時停止中は <code>false</code>、終わった後は <code>true</code> を返す</li>
+<li><strong>時計を合わせ直す</strong>（L181）。<code>clock.update</code> が <code>performance.now()</code> と音の時計の対応 <code>offset</code> を測り直し、揺れをならす</li>
+<li><strong>音を予約する</strong>（L183）</li>
+<li><strong>判定に使う曲の位置を出す</strong>（L184）</li>
+<li><strong>オートプレイなら押す</strong>（L185）</li>
+<li><strong>時間経過の判定</strong>（L186）。判定の幅（125 ms）を過ぎても押されなかったノーツを MISS にし、押し続けて終わりまで来たロングノーツを PERFECT にする（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L132-158）。結果は 1 つずつ <code>handle</code> へ</li>
+<li><strong>終わりの判定</strong>（L187-190）。全部のノーツが判定済みで、聞こえている位置が <code>endTime</code> を過ぎたら <code>finished</code> にして <code>true</code> を返す</li>
+</ol>
+<p><strong>3 の予約の基準（L183）。</strong> 予約係に渡すのは</p>
+<div class="codehilite"><pre><span></span><code>(ctx.currentTime − startContextTime) × rate
+</code></pre></div>
+
+<p>で、これは<strong>音の時計がいま作っている</strong>曲の位置です。判定や描画に使う「聞こえている位置」は、これより出力の遅れの分だけ遅れています。予約は「これから作る音」を決める作業なので、作っている位置から 0.4 秒先（<a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a> の L13 の <code>lookahead</code>、曲の時間）までを予約します。聞こえている位置を基準にすると、出力の遅れが大きい端末（Bluetooth など）では予約が遅れて、鳴らすべき時刻を過ぎてしまいます。予約係は 0.05 秒より古くなった音を鳴らさずに飛ばします（同 L23）。</p>
+<p><strong>7 で <code>songTimeAt</code> を使う理由。</strong> 終わりの判定には入力の補正を入れない、聞こえている位置そのものを使います。余韻（<code>TAIL_SECONDS</code>）を実際に聞かせてから結果画面へ進むためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L176" href="#L176">176</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L177" href="#L177">177</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 毎フレーム呼ぶ。曲が終わったら true。 */</span></td></tr><tr><td class="ln"><a id="L178" href="#L178">178</a></td><td class="cl"><span class="w">  </span><span class="nx">tick</span><span class="p">(</span><span class="nx">nowMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L179" href="#L179">179</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L180" href="#L180">180</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">clock</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;playing&quot;</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;finished&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L181" href="#L181">181</a></td><td class="cl"><span class="w">    </span><span class="nx">clock</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L182" href="#L182">182</a></td><td class="cl"><span class="w">    </span><span class="c1">// 予約は「いま聞こえている位置」ではなく AudioContext の現在時刻から先を見る</span></td></tr><tr><td class="ln"><a id="L183" href="#L183">183</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">scheduler</span><span class="p">.</span><span class="nx">pump</span><span class="p">(</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">currentTime</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">startContextTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">rate</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L184" href="#L184">184</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">t</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">judgeTime</span><span class="p">(</span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L185" href="#L185">185</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L186" href="#L186">186</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">result</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">t</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">handle</span><span class="p">(</span><span class="nx">result</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L187" href="#L187">187</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">finished</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">songTimeAt</span><span class="p">(</span><span class="nx">nowMs</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">endTime</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L188" href="#L188">188</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">stateValue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;finished&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L189" href="#L189">189</a></td><td class="cl"><span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L190" href="#L190">190</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L191" href="#L191">191</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L192" href="#L192">192</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L193–L215</p><p><strong>描画の材料をまとめます。</strong> <code>Play.tsx</code> の L95 から、描画のループの時刻 <code>drawMs</code> で呼ばれ、結果は <code>drawFrame</code>（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L408）へ渡ります。</p>
+<p><strong>描く時刻（L195）</strong>: 一時停止中なら <code>pausedAtMs</code>、それ以外は <code>drawMs</code> です（<code>??</code> は左が <code>null</code> なら右、文法の索引の「オプショナルチェーン <code>?.</code> と <code>??</code>」）。理由は L91-97 の解説を見てください。</p>
+<p><strong>聞こえている位置 <code>heard</code>（L200）</strong></p>
+<ul>
+<li>時計がある（開始後）なら、<code>clock.songTimeAt(nowMs)</code></li>
+<li>開始前なら、「最初のノーツの時刻 − ノーツが流れてくる時間」。READY の画面では、最初のノーツがちょうど奥の端にいる絵になる</li>
+</ul>
+<p><strong>描画に使う曲の位置 <code>songTime</code>（L204）</strong></p>
+<div class="codehilite"><pre><span></span><code>songTime = heard − 表示の補正(ms) / 1000 × rate     （開始後だけ）
+</code></pre></div>
+
+<p><strong>表示の補正</strong>（<code>visualOffsetMs</code>、−300〜+300 ms）は、<strong>音と絵</strong>のずれを打ち消します。正の値にすると、描く位置が少し前の曲の位置になるので、ノーツはまだ奥にいるように描かれ、判定線に届くのがその分だけ遅れます。画面の表示が音より遅れる端末（テレビにつないだときなど）では、音がノーツより先に聞こえるので、表示の補正で合わせます。</p>
+<p><strong>入力の補正と表示の補正は混ざりません。</strong> 入力の補正は <code>judgeTime</code>（L124）だけに、表示の補正はこの <code>songTime</code> だけに入ります。表示の補正を変えても判定は変わらず、入力の補正を変えてもノーツの見た目の位置は変わりません。音の予約にはどちらも入りません。補正を音と絵で分けるのは、ほかのリズムゲーム（taiko-web・Bemuse・Quaver）と同じ考え方です（<code>docs/research/03-web-audio-timing.md</code>）。</p>
+<p><strong><code>Frame</code> の残りの欄</strong></p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+<th>描画での使い道</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>session</code></td>
+<td>判定役そのもの</td>
+<td>ノーツの並びと状態、コンボとスコア</td>
+</tr>
+<tr>
+<td><code>rate</code>・<code>approachSeconds</code></td>
+<td>テンポと、ノーツが流れてくる実時間</td>
+<td>奥から判定線までの曲の時間は <code>approachSeconds × rate</code></td>
+</tr>
+<tr>
+<td><code>bars</code>・<code>beats</code></td>
+<td>小節線と拍の時刻</td>
+<td>床の横線</td>
+</tr>
+<tr>
+<td><code>pressed</code></td>
+<td>レーンごとに押しているか</td>
+<td>光の柱</td>
+</tr>
+<tr>
+<td><code>flashes</code>・<code>nowMs</code></td>
+<td>判定の光と、描く時刻</td>
+<td>光の年齢 <code>nowMs − atMs</code></td>
+</tr>
+<tr>
+<td><code>keyLabels</code></td>
+<td>キーの名前</td>
+<td>レーンの下の文字</td>
+</tr>
+<tr>
+<td><code>progress</code></td>
+<td><code>heard / endTime</code>。開始前は 0</td>
+<td>画面のいちばん上の進み具合の線。曲の 0 秒より前は負になるが、描く側が 0〜1 に収める（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L405）</td>
+</tr>
+</tbody>
+</table>
+<p><code>progress</code> も <code>heard</code> から出すので、表示の補正の影響を受けません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L193" href="#L193">193</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L194" href="#L194">194</a></td><td class="cl"><span class="w">  </span><span class="nx">frame</span><span class="p">(</span><span class="nx">drawMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Frame</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L195" href="#L195">195</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">nowMs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">pausedAtMs</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">drawMs</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L196" href="#L196">196</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">song</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L197" href="#L197">197</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">clock</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L198" href="#L198">198</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">rate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L199" href="#L199">199</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">firstNote</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">song</span><span class="p">.</span><span class="nx">charts</span><span class="p">[</span><span class="k">this</span><span class="p">.</span><span class="nx">opts</span><span class="p">.</span><span class="nx">difficulty</span><span class="p">]</span><span class="p">.</span><span class="nx">notes</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="o">?</span><span class="p">.</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L200" href="#L200">200</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">heard</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">clock</span><span class="p">.</span><span class="nx">songTimeAt</span><span class="p">(</span><span class="nx">nowMs</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nx">firstNote</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L201" href="#L201">201</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L202" href="#L202">202</a></td><td class="cl"><span class="w">      </span><span class="nx">session</span><span class="o">:</span><span class="w"> </span><span class="kt">this.session</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L203" href="#L203">203</a></td><td class="cl"><span class="w">      </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">this.lanes</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L204" href="#L204">204</a></td><td class="cl"><span class="w">      </span><span class="nx">songTime</span><span class="o">:</span><span class="w"> </span><span class="kt">clock</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">heard</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">visualOffsetMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">rate</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">heard</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L205" href="#L205">205</a></td><td class="cl"><span class="w">      </span><span class="nx">rate</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L206" href="#L206">206</a></td><td class="cl"><span class="w">      </span><span class="nx">approachSeconds</span><span class="o">:</span><span class="w"> </span><span class="kt">settings.approachSeconds</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L207" href="#L207">207</a></td><td class="cl"><span class="w">      </span><span class="nx">bars</span><span class="o">:</span><span class="w"> </span><span class="kt">song.bars</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L208" href="#L208">208</a></td><td class="cl"><span class="w">      </span><span class="nx">beats</span><span class="o">:</span><span class="w"> </span><span class="kt">song.beats</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L209" href="#L209">209</a></td><td class="cl"><span class="w">      </span><span class="nx">pressed</span><span class="o">:</span><span class="w"> </span><span class="kt">this.pressedLanes</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L210" href="#L210">210</a></td><td class="cl"><span class="w">      </span><span class="nx">flashes</span><span class="o">:</span><span class="w"> </span><span class="kt">this.flashes</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L211" href="#L211">211</a></td><td class="cl"><span class="w">      </span><span class="nx">nowMs</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L212" href="#L212">212</a></td><td class="cl"><span class="w">      </span><span class="nx">keyLabels</span><span class="o">:</span><span class="w"> </span><span class="kt">this.labels</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L213" href="#L213">213</a></td><td class="cl"><span class="w">      </span><span class="nx">progress</span><span class="o">:</span><span class="w"> </span><span class="kt">clock</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">heard</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">this.endTime</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L214" href="#L214">214</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L215" href="#L215">215</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L216–L220</p><p>成績のまとめを返します。中身は <code>GameSession.stats()</code> で、判定ごとの数・コンボ・スコア・押した時刻のずれの並びです（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L173-183）。<code>Play.tsx</code> の L84 で、曲が終わったときに 1 度だけ呼ばれ、<code>App.tsx</code> を通って結果画面（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a>）に届きます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L216" href="#L216">216</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L217" href="#L217">217</a></td><td class="cl"><span class="w">  </span><span class="nx">stats</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">SessionStats</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L218" href="#L218">218</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">session</span><span class="p">.</span><span class="nx">stats</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L219" href="#L219">219</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L220" href="#L220">220</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

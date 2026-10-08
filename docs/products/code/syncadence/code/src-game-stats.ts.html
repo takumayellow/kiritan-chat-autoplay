@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/game/stats.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html" class="current">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 39 行</p>
+<h1><code>src/game/stats.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>押したタイミングのずれを数でまとめる関数です。結果画面の「早め・遅め」の表示と、タイミングを測る画面の「入力の補正」の値は、ここで計算します。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>数の並びの中央値 <code>median</code>（L1-6）。</li>
+<li>1 プレイ分のずれの並びから、中央値と、早すぎ・遅すぎの回数を出す <code>summarizeDeltas</code>（L15-22）。</li>
+<li>メトロノームのクリックに合わせて叩いた時刻の並びから、ずれの中央値を出す <code>calibrate</code>（L29-39）。</li>
+</ul>
+<p>ここでいう<strong>ずれ</strong>は、すべて「押した時刻 − 正しい時刻」の実時間ミリ秒です。<strong>正なら遅め</strong>、負なら早めです。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L25</td>
+<td><code>summarizeDeltas(stats.deltas)</code> で、結果画面の「中央値 +15 ms、早め 3 回、遅め 12 回」のような表示と、入力の補正の提案（L27, L74）を作る</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L56</td>
+<td><code>calibrate(taps, clicks, 600)</code> で、入力の補正の値を測る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>なし（<code>median</code> はこのファイルの中で使う）</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>ずれの並び <code>stats.deltas</code> は <code>GameSession</code> が判定のたびに貯めたもので、MISS 以外の押下だけを含みます（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L86）。押した時刻は、入力の補正を<strong>入れた後</strong>の位置で測っています（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L121-125）。そのため結果画面は、中央値をいまの補正に<strong>足した</strong>値を新しい補正として提案します（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74）。</p>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L3 <code>[...values].sort((a, b) =&gt; a - b)</code> — 配列の並べ替えと、比べ方を決める関数</li>
+<li>L5 <code>sorted.length % 2 ? … : …</code> — 割った余りの <code>%</code> と、数をそのまま条件に使う書き方</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong>平均ではなく中央値を使う。</strong> たまたま大きく外した 1 回に引きずられないためです。</li>
+<li><strong><code>calibrate</code> は、各タップを最も近いクリックと組にする。</strong> どのクリックに合わせて叩いたつもりかは記録していないので、近さで決めます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L6</p><p><strong>中央値</strong>は、数を小さい順に並べたときの真ん中の値です。個数が偶数なら、真ん中の 2 つの平均にします。</p>
+<ol>
+<li>空なら <code>null</code>（L2）。戻り値の型 <code>number | null</code> がその約束です</li>
+<li>写しを作って小さい順に並べる（L3）</li>
+<li>真ん中の番号 <code>mid</code> を出す（L4）。<code>Math.floor</code> は小数点以下を切り捨てる</li>
+<li>個数が奇数なら <code>sorted[mid]</code>、偶数なら <code>sorted[mid − 1]</code> と <code>sorted[mid]</code> の平均（L5）</li>
+</ol>
+<blockquote>
+<p><strong>文法: sort と比較関数</strong></p>
+<p><code>配列.sort(関数)</code> は配列を並べ替えます。関数は 2 つの要素 <code>a</code> と <code>b</code> を受け取り、<code>a</code> を前にしたいなら負の数、<code>b</code> を前にしたいなら正の数、同じなら 0 を返します。<code>(a, b) =&gt; a - b</code> は、<code>a</code> が小さければ負になるので「小さい順」です。</p>
+<p>関数を渡さないと、<code>sort</code> は要素を<strong>文字列として</strong>比べます。<code>[10, 9, 1].sort()</code> は <code>[1, 10, 9]</code> になります（文字の "1" が "9" より前なので）。数を並べるときは必ず比べ方を渡します。</p>
+<p><code>sort</code> は<strong>元の配列そのものを並べ替えます</strong>。L3 の <code>[...values]</code> は、スプレッド構文（文法の索引の「スプレッド構文 <code>...</code>」）で写しを作ってから並べ替えるためのものです。<code>values</code> は <code>readonly</code>（書き換えない約束）で受け取っているので、そのまま <code>sort</code> することはできません。</p>
+<p><strong>文法: <code>%</code> と、数をそのまま条件に使う書き方</strong></p>
+<p><code>a % b</code> は <code>a</code> を <code>b</code> で割った<strong>余り</strong>です。<code>7 % 2</code> は 1、<code>8 % 2</code> は 0 です。</p>
+<p>条件の位置（<code>if (…)</code> や <code>条件 ? A : B</code> の左）に数を置くと、<strong>0 は偽、それ以外は真</strong>として扱われます。<code>sorted.length % 2 ? … : …</code> は、余りが 1（奇数）なら左、0（偶数）なら右、という意味です。</p>
+</blockquote>
+<p>数で確かめると:</p>
+<table>
+<thead>
+<tr>
+<th>入力</th>
+<th>並べた後</th>
+<th><code>mid</code></th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[3, 1, 2]</code></td>
+<td><code>[1, 2, 3]</code></td>
+<td>1</td>
+<td><code>sorted[1]</code> = 2</td>
+</tr>
+<tr>
+<td><code>[4, 1, 3, 2]</code></td>
+<td><code>[1, 2, 3, 4]</code></td>
+<td>2</td>
+<td>(<code>sorted[1]</code> + <code>sorted[2]</code>) / 2 = 2.5</td>
+</tr>
+</tbody>
+</table>
+<p><code>sorted[mid]!</code> の <code>!</code> は文法の索引の「非 null 表明 <code>!</code>」です。空の配列は L2 で返しているので、<code>mid</code> は必ず範囲内です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">median</span><span class="p">(</span><span class="nx">values</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">values</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">sorted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="p">...</span><span class="nx">values</span><span class="p">]</span><span class="p">.</span><span class="nx">sort</span><span class="p">(</span><span class="p">(</span><span class="nx">a</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">a</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">b</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">mid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">floor</span><span class="p">(</span><span class="nx">sorted</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">sorted</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mf">2</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">sorted</span><span class="p">[</span><span class="nx">mid</span><span class="p">]</span><span class="o">!</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">sorted</span><span class="p">[</span><span class="nx">mid</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">1</span><span class="p">]</span><span class="o">!</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">sorted</span><span class="p">[</span><span class="nx">mid</span><span class="p">]</span><span class="o">!</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L7–L23</p><p><code>TimingSummary</code> は結果画面に出す 3 つの数の形です（文法の索引の「interface と readonly」）。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>median</code></td>
+<td>ずれの中央値（ミリ秒）。正なら遅め</td>
+</tr>
+<tr>
+<td><code>early</code></td>
+<td>20 ms より早く押した回数</td>
+</tr>
+<tr>
+<td><code>late</code></td>
+<td>20 ms より遅く押した回数</td>
+</tr>
+</tbody>
+</table>
+<p><code>summarizeDeltas(deltas)</code> は、</p>
+<ol>
+<li>中央値を出し、無ければ（一度も叩いていなければ）<code>null</code> を返す（L16-17）</li>
+<li><code>deltas.filter((d) =&gt; d &lt; -20).length</code> — −20 ms より小さい（20 ms より早い）ものだけを残した配列の長さ、つまりその回数（文法の索引の「map・filter・reduce」）</li>
+<li>同じように、+20 ms より大きいものの回数</li>
+</ol>
+<p>±20 ms 以内の押下は、早めにも遅めにも数えません。PERFECT の幅（±42 ms、<a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a> の L7）の中でも、さらに真ん中寄りを「ちょうど」とみなしています。</p>
+<p>結果画面は、20 回以上叩いて中央値が ±12 ms 以上ずれていれば、入力の補正を中央値の分だけ動かすボタンを出します（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L22, L27）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">TimingSummary</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">median</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">early</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">late</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="cm">/** 押したタイミングの偏り。正なら遅め。 */</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">summarizeDeltas</span><span class="p">(</span><span class="nx">deltas</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">TimingSummary</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">median</span><span class="p">(</span><span class="nx">deltas</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">m</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">    </span><span class="nx">median</span><span class="o">:</span><span class="w"> </span><span class="kt">m</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">    </span><span class="nx">early</span><span class="o">:</span><span class="w"> </span><span class="kt">deltas.filter</span><span class="p">(</span><span class="p">(</span><span class="nx">d</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="o">-</span><span class="mf">20</span><span class="p">)</span><span class="p">.</span><span class="nx">length</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">    </span><span class="nx">late</span><span class="o">:</span><span class="w"> </span><span class="kt">deltas.filter</span><span class="p">(</span><span class="p">(</span><span class="nx">d</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">20</span><span class="p">)</span><span class="p">.</span><span class="nx">length</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L24–L39</p><p><strong>タップ較正</strong>です。タイミングを測る画面（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a>）で、600 ms ごとに鳴るクリック音に合わせて叩いた結果から、入力の補正の値を出します。</p>
+<p>引数はどれもミリ秒で、物差しは「最初のクリックが聞こえた時刻を 0 とした時間」です。</p>
+<ul>
+<li><code>taps</code> — 叩いた時刻の並び。<code>Calibrate.tsx</code> が、<code>SongClock</code> で「そのとき聞こえていた位置」に直して記録します（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L46, L66）。出力の遅れはここで差し引かれているので、残るのは押す癖と、ブラウザが申告しない遅れだけです</li>
+<li><code>clicks</code> — 数えるクリックの時刻。<code>Calibrate.tsx</code> は 20 回鳴らし、最初の 4 回を耳慣らしとして除いた 2,400, 3,000, …, 11,400 の 16 個を渡します（同 L55）</li>
+<li><code>intervalMs</code> — クリックの間隔（600）</li>
+</ul>
+<p><strong>流れ</strong></p>
+<ol>
+<li>タップを 1 つずつ見る（L31、文法の索引の「for…of」）</li>
+<li>すべてのクリックの中から、そのタップに<strong>いちばん近い</strong>クリック <code>best</code> を探す（L32-35）</li>
+<li>近さが間隔の半分（300 ms）<strong>未満</strong>なら、ずれ <code>tap − best</code> を記録する（L36）。それ以上離れたタップは、どのクリックに合わせたのか分からないので捨てる</li>
+<li>記録したずれが 4 個以上なら、その中央値を返す。足りなければ <code>null</code>（L38）</li>
+</ol>
+<p><strong>2 の探し方（L32-35）。</strong> <code>best</code> は最初 <code>null</code> で、「まだ候補が無い」を表します。クリックを 1 つずつ見て、</p>
+<ul>
+<li>候補がまだ無い（<code>best === null</code>）、または</li>
+<li>このクリックの方が、いまの候補よりタップに近い（<code>Math.abs</code> は絶対値。差の大きさだけを比べる）</li>
+</ul>
+<p>なら、候補をこのクリックに替えます。<code>||</code> は「または」で、左が真なら右は見ません（文法の索引の「<code>&amp;&amp;</code> の短絡評価」と同じ考え方）。そのため、<code>best</code> が <code>null</code> のときに右側の <code>tap - best</code> を計算することはありません。</p>
+<p><strong>数で追うと。</strong> 3,000 ms のクリックに 40 ms 遅れて叩いた（<code>tap</code> = 3,040）なら、最も近いクリックは 3,000 で、ずれは +40 です。耳慣らしの最後のクリック（1,800）に合わせて叩いたタップは、最も近い数えるクリック 2,400 から 600 ms 離れているので捨てられます。</p>
+<p>返した値は <code>Calibrate.tsx</code> で ±300 ms に収めて丸め、入力の補正 <code>inputOffsetMs</code> に<strong>そのまま</strong>入れます（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L115）。測るときは補正を使わないので、結果画面と違って足し算ではありません。+40 ms を入れると、判定に使う位置が 40 ms 分手前にずれ、聞こえてから 40 ms 後に押したときにちょうどになります（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L121-125）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="cm"> * タップ較正。clicks（実時間ミリ秒の拍）に対し、各タップを最も近い拍と組にして</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="cm"> * 差の中央値を返す。半拍以上離れたタップは外れ値として捨てる。</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">calibrate</span><span class="p">(</span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">,</span><span class="w"> </span><span class="nx">clicks</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">,</span><span class="w"> </span><span class="nx">intervalMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">deltas</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">tap</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">taps</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">best</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">click</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">clicks</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">best</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">tap</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">click</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">tap</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">best</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="nx">best</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">click</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">best</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">tap</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">best</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">intervalMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2</span><span class="p">)</span><span class="w"> </span><span class="nx">deltas</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">tap</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">best</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">deltas</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">4</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">median</span><span class="p">(</span><span class="nx">deltas</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

@@ -139,6 +139,34 @@
     .banner-campus { background: linear-gradient(135deg, #0d2a4a 0%, #1f4a3a 100%); }
     .banner-chat { background: linear-gradient(135deg, #0b3a22 0%, #3a2e14 100%); }
 
+    .code-link {
+      display: block;
+      max-width: 448px;
+      margin: 0 auto;
+      padding: 0.9rem 1.25rem;
+      border: 1px dashed rgba(232, 74, 122, 0.45);
+      border-radius: 16px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .code-link-title {
+      display: block;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .code-link-text {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+
+    @media (max-width: 480px) {
+      .code-link { margin: 0 1rem; }
+    }
+
     .footer {
       text-align: center;
       padding: 2rem 1rem;
@@ -219,6 +247,11 @@
     </a>
 
   </div>
+
+  <a class="code-link" href="./code/">
+    <span class="code-link-title">中身に興味がある人へ</span>
+    <span class="code-link-text">作品のソースコードを 1 行ずつ解説したページ →</span>
+  </a>
 
   <div style="text-align:center; padding:1.5rem 1rem; max-width:480px; margin:0 auto;">
     <p style="color:#ff6b9d; font-weight:700; font-size:1.1rem; text-align:center;">ITCに入部して<br>Prog班でゲームを作ろう！</p>

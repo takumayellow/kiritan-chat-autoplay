@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>難易度・判定の幅・見た目を決めている数値 | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html" class="current">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="_1">難易度・判定の幅・見た目を決めている数値</h1>
+<p>ゲームの手触りは、コードのあちこちに置いた数値で決まっています。ここでは「どこにあって、変えると何が起きるか」を一覧にします。どれも名前の付いた定数なので、1 か所を書き換えれば全体に効きます。</p>
+<h2 id="_2">遊ぶ人が設定で変えられるもの</h2>
+<p>既定値は <a href="../code/src-storage.ts.html#L18">storage.ts L18-24</a>、範囲は <a href="../code/src-storage.ts.html#L39">L39-45</a> です。範囲の外の値が保存されていても、読み込むときにこの範囲へ戻します。</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>既定</th>
+<th>範囲</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ノーツが流れてくる時間 <code>approachSeconds</code></td>
+<td>1.6 秒</td>
+<td>0.6〜4 秒</td>
+<td>小さいほどノーツが速く流れ、画面に同時に見えるノーツが減る</td>
+</tr>
+<tr>
+<td>入力の補正 <code>inputOffsetMs</code></td>
+<td>0 ms</td>
+<td>±300 ms</td>
+<td>判定に使う時刻から引く（→ <code>notes/04-timing</code>）</td>
+</tr>
+<tr>
+<td>表示の補正 <code>visualOffsetMs</code></td>
+<td>0 ms</td>
+<td>±300 ms</td>
+<td>描画に使う時刻から引く</td>
+</tr>
+<tr>
+<td>音量 <code>volume</code></td>
+<td>0.8</td>
+<td>0〜1</td>
+<td>全体の音の大きさ</td>
+</tr>
+<tr>
+<td>再生速度 <code>rate</code></td>
+<td>1</td>
+<td>0.5〜1</td>
+<td>曲ごとゆっくりにする。判定の幅は実時間のままなので、遅くするほど易しくなる</td>
+</tr>
+<tr>
+<td>叩いた音だけ鳴らす <code>keysound</code></td>
+<td>オフ</td>
+<td>—</td>
+<td>オンにすると、ノーツに結び付いた音は叩けたときだけ鳴る。伴奏などノーツの無い音はいつもどおり鳴る（<a href="../code/src-game-engine.ts.html#L59">engine.ts L59-64</a>）</td>
+</tr>
+<tr>
+<td>自動演奏 <code>autoplay</code></td>
+<td>オフ</td>
+<td>—</td>
+<td>ノーツを自動で叩く。オンの間はキーとタッチを受け付けず、<code>keysound</code> も切る</td>
+</tr>
+</tbody>
+</table>
+<p>設定はブラウザの <code>localStorage</code> に <code>syncadence.v2.settings</code> という名前で保存します（<a href="../code/src-storage.ts.html#L27">L27</a>）。</p>
+<p>流れてくる時間を変えると、同じ瞬間でも画面に並ぶノーツの量が変わります。</p>
+<figure><img alt="流れてくる時間 0.8 秒。画面に見えるのは 0.8 秒先までのノーツだけで、まばらに見える" src="../assets/shots/approach-fast.webp" /><figcaption>流れてくる時間 0.8 秒。画面に見えるのは 0.8 秒先までのノーツだけで、まばらに見える</figcaption></figure>
+<figure><img alt="流れてくる時間 3.0 秒。3 秒先までのノーツが見え、奥に詰まって並ぶ" src="../assets/shots/approach-slow.webp" /><figcaption>流れてくる時間 3.0 秒。3 秒先までのノーツが見え、奥に詰まって並ぶ</figcaption></figure>
+<h2 id="_3">判定とスコア</h2>
+<p><a href="../code/src-game-judge.ts.html">judge.ts</a> と <a href="../code/src-game-rank.ts.html">rank.ts</a> にあります。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>場所</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WINDOWS</code></td>
+<td>PERFECT 42・GREAT 83・GOOD 125・MISS 160 ms</td>
+<td><a href="../code/src-game-judge.ts.html#L6">judge.ts L6</a></td>
+<td>広げるほど易しい。MISS の値より早い空振りは無視されるので、MISS を広げると早押しで次のノーツを消費しやすくなる</td>
+</tr>
+<tr>
+<td><code>HOLD_RELEASE_TOLERANCE_MS</code></td>
+<td>150 ms</td>
+<td><a href="../code/src-game-judge.ts.html#L14">L14</a></td>
+<td>ロングノーツを終点のどれだけ手前で離してよいか</td>
+</tr>
+<tr>
+<td><code>SCORE_WEIGHT</code></td>
+<td>1・0.75・0.35・0</td>
+<td><a href="../code/src-game-judge.ts.html#L16">L16</a></td>
+<td>判定ごとの点。GREAT を 0.75 にしているので、全部 GREAT だと 750,000 点</td>
+</tr>
+<tr>
+<td><code>MAX_SCORE</code></td>
+<td>1,000,000</td>
+<td><a href="../code/src-game-judge.ts.html#L17">L17</a></td>
+<td>全部 PERFECT のときの点</td>
+</tr>
+<tr>
+<td>ランクの境目</td>
+<td>SSS 990,000・SS 970,000・S 940,000・A 880,000・B 800,000・C 700,000</td>
+<td><a href="../code/src-game-rank.ts.html#L3">rank.ts L3-8</a></td>
+<td>それ未満は D</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">キーとレーン</h2>
+<p><a href="../code/src-game-keys.ts.html#L2">keys.ts L2-4</a> で、4 レーンは D F J K、6 レーンは S D F J K L です。左右の手の人差し指と中指（6 レーンは薬指も）がホームポジションのまま届く並びです。</p>
+<h2 id="_5">進行</h2>
+<p><a href="../code/src-game-engine.ts.html#L12">engine.ts L12-16</a> にあります。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>START_DELAY</code></td>
+<td>0.15 秒</td>
+<td>開始の操作から最初の音を予約するまでの余裕。短すぎると最初の音の予約が間に合わず欠ける</td>
+</tr>
+<tr>
+<td><code>LEAD_IN</code></td>
+<td>0.8 秒</td>
+<td>最初のノーツが奥に現れるまでの間</td>
+</tr>
+<tr>
+<td><code>TAIL_SECONDS</code></td>
+<td>2.5 秒</td>
+<td>最後のノーツのあと、結果画面へ移るまで余韻を聞かせる時間</td>
+</tr>
+<tr>
+<td><code>MAX_FLASHES</code></td>
+<td>24</td>
+<td>同時に画面に残す判定の文字の数の上限</td>
+</tr>
+<tr>
+<td><code>AUTOPLAY_PRESS_MS</code></td>
+<td>70 ms</td>
+<td>自動演奏で、短いノーツを押してから離すまでの時間</td>
+</tr>
+</tbody>
+</table>
+<p>音の予約を何秒先までするか（<code>lookahead</code>）は 0.4 秒です（<a href="../code/src-audio-scheduler.ts.html#L13">scheduler.ts L13</a>）。長くするとフレームが大きく遅れても音が途切れにくくなる代わりに、予約済みの音が増えます。</p>
+<h2 id="_6">見た目</h2>
+<h3 id="perspectivets">奥行き（<a href="../code/src-render-perspective.ts.html">perspective.ts</a>）</h3>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PERSPECTIVE</code></td>
+<td>2</td>
+<td><a href="../code/src-render-perspective.ts.html#L9">L9</a>。透視の強さ。大きいほど奥でノーツが詰まり、手前で急に速くなる</td>
+</tr>
+<tr>
+<td><code>FAR_RATIO</code></td>
+<td>0.04</td>
+<td><a href="../code/src-render-perspective.ts.html#L11">L11</a>。奥の端のレーン幅（判定線での幅に対する比）。小さいほど消失点へ鋭くすぼまる</td>
+</tr>
+<tr>
+<td><code>JUDGE_AT</code></td>
+<td>0.79</td>
+<td><a href="../code/src-render-perspective.ts.html#L27">L27</a>。判定線の高さ（画面の上からの比）</td>
+</tr>
+<tr>
+<td><code>LANDSCAPE_WIDTH</code> / <code>LANDSCAPE_WIDTH_PER_HEIGHT</code></td>
+<td>0.79 / 1.4</td>
+<td><a href="../code/src-render-perspective.ts.html#L29">L29-30</a>。横長の画面でのレーン全体の幅の上限。画面の幅の 79% と高さの 1.4 倍の小さい方</td>
+</tr>
+<tr>
+<td><code>PORTRAIT_WIDTH</code></td>
+<td>0.94</td>
+<td><a href="../code/src-render-perspective.ts.html#L32">L32</a>。縦長の画面では指で叩けるよう、ほぼ画面幅いっぱいに使う</td>
+</tr>
+</tbody>
+</table>
+<p><code>PERSPECTIVE</code> の効き方を数字で見ると、判定線まで残り時間が半分（<code>u = 0.5</code>）のノーツが、奥から判定線までのどこにいるかは次のとおりです（<code>depthOf</code> の式に入れて計算）。</p>
+<table>
+<thead>
+<tr>
+<th><code>PERSPECTIVE</code></th>
+<th>残り半分の時点の位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>奥から 33%</td>
+</tr>
+<tr>
+<td>2（いまの値）</td>
+<td>奥から 25%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>奥から 17%</td>
+</tr>
+</tbody>
+</table>
+<p>時間は半分過ぎていても、見た目はまだ奥の 4 分の 1 です。残りの時間で手前へ一気に近づくので、ノーツが迫ってくるように見えます。</p>
+<h3 id="highwayts-l28-52">文字と光（<a href="../code/src-render-highway.ts.html#L28">highway.ts L28-52</a>）</h3>
+<p>判定の文字を出す時間（<code>JUDGEMENT_SHOW_MS</code> 600 ms）、レーンが光る時間（<code>FLASH_MS</code> 320 ms）、ノーツの厚み、コンボやスコアの位置と大きさです。大きさはどれも画面の大きさに対する比で書いてあるので、画面の大きさが変わっても釣り合いが崩れません。</p>
+<h2 id="python">譜面の作り方（Python）</h2>
+<h3 id="chartpy-l39-44">難易度（<a href="../code/tools-chart.py.html#L39">chart.py L39-44</a>）</h3>
+<p>1 行が 1 つの難易度です。列の意味は <code>Difficulty</code> の定義（<a href="../code/tools-chart.py.html#L25">L25-36</a>）にあります。</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>EASY</th>
+<th>NORMAL</th>
+<th>HARD</th>
+<th>EXPERT</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>レーン数 <code>lanes</code></td>
+<td>4</td>
+<td>4</td>
+<td>6</td>
+<td>6</td>
+<td></td>
+</tr>
+<tr>
+<td>採る拍の強さの上限 <code>max_level</code></td>
+<td>1</td>
+<td>2</td>
+<td>3</td>
+<td>4</td>
+<td>大きいほど細かい音まで採る（0 = 小節の頭 … 4 = 全部）</td>
+</tr>
+<tr>
+<td>1 秒あたりのノーツ数の上限 <code>nps_cap</code></td>
+<td>1.8</td>
+<td>3.0</td>
+<td>4.8</td>
+<td>7.5</td>
+<td>小節ごとに、これを超えたら拍の強さを 1 段粗くする（→ <code>notes/02-from-score</code>）</td>
+</tr>
+<tr>
+<td>最小の間隔 <code>min_gap</code></td>
+<td>0.36 秒</td>
+<td>0.21 秒</td>
+<td>0.14 秒</td>
+<td>0.095 秒</td>
+<td>これより近いノーツは拍の強い方だけ残す</td>
+</tr>
+<tr>
+<td>同じレーンの最小の間隔 <code>jack_gap</code></td>
+<td>0.45 秒</td>
+<td>0.26 秒</td>
+<td>0.17 秒</td>
+<td>0.12 秒</td>
+<td>同じ指で続けて叩く間隔の下限</td>
+</tr>
+<tr>
+<td>空白を埋める長さ <code>fill_gap_beats</code></td>
+<td>2 拍</td>
+<td>1.5 拍</td>
+<td>1 拍</td>
+<td>1 拍</td>
+<td>これより長い空白を、採らなかった旋律の音で埋める</td>
+</tr>
+<tr>
+<td>ロングノーツにする長さ <code>hold_seconds</code> / <code>hold_beats</code></td>
+<td>0.9 秒・2 拍</td>
+<td>0.7 秒・1.5 拍</td>
+<td>0.6 秒・1 拍</td>
+<td>0.5 秒・1 拍</td>
+<td>これ以上続く音を押しっぱなしのノーツにする</td>
+</tr>
+<tr>
+<td>左手を足す拍の強さ <code>bass_level</code></td>
+<td>足さない</td>
+<td>足さない</td>
+<td>0（小節の頭）</td>
+<td>1（拍の頭）</td>
+<td>大きいほど左手のノーツが増える</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chartpy-l19-22">その他（<a href="../code/tools-chart.py.html#L19">chart.py L19-22</a>）</h3>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GRACE_MAX_SECONDS</code></td>
+<td>0.07 秒</td>
+<td>これより短く拍から外れた音を装飾音として外す</td>
+</tr>
+<tr>
+<td><code>CONTOUR_WINDOW_SECONDS</code></td>
+<td>3.0 秒</td>
+<td>レーンを決めるとき、前後何秒の音域を見るか。短いほど細かい上下にもレーンが大きく振れる</td>
+</tr>
+<tr>
+<td><code>MIN_CONTOUR_SPAN</code></td>
+<td>7 半音</td>
+<td>音域が狭い旋律でも、この幅があるものとしてレーンに割り振る。小さいほど狭い音域でもレーンを端まで使う</td>
+</tr>
+<tr>
+<td><code>HOLD_RELEASE_GAP</code></td>
+<td>0.12 秒</td>
+<td>ロングノーツの終点と、同じレーンの次のノーツの間に空ける時間</td>
+</tr>
+</tbody>
+</table>
+<p>難易度の数字（レベル）は <code>round(1 + p90 × 3.2)</code> で出します（<a href="../code/tools-chart.py.html#L343">L343</a>）。p90 は 2 秒ごとの密度（ノーツ数 ÷ 2）を並べたときの上位 1 割あたりの値です。3.2 を大きくすると、同じ譜面でもレベルの数字が大きく出ます。</p>
+<h3 id="build_samplespy-l29-31regionsts-l64-66">ピアノの音（<a href="../code/tools-build_samples.py.html#L29">build_samples.py L29-31</a>、<a href="../code/src-audio-regions.ts.html#L64">regions.ts L64-66</a>）</h3>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>変えると</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_SECONDS</code></td>
+<td>7 秒</td>
+<td>録音をこの長さで切る。短くするとファイルは小さくなるが、長く伸ばす音が途中で消える</td>
+</tr>
+<tr>
+<td><code>FADE_SECONDS</code></td>
+<td>1 秒</td>
+<td>切る手前でだんだん小さくする長さ</td>
+</tr>
+<tr>
+<td><code>BITRATE</code></td>
+<td>80k</td>
+<td>mp3 の音質。上げるほど音が良く、ファイルが大きい</td>
+</tr>
+<tr>
+<td><code>velocityGain</code></td>
+<td><code>0.18 + 0.82 × 強さ^1.6</code></td>
+<td>打鍵の強さ（0〜1）から音量への写し方。弱い音でも 0.18 は残し、強い音ほど大きく差を付ける</td>
+</tr>
+</tbody>
+</table>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#_2">遊ぶ人が設定で変えられるもの</a></li><li class="d2"><a href="#_3">判定とスコア</a></li><li class="d2"><a href="#_4">キーとレーン</a></li><li class="d2"><a href="#_5">進行</a></li><li class="d2"><a href="#_6">見た目</a></li><li class="d3"><a href="#perspectivets">奥行き（perspective.ts）</a></li><li class="d3"><a href="#highwayts-l28-52">文字と光（highway.ts L28-52）</a></li><li class="d2"><a href="#python">譜面の作り方（Python）</a></li><li class="d3"><a href="#chartpy-l39-44">難易度（chart.py L39-44）</a></li><li class="d3"><a href="#chartpy-l19-22">その他（chart.py L19-22）</a></li><li class="d3"><a href="#build_samplespy-l29-31regionsts-l64-66">ピアノの音（build_samples.py L29-31、regions.ts L64-66）</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

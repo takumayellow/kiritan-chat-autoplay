@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tools/build_samples.py | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html" class="current">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">Python · 全 123 行</p>
+<h1><code>tools/build_samples.py</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ゲームの音として鳴らすピアノの録音（FreePats の Upright Piano KW）を取ってきて、ブラウザで読み込みやすい小さな mp3 と、その目録（<code>manifest.json</code>）に作り直すファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<p>このゲームは、楽譜の音を 1 つずつピアノの録音で鳴らします（docs/design.md の 1 節）。そのための音源を用意するのがこのファイルです。</p>
+<ol>
+<li>音源の配布元（GitHub の <code>freepats/upright-piano-KW</code>）から、SFZ という音源の設計図と、66 個の FLAC（録音）を取ってくる（<code>fetch</code>）。</li>
+<li>SFZ を読み、「どの録音が、どの鍵盤の範囲を、どの強さで受け持つか」を取り出す（<code>parse_sfz</code>）。</li>
+<li>外のプログラム <code>ffmpeg</code> で、各 FLAC をモノラル・最大 7 秒・末尾 1 秒フェードアウトの mp3 にする（<code>transcode</code>）。</li>
+<li>目録 <code>public/samples/kw/manifest.json</code> と、音源の <code>LICENSE</code>・<code>README.md</code> を書き出す（<code>main</code>）。</li>
+</ol>
+<p>元の FLAC は合わせて約 33 MB ありますが、作った mp3 は 66 個で 2,761,770 バイト（約 2.8 MB）です。ブラウザは曲に要る分だけを読み込みます（<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の L20-27）。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ぶ</td>
+<td>GitHub の <code>raw.githubusercontent.com</code></td>
+<td>SFZ・FLAC・LICENSE・README を取ってくる</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>ffmpeg</code>（外のプログラム）</td>
+<td>FLAC を mp3 に変換する</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> の L21-34</td>
+<td>目録の形を確かめる（ファイル名・鍵盤の番号・層）</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> の L36-50</td>
+<td>音の強さで層を選び、音の高さで受け持ちの録音を探す</td>
+</tr>
+<tr>
+<td>結果を読む</td>
+<td><a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の L20-37・L53・L61</td>
+<td>要る mp3 を読み込み、高さの差だけ再生の速さを変えて鳴らす</td>
+</tr>
+</tbody>
+</table>
+<p>譜面づくり（<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a>）とは関係が無く、音源を変えるときに 1 回だけ人が動かす道具です。</p>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L47-48 <code>.splitlines()</code>・<code>.split("//", 1)</code>・<code>.strip()</code> — 文字列の分割と空白の除去</li>
+<li>L58 <code>OPCODE.findall(line)</code> — 正規表現で全部探す</li>
+<li>L66 <code>current.update(…)</code> — 辞書の書き換え</li>
+<li>L74-82 <code>subprocess.run([…], check=True)</code> — 外のプログラムを動かす</li>
+<li>L87 <code>print(…, file=sys.stderr)</code> — エラーの出力先</li>
+<li>L117 <code>OUT.glob("*.mp3")</code>・<code>p.stat().st_size</code> — フォルダの中を探す・ファイルの大きさ</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>parse_sfz</code>（L43-69）。SFZ という文字の設計図を、1 行ずつ「状態」を持ちながら読む、小さな読み取り器です。</li>
+<li><code>SAFE_SAMPLE</code>（L26）と L93-95。ネットから取ってきた設計図に書かれたファイル名を、そのまま信用しないための検査です。</li>
+<li><code>transcode</code>（L72-82）。音を 7 秒で切ってフェードアウトする ffmpeg の指定です。</li>
+<li>docstring の L7。mp3 の先頭の無音をここでは削らず、ブラウザ側で打ち消す、という役割の分け方です。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>7 秒より長い音は、6 秒からフェードアウトして 7 秒で消える。</strong> 元の FLAC 66 個のうち 21 個が 7 秒より長く、一番長いものは約 13.3 秒です。SFZ には低音の録音を延々と伸ばすためのループの位置（<code>loop_start</code>・<code>loop_end</code>）が書いてありますが、<code>parse_sfz</code> はそれを読まないので、ブラウザでは長く伸ばした低音も 7 秒で消えます。</li>
+<li><strong>作り済みの mp3 は作り直さない。</strong> L98 で、同じ名前の mp3 があれば変換を飛ばします。<code>MAX_SECONDS</code> や <code>BITRATE</code> を変えたときは、古い mp3 を消してから動かす必要があります。</li>
+<li><strong>この SFZ の書き方に合わせた読み取り器。</strong> <code>&lt;region&gt;</code> が 1 行に単独で書かれていること、層を <code>hivel=80</code> と <code>lovel=81</code> で分けていることを前提にしています。別の音源の SFZ では、L94-95 の検査で止まるか、正しく読めません。</li>
+<li><strong><code>ffmpeg</code> が要る。</strong> 見つからなければ、L86-88 で何もせずに終了コード 1 で終わります。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L9</p><p>docstring（文法の索引の『ドキュメント文字列』）です。</p>
+<ul>
+<li>L1 の <strong>CC0</strong> は、作者が権利を放棄して、だれでも自由に使えるようにするための宣言です。表示の義務もありませんが、このゲームはクレジットに出しています（docs/research/04-assets-and-licenses.md の 3 節）。</li>
+<li>L5 の <strong>SFZ</strong> は、録音のファイルを鍵盤に割り当てる設計図の形式で、ただの文字のファイルです。<strong>region</strong>（区域）は「1 つの録音が受け持つ鍵盤の範囲」です。<strong>ベロシティ層</strong>は、同じ鍵盤を弱く弾いた録音と強く弾いた録音の 2 組（L と H）のことです。</li>
+<li>L6 の <strong>モノラル 44.1 kHz</strong> は、左右 1 つにまとめた音を、1 秒に 44,100 回の値で表す形です。</li>
+<li>L7 の <strong>エンコーダ遅延</strong>は、mp3 に変換すると、先頭にごく短い無音が足されることを指します。ブラウザ側は、読み込んだ音の中で、一番大きな振れ幅の 5% を初めて超える位置を探し、その 2 ミリ秒手前から鳴らします（<a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> の L53-61）。こうすると、無音の長さがブラウザによって違っても、叩いた瞬間に音の頭が鳴ります。ここで削らないのは、削り方をブラウザの読み方に合わせる必要が無くなるからです。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;Upright Piano KW (FreePats, CC0) のサンプルをブラウザ用の mp3 に変換する。</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="sd">使い方: python tools/build_samples.py</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="sd">- SFZ の region 定義（鍵盤範囲・基準音・ベロシティ層）を読み、public/samples/kw/manifest.json に書く。</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="sd">- 各 flac をモノラル 44.1 kHz の mp3 にし、最大 MAX_SECONDS 秒で切って末尾をフェードアウトする。</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="sd">- mp3 のエンコーダ遅延はブラウザ側で立ち上がりを検出して打ち消すので、ここでは無音を削らない。</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L20</p><p>取り込みです（文法の索引の『Python の基本（import・def・型注釈・字下げ）』）。</p>
+<table>
+<thead>
+<tr>
+<th>取り込むもの</th>
+<th>使う所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>json</code></td>
+<td>目録を JSON で書く（L116）</td>
+</tr>
+<tr>
+<td><code>re</code></td>
+<td>正規表現（L26-27）</td>
+</tr>
+<tr>
+<td><code>shutil</code></td>
+<td><code>ffmpeg</code> があるかを探す（L86）、ファイルの写し（L108）</td>
+</tr>
+<tr>
+<td><code>subprocess</code></td>
+<td><code>ffmpeg</code> を動かす（L74）</td>
+</tr>
+<tr>
+<td><code>sys</code></td>
+<td>エラーの出力先（L87）と終了コード（L123）</td>
+</tr>
+<tr>
+<td><code>urllib.parse</code>・<code>urllib.request</code></td>
+<td>URL の文字の置き換え（L38）とダウンロード（L38）</td>
+</tr>
+<tr>
+<td><code>Path</code></td>
+<td>ファイルの場所（文法の索引の『パスの組み立て（<code>Path</code> と <code>/</code>）』）</td>
+</tr>
+</tbody>
+</table>
+<p><a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> と違って、<code>score.py</code> や <code>chart.py</code> は使いません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">json</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">re</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">urllib</span><span class="nn">.</span><span class="nn">parse</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">urllib</span><span class="nn">.</span><span class="nn">request</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L21–L28</p><p>場所と正規表現の定数です。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ROOT</code></td>
+<td>リポジトリの一番上（<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L21 と同じ）</td>
+</tr>
+<tr>
+<td><code>CACHE</code></td>
+<td><code>sources/samples-cache</code>。取ってきた元の SFZ・FLAC を置く場所</td>
+</tr>
+<tr>
+<td><code>OUT</code></td>
+<td><code>public/samples/kw</code>。ブラウザに配る mp3 と目録の場所</td>
+</tr>
+<tr>
+<td><code>REPO_RAW</code></td>
+<td>GitHub のリポジトリのファイルを、そのまま取れる URL の頭</td>
+</tr>
+<tr>
+<td><code>SFZ_NAME</code></td>
+<td>設計図のファイル名（2022-02-21 の版）</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>SAFE_SAMPLE</code>（L26）。</strong> 設計図に書かれた録音のファイル名が、決まった形かを確かめます（文法の索引の『正規表現と生文字列 <code>r"…"</code>』）。</p>
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>^samples/</code></td>
+<td>先頭が <code>samples/</code></td>
+</tr>
+<tr>
+<td><code>[A-G]</code></td>
+<td>音名 A〜G のどれか 1 文字</td>
+</tr>
+<tr>
+<td><code>#?</code></td>
+<td><code>#</code>（シャープ）が 0 個か 1 個</td>
+</tr>
+<tr>
+<td><code>[0-8]</code></td>
+<td>オクターブの番号 0〜8</td>
+</tr>
+<tr>
+<td><code>v[HL]</code></td>
+<td><code>vH</code>（強い層）か <code>vL</code>（弱い層）</td>
+</tr>
+<tr>
+<td><code>\.flac$</code></td>
+<td><code>.flac</code> で終わる</td>
+</tr>
+</tbody>
+</table>
+<p><code>( )</code> で囲んだ部分（たとえば <code>F#4vL</code>）を <code>group(1)</code> で取り出し、mp3 の名前に使います（L96）。この形に合わない名前、たとえば <code>../</code> を含む名前は通らないので、取ってきた設計図に変なことが書かれていても、<code>CACHE</code> の外にファイルを書いたり、別の場所から物を取ってきたりしません（<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の <code>SAFE_ID</code> と同じ考え方）。</p>
+<p><strong><code>OPCODE</code>（L27）。</strong> <code>lokey=21</code> のような「名前=値」を探す形です。<code>\w+</code> は英字・数字・<code>_</code> の 1 個以上、<code>\S+</code> は空白以外の文字の 1 個以上です。2 つの <code>( )</code> で名前と値を別々に取り出します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="n">ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="n">CACHE</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">sources</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">samples-cache</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="n">OUT</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">public</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">samples</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">kw</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="n">REPO_RAW</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">https://raw.githubusercontent.com/freepats/upright-piano-KW/master/</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="n">SFZ_NAME</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">UprightPianoKW-20220221.sfz</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="n">SAFE_SAMPLE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;</span><span class="s2">^samples/([A-G]#?[0-8]v[HL])</span><span class="s2">\</span><span class="s2">.flac$</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="n">OPCODE</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;</span><span class="s2">(</span><span class="s2">\</span><span class="s2">w+)=(</span><span class="s2">\</span><span class="s2">S+)</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L33</p><p>mp3 の作り方の定数です。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_SECONDS</code></td>
+<td>7.0</td>
+<td>音をこの秒数で切る</td>
+</tr>
+<tr>
+<td><code>FADE_SECONDS</code></td>
+<td>1.0</td>
+<td>最後のこの秒数で、だんだん音を小さくする</td>
+</tr>
+<tr>
+<td><code>BITRATE</code></td>
+<td><code>"80k"</code></td>
+<td>1 秒あたり 80,000 ビット（80 kbps）の mp3 にする</td>
+</tr>
+</tbody>
+</table>
+<p>7 秒・80 kbps の mp3 は、7 × 80,000 ÷ 8 = 70,000 バイトです。実際の一番大きい mp3 は 70,576 バイトで、ファイルの見出しなどの分だけ少し多くなっています。一番小さいのは、元の録音が短い高音の <code>C8vL.mp3</code> で 4,747 バイトです。</p>
+<p>※ 推測: ピアノの音は弾いた直後が一番大きく、その後は小さくなっていくので、7 秒より後を捨てても、ゲームで鳴らす多くの音には影響しないと考えて、ファイルの大きさを抑えたと考えられます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="n">MAX_SECONDS</span> <span class="o">=</span> <span class="mf">7.0</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="n">FADE_SECONDS</span> <span class="o">=</span> <span class="mf">1.0</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="n">BITRATE</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">80k</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L34–L42</p><p><code>fetch</code> は、配布元からファイルを 1 つ取ってきて、取ってきた場所を返します。</p>
+<ol>
+<li>L35: 置く場所は <code>CACHE</code> の下の同じ名前（<code>samples/A0vL.flac</code> なら <code>CACHE/samples/A0vL.flac</code>）。</li>
+<li>L36: もう取ってあれば、何もしないで場所を返す。2 回目以降はネットにつながりません。</li>
+<li>L37: 置くフォルダが無ければ作る（<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L58 と同じ）。</li>
+<li>L38: URL を作って接続する（文法の索引の『with 文』『キーワード引数』）。</li>
+<li>L39: 中身をすべて読み、バイト列のまま書く。</li>
+</ol>
+<p>L38 の <code>urllib.parse.quote(name)</code> は、URL に入れると意味が変わってしまう文字を <code>%</code> と 16 進数に置き換えます。録音の名前の <code>#</code> は、URL では「ページの中の位置」を表す印なので、そのまま書くと <code>#</code> から後ろがサーバに届きません。<code>samples/F#4vL.flac</code> は <code>samples/F%234vL.flac</code> になります（<code>/</code> は置き換えません）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">fetch</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="n">Path</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl">    <span class="n">target</span> <span class="o">=</span> <span class="n">CACHE</span> <span class="o">/</span> <span class="n">name</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl">    <span class="k">if</span> <span class="ow">not</span> <span class="n">target</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl">        <span class="n">target</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">        <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">REPO_RAW</span> <span class="o">+</span> <span class="n">urllib</span><span class="o">.</span><span class="n">parse</span><span class="o">.</span><span class="n">quote</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl">            <span class="n">target</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl">    <span class="k">return</span> <span class="n">target</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L43–L71</p><blockquote>
+<p><strong>文法: 文字列の分割と空白の除去</strong></p>
+<ul>
+<li><code>text.splitlines()</code> は、文字列を改行で区切った、行のリストを返します。</li>
+<li><code>raw.split("//", 1)</code> は、<code>//</code> で区切ったリストを返します。2 つ目の引数の <code>1</code> は「区切るのは最初の 1 か所だけ」で、結果は <code>[前, 後ろ]</code> の 2 つ以下になります。<code>[0]</code> で前だけを取ります。</li>
+<li><code>.strip()</code> は、前後の空白と改行を取り除いた文字列を返します。</li>
+</ul>
+<p>どれも元の文字列は変えず、新しい文字列やリストを返します。</p>
+<p><strong>文法: 正規表現で全部探す <code>findall</code></strong></p>
+<p><code>OPCODE.findall(line)</code> は、<code>line</code> の中で形に合う所を<strong>すべて</strong>探し、リストにして返します（<code>.match</code> が先頭の 1 か所だけを見るのと違います。文法の索引の『正規表現と生文字列 <code>r"…"</code>』）。形に <code>( )</code> が 2 つあるので、1 つの要素は <code>(名前, 値)</code> の組になります。<code>" lokey=21 hikey=22"</code> なら <code>[("lokey", "21"), ("hikey", "22")]</code> です。</p>
+<p><strong>文法: 辞書の書き換え <code>.update</code></strong></p>
+<p><code>current.update(lokey=21, hikey=21, pitch_keycenter=21)</code> は、辞書 <code>current</code> に、キーワード引数の名前をキーとして、まとめて値を入れます（あれば上書き）。L64 の <code>current[key] = …</code> を 3 回書くのと同じです。</p>
+</blockquote>
+<p><code>parse_sfz</code> は、SFZ の文字を読んで、region（区域）ごとの辞書のリストを返します。</p>
+<p><strong>SFZ の書き方。</strong> 使う音源の設計図は、次のような形をしています（一部）。</p>
+<div class="codehilite"><pre><span></span><code>&lt;group&gt;
+ hivel=80
+ loop_mode=loop_continuous
+&lt;region&gt;
+ lokey=21 hikey=22
+ pitch_keycenter=21
+ sample=samples/A0vL.flac
+&lt;region&gt;
+ key=23
+ sample=samples/B0vH.flac
+</code></pre></div>
+
+<p><code>&lt;group&gt;</code> から次の <code>&lt;group&gt;</code> までが 1 つのまとまりで、その頭に、まとまり全体の決まり（<code>hivel=80</code> は「強さ 80 以下で鳴らす」）を書きます。<code>&lt;region&gt;</code> の後に、その録音が受け持つ鍵盤の範囲（<code>lokey</code>〜<code>hikey</code>）、録音した鍵盤（<code>pitch_keycenter</code>）、録音のファイル（<code>sample</code>）を書きます。<code>key=23</code> は「23 の鍵盤 1 つだけで、録音した鍵盤も 23」の省略形です。鍵盤の番号は MIDI の番号で、21 がピアノの一番低い A0、108 が一番高い C8 です。</p>
+<p><strong>読み方。</strong> 2 つの「今の状態」を持ちながら、1 行ずつ読みます。</p>
+<table>
+<thead>
+<tr>
+<th>変数</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>layer</code></td>
+<td>今のまとまりの層（<code>"L"</code> か <code>"H"</code>）。最初は <code>None</code></td>
+</tr>
+<tr>
+<td><code>current</code></td>
+<td>今書き込んでいる region の辞書。まとまりの頭では <code>None</code></td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>L48: <code>//</code> から後ろ（コメント）を捨て、前後の空白を取る。</li>
+<li>L49-50: 空の行は飛ばす（文法の索引の『<code>continue</code>』）。</li>
+<li>L51-53: <code>&lt;group&gt;</code> なら、今の region を終わりにする。この後に書かれた <code>hivel</code> などを、前の region に書き込まないためです。</li>
+<li>L54-57: <code>&lt;region&gt;</code> なら、今の層を入れた新しい辞書を作り、リストに足し、それを今の region にする。辞書はリストに入れた後も同じ 1 個の物なので、この後 <code>current</code> に書き込むと、リストの中の辞書にも反映されます（文法の索引の『<code>is</code>』）。</li>
+<li>L58-68: それ以外の行は、「名前=値」をすべて探し、名前で場合分けする（文法の索引の『<code>elif</code>』）。
+   - <code>hivel=80</code> なら、層を <code>"L"</code>（弱）にする。
+   - <code>lovel=81</code> なら、層を <code>"H"</code>（強）にする。
+   - region の中で <code>lokey</code>・<code>hikey</code>・<code>pitch_keycenter</code> なら、整数にして入れる。
+   - region の中で <code>key</code> なら、3 つすべてに同じ値を入れる。
+   - region の中で <code>sample</code> なら、ファイル名を入れる。
+   - それ以外（<code>loop_mode</code>・<code>loop_start</code> など）は読まずに捨てる。</li>
+</ol>
+<p>L63 の <code>key in ("lokey", "hikey", "pitch_keycenter")</code> は、3 つのどれかに当たるかを <code>in</code> で確かめています（文法の索引の『<code>in</code> による所属の判定』）。</p>
+<p>この音源の設計図は 360 行で、<code>&lt;group&gt;</code> が 4 つ（弱い層 2 つ・強い層 2 つ）、<code>&lt;region&gt;</code> が 66 個あります。弱い層は 30 個、強い層は 36 個です。弱い層は A0 から C8 まで 3 半音おきに録音していて、間の鍵盤は近くの録音で代用します。</p>
+<p><strong>1 つの例。</strong> 最初の region は <code>{"layer": "L", "lokey": 21, "hikey": 22, "pitch_keycenter": 21, "sample": "samples/A0vL.flac"}</code> です。21（A0）と 22（A#0）を、A0 の録音で鳴らします。22 を鳴らすときは、ブラウザが再生の速さを 2 の 12 分の 1 乗（約 1.059）倍にして、半音上げます（<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の L53）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">parse_sfz</span><span class="p">(</span><span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl">    <span class="n">regions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl">    <span class="n">layer</span> <span class="o">=</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl">    <span class="n">current</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl">    <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">text</span><span class="o">.</span><span class="n">splitlines</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">        <span class="n">line</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">//</span><span class="s2">&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">line</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl">            <span class="k">continue</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">        <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">&lt;group&gt;</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl">            <span class="n">current</span> <span class="o">=</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl">            <span class="k">continue</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl">        <span class="k">if</span> <span class="n">line</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">&lt;region&gt;</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl">            <span class="n">current</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;</span><span class="s2">layer</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">layer</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl">            <span class="n">regions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">            <span class="k">continue</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl">        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">OPCODE</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">line</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl">            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">hivel</span><span class="s2">&quot;</span> <span class="ow">and</span> <span class="n">value</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">80</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl">                <span class="n">layer</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">L</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl">            <span class="k">elif</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">lovel</span><span class="s2">&quot;</span> <span class="ow">and</span> <span class="n">value</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">81</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl">                <span class="n">layer</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">H</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl">            <span class="k">elif</span> <span class="n">current</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;</span><span class="s2">lokey</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">hikey</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">pitch_keycenter</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl">                <span class="n">current</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl">            <span class="k">elif</span> <span class="n">current</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">key</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl">                <span class="n">current</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">lokey</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="p">,</span> <span class="n">hikey</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="p">,</span> <span class="n">pitch_keycenter</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl">            <span class="k">elif</span> <span class="n">current</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">sample</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl">                <span class="n">current</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">sample</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">    <span class="k">return</span> <span class="n">regions</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L72–L84</p><blockquote>
+<p><strong>文法: 外のプログラムを動かす <code>subprocess.run</code></strong></p>
+<p><code>subprocess.run([プログラム名, 引数1, 引数2, …], check=True)</code> は、別のプログラムを動かし、終わるまで待ちます。</p>
+<ul>
+<li>引数をリストで渡すと、1 つ 1 つの要素がそのまま 1 つの引数になります。ファイル名に空白や記号が入っていても、命令の区切りと取り違えられません。</li>
+<li><code>check=True</code> を付けると、プログラムが失敗（終了コードが 0 以外）したときに例外を出して止まります。付けないと、失敗しても何も言わずに先へ進みます。</li>
+</ul>
+</blockquote>
+<p><code>transcode</code> は、<code>ffmpeg</code> で FLAC（<code>src</code>）を mp3（<code>dst</code>）に変換します。L73 で、フェードアウトを始める秒（7.0 − 1.0 = 6.0）を計算しておきます。渡す引数を、意味ごとに分けると次のとおりです。</p>
+<table>
+<thead>
+<tr>
+<th>引数</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-y</code></td>
+<td>書き出し先が既にあっても、聞かずに上書きする</td>
+</tr>
+<tr>
+<td><code>-loglevel error</code></td>
+<td>エラーのときだけ表示する</td>
+</tr>
+<tr>
+<td><code>-i 元のファイル</code></td>
+<td>読み込むファイル</td>
+</tr>
+<tr>
+<td><code>-ac 1</code></td>
+<td>1 チャンネル（モノラル）にする</td>
+</tr>
+<tr>
+<td><code>-ar 44100</code></td>
+<td>1 秒 44,100 回の値にする</td>
+</tr>
+<tr>
+<td><code>-af atrim=0:7.0,afade=t=out:st=6.0:d=1.0</code></td>
+<td>音の加工。0〜7 秒だけを残し、6 秒から 1 秒かけて音を消す</td>
+</tr>
+<tr>
+<td><code>-c:a libmp3lame</code></td>
+<td>mp3 の変換器（LAME）を使う</td>
+</tr>
+<tr>
+<td><code>-b:a 80k</code></td>
+<td>80 kbps</td>
+</tr>
+<tr>
+<td>書き出し先のファイル</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>L78 の f 文字列（文法の索引の『f 文字列』）の中で、<code>MAX_SECONDS</code> などの小数は <code>7.0</code>・<code>6.0</code>・<code>1.0</code> と書かれます。7 秒より短い録音では、<code>atrim</code> は何も切らず、<code>afade</code> の 6 秒も音の終わりより後なので、何も変わりません（たとえば <code>A4vH.flac</code> は約 2.96 秒）。</p>
+<p>モノラルにするのは、ゲームでは左右の広がりよりも、読み込む量を半分にする方が大事だからと考えられます（※ 推測）。元の録音はステレオです（docs/research/04-assets-and-licenses.md の 3 節）。</p>
+<p><code>str(src)</code> は <code>Path</code> を文字列に直しています。<code>subprocess.run</code> の引数のリストには、文字列をそろえて渡します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">transcode</span><span class="p">(</span><span class="n">src</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">dst</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl">    <span class="n">fade_start</span> <span class="o">=</span> <span class="n">MAX_SECONDS</span> <span class="o">-</span> <span class="n">FADE_SECONDS</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl">    <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl">        <span class="p">[</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">ffmpeg</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">-y</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">-loglevel</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">error</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">-i</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">src</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">-ac</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">1</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">-ar</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">44100</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">-af</span><span class="s2">&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="s2">atrim=0:</span><span class="si">{</span><span class="n">MAX_SECONDS</span><span class="si">}</span><span class="s2">,afade=t=out:st=</span><span class="si">{</span><span class="n">fade_start</span><span class="si">}</span><span class="s2">:d=</span><span class="si">{</span><span class="n">FADE_SECONDS</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">-c:a</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">libmp3lame</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">-b:a</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">BITRATE</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl">        <span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl">        <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl">    <span class="p">)</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L85–L121</p><blockquote>
+<p><strong>文法: エラーの出力先 <code>sys.stderr</code></strong></p>
+<p><code>print(…, file=sys.stderr)</code> は、ふつうの出力（標準出力）ではなく、エラー用の出力（標準エラー出力）に表示します。画面ではどちらも同じように見えますが、出力をファイルに保存したときも、エラーは画面に残ります。</p>
+<p><strong>文法: フォルダの中を探す <code>glob</code> とファイルの大きさ</strong></p>
+<p><code>OUT.glob("*.mp3")</code> は、フォルダ <code>OUT</code> の中で、名前が <code>.mp3</code> で終わるファイルの <code>Path</code> を順に出します（<code>*</code> は「どんな文字の並びでも」）。<code>p.stat().st_size</code> は、そのファイルの大きさ（バイト数）です。</p>
+</blockquote>
+<p><code>main</code> は、全部の手順をつなぎます。</p>
+<ol>
+<li>L86-88: <code>shutil.which("ffmpeg")</code> は、コマンドとして <code>ffmpeg</code> を動かせる場所を探し、見つからなければ <code>None</code> を返します（文法の索引の『<code>is</code>』）。無ければエラーを表示し、終了コード 1 で終わる。</li>
+<li>L89: 設計図を取ってきて、文字列として読む。</li>
+<li>L90: 書き出し先のフォルダを作る。</li>
+<li>L92-106: region ごとに:
+   - L93-95: 録音のファイル名が <code>SAFE_SAMPLE</code> の形に合わないか、層が決まっていなければ、例外で止める（文法の索引の『<code>raise</code> による例外』）。設計図が予想と違う形になっていたら、黙って変な目録を作るより、止まって知らせる方が安全です。
+   - L96: 取り出した <code>F#4vL</code> の <code>#</code> を <code>s</code> に置き換えて <code>Fs4vL</code> にする（<code>.replace(古い, 新しい)</code> は置き換えた新しい文字列を返します）。<code>#</code> は URL で特別な意味を持つので（L34-42 の解説）、ブラウザから取りに行くファイル名には使いません。ブラウザ側も、英字と数字だけの名前しか受け付けません（<a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> の L19）。
+   - L97-99: mp3 がまだ無ければ、FLAC を取ってきて変換する。
+   - L100-106: 目録の 1 項目を作る。</li>
+<li>L107-108: 音源の <code>LICENSE</code> と <code>README.md</code> も取ってきて、mp3 と同じ場所に写す。音源と一緒に権利の文書を配るためです。</li>
+<li>L109-115: 目録の辞書を作る。</li>
+<li>L116: JSON にして、1 文字ずつ字下げして書く（<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L93 と同じ）。</li>
+<li>L117-118: mp3 の大きさの合計を、100 万で割って MB にし、小数第 1 位まで表示する（文法の索引の『f 文字列の書式指定』）。今の音源では <code>66 regions, 2.8 MB</code> と表示されます。</li>
+</ol>
+<p><strong>目録の 1 項目（L100-106）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>中身</th>
+<th><code>C1vL</code> の例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>file</code></td>
+<td>mp3 のファイル名（<code>dst.name</code> は場所の最後の部分）</td>
+<td><code>"C1vL.mp3"</code></td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td>録音した鍵盤</td>
+<td>24</td>
+</tr>
+<tr>
+<td><code>lo</code>・<code>hi</code></td>
+<td>受け持つ鍵盤の範囲</td>
+<td>23・25</td>
+</tr>
+<tr>
+<td><code>layer</code></td>
+<td>層</td>
+<td><code>"L"</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>目録全体（L109-115）。</strong></p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code>・<code>license</code>・<code>source</code></td>
+<td>音源の名前・ライセンス・配布元</td>
+</tr>
+<tr>
+<td><code>velocitySplit</code></td>
+<td>81。音の強さがこれ以上なら強い層（H）、未満なら弱い層（L）を使う</td>
+</tr>
+<tr>
+<td><code>regions</code></td>
+<td>項目の並び。層の順（<code>"H"</code> が先）、同じ層なら受け持つ範囲の低い順</td>
+</tr>
+</tbody>
+</table>
+<p><code>velocitySplit</code> の 81 は、設計図の <code>hivel=80</code>（弱い層は 80 まで）と <code>lovel=81</code>（強い層は 81 から）の境目です。ブラウザ側は <a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> の L36-38 で、楽譜の音の強さ（<code>events</code> の位置 3）がこれ以上かを比べて層を選びます。</p>
+<p>L114 の並べ替えは、組 <code>(層, 下端)</code> を基準にしています（文法の索引の『lambda（名前の無い小さな関数）』）。文字列は <code>"H" &lt; "L"</code> なので、強い層が先です。並べておくと、目録を人が読んだときに分かりやすく、作り直したときの差も小さくなります。</p>
+<p>書き出し先のフォルダ <code>public/samples/kw</code> には、mp3 66 個と、<code>LICENSE</code>・<code>README.md</code>・<code>manifest.json</code> の 69 個のファイルができます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl">    <span class="k">if</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">ffmpeg</span><span class="s2">&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl">        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">ffmpeg が見つかりません</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl">        <span class="k">return</span> <span class="mi">1</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl">    <span class="n">sfz</span> <span class="o">=</span> <span class="n">fetch</span><span class="p">(</span><span class="n">SFZ_NAME</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl">    <span class="n">OUT</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl">    <span class="n">manifest_regions</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl">    <span class="k">for</span> <span class="n">region</span> <span class="ow">in</span> <span class="n">parse_sfz</span><span class="p">(</span><span class="n">sfz</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl">        <span class="n">match</span> <span class="o">=</span> <span class="n">SAFE_SAMPLE</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">sample</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">match</span> <span class="ow">or</span> <span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">layer</span><span class="s2">&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="s2">unexpected region: </span><span class="si">{</span><span class="n">region</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl">        <span class="n">stem</span> <span class="o">=</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">#</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">s</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl">        <span class="n">dst</span> <span class="o">=</span> <span class="n">OUT</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">.mp3</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">dst</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl">            <span class="n">transcode</span><span class="p">(</span><span class="n">fetch</span><span class="p">(</span><span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">sample</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span><span class="p">,</span> <span class="n">dst</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl">        <span class="n">manifest_regions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">file</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">dst</span><span class="o">.</span><span class="n">name</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">key</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">pitch_keycenter</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L103" href="#L103">103</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">lo</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">lokey</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L104" href="#L104">104</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">hi</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">hikey</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L105" href="#L105">105</a></td><td class="cl">            <span class="s2">&quot;</span><span class="s2">layer</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">region</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">layer</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L106" href="#L106">106</a></td><td class="cl">        <span class="p">}</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L107" href="#L107">107</a></td><td class="cl">    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;</span><span class="s2">LICENSE</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">README.md</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L108" href="#L108">108</a></td><td class="cl">        <span class="n">shutil</span><span class="o">.</span><span class="n">copyfile</span><span class="p">(</span><span class="n">fetch</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="p">,</span> <span class="n">OUT</span> <span class="o">/</span> <span class="n">name</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L109" href="#L109">109</a></td><td class="cl">    <span class="n">manifest</span> <span class="o">=</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L110" href="#L110">110</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">name</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">Upright Piano KW (2022-02-21)</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L111" href="#L111">111</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">license</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">CC0-1.0</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L112" href="#L112">112</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">source</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">https://github.com/freepats/upright-piano-KW</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L113" href="#L113">113</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">velocitySplit</span><span class="s2">&quot;</span><span class="p">:</span> <span class="mi">81</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L114" href="#L114">114</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">regions</span><span class="s2">&quot;</span><span class="p">:</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">manifest_regions</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">r</span><span class="p">:</span> <span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">layer</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span> <span class="n">r</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">lo</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L115" href="#L115">115</a></td><td class="cl">    <span class="p">}</span></td></tr><tr><td class="ln"><a id="L116" href="#L116">116</a></td><td class="cl">    <span class="p">(</span><span class="n">OUT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">manifest.json</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">manifest</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L117" href="#L117">117</a></td><td class="cl">    <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">(</span><span class="p">)</span><span class="o">.</span><span class="n">st_size</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">OUT</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">*.mp3</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L118" href="#L118">118</a></td><td class="cl">    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">manifest_regions</span><span class="p">)</span><span class="si">}</span><span class="s2"> regions, </span><span class="si">{</span><span class="n">total</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1e6</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> MB</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L119" href="#L119">119</a></td><td class="cl">    <span class="k">return</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L120" href="#L120">120</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L121" href="#L121">121</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L122–L123</p><p>直接動かしたときだけ <code>main</code> を呼び、その戻り値を終了コードにします（文法の索引の『<code>if __name__ == "__main__":</code>』）。<a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> の L101-102 と同じ形です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L122" href="#L122">122</a></td><td class="cl"><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">__main__</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L123" href="#L123">123</a></td><td class="cl">    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">main</span><span class="p">(</span><span class="p">)</span><span class="p">)</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

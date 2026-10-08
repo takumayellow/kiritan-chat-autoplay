@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/song/types.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html" class="current">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 55 行</p>
+<h1><code>src/song/types.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>曲データ（<code>public/songs/&lt;id&gt;.json</code>）と曲一覧（<code>public/songs/index.json</code>）が、どんな形の値なのかを TypeScript の「型」として書き下したファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>難易度の名前 4 つ（<code>easy</code>・<code>normal</code>・<code>hard</code>・<code>expert</code>）と、その表示名を決める（L1-9）。</li>
+<li>曲データの中身の形を決める。特に大事なのは次の 2 つです。</li>
+<li><strong><code>MusicEvent</code></strong>（L12）: 鳴らすピアノの音 1 つ。<code>[開始秒, 音高, 長さ秒, ベロシティ, 手]</code> の 5 つの数の組。</li>
+<li><strong><code>RawChartNote</code></strong>（L15）: 譜面のノーツ 1 つ。<code>[時刻秒, レーン, ロングノーツの長さ秒, 鳴らす音の添字の列]</code> の 4 つ組。最後の列が <code>MusicEvent</code> の配列の<strong>何番目の音を鳴らすか</strong>を指していて、これが「ノーツと音が必ず一致する」仕組みの要です。</li>
+<li>曲 1 つ分の全体（<code>Song</code>）と、選曲画面用の要約（<code>SongSummary</code>）の形を決める（L17-55）。</li>
+</ul>
+<p>このファイルには<strong>実行される処理がほとんどありません</strong>。中身はほぼ「この値はこういう形をしている」という宣言で、TypeScript はこれを使って、書き間違い（数のはずの所に文字列を入れる、など）をプログラムを動かす前に見つけます。実行時に JSON の形を本当に確かめるのは <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の仕事です。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a>（L1）</td>
+<td><code>DIFFICULTIES</code> で 4 難易度を順に検査し、検査に通った JSON を <code>Song</code> / <code>SongSummary</code> として返す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a>（L1）</td>
+<td>読み込み関数の戻り値の型</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a>（L1, L109）</td>
+<td>保存しておいた「前回選んだ難易度」が 4 つのどれかを確かめる</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a>・<a class="xref" href="src-ui-select.ts.html"><code>src/ui/select.ts</code></a>・<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>・<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a></td>
+<td>難易度のボタンの並び、表示名、曲の型</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a>（L5）・<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a>（L1）・<a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a>（L1）</td>
+<td>譜面のノーツと鳴らす音の型</td>
+</tr>
+<tr>
+<td>対になる</td>
+<td><a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の <code>song_payload</code>（L29-69）</td>
+<td>この型どおりの JSON を Python で書き出す側。L39 が <code>RawChartNote</code>、L63-67 が <code>MusicEvent</code> を作る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>なし</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L1 <code>[...] as const</code> と L2 <code>(typeof X)[number]</code> — 配列を書き換え不可の決まった値の並びにし、その要素の型を取り出す</li>
+<li>L4 <code>Record&lt;Difficulty, string&gt;</code> — 難易度ごとに文字列を持つ表（文法の索引の『Record 型』）</li>
+<li>L11 <code>/** … */</code> — 文書コメント</li>
+<li>L12 <code>readonly [number, number, …]</code> — タプル型</li>
+<li>L15 <code>readonly number[]</code> — 書き換えない数の配列</li>
+<li>L43 <code>interface A extends B</code> — 型の継承</li>
+<li>L49 <code>readonly version: 2</code> — 数のリテラル型</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>MusicEvent</code>（L12）と <code>RawChartNote</code>（L15）。<strong>5 つ組と 4 つ組の各欄が何か</strong>を覚えておくと、<code>session.ts</code>・<code>scheduler.ts</code>・<code>engine.ts</code> の <code>event[0]</code>・<code>note[3]</code> といった書き方がすぐ読めます。</li>
+<li><code>RawChartNote</code> の 4 番目（鳴らす音の添字の列）。ノーツから音への矢印はこの 1 本だけです。</li>
+<li><code>Song</code>（L48-55）。曲データ JSON の最上位にある欄の一覧になっています。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>型は実行時には消えます。</strong> <code>readonly</code> や <code>version: 2</code> は、TypeScript が書いたコードを検査するための印で、ブラウザが受け取った JSON の中身を守ってはくれません。外から来た JSON が本当にこの形かは <code>validate.ts</code> が 1 つずつ確かめています。</li>
+<li><strong>時刻の単位は「曲の秒」です。</strong> テンポを落として遊ぶ（再生速度 <code>rate</code> を 1 未満にする）と、実際の経過時間は <code>曲の秒 ÷ rate</code> になります。この割り算は <code>session.ts</code> と <code>clock.ts</code> が行い、ここに書かれた数は常に原曲のテンポでの秒です。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><blockquote>
+<p><strong>文法: as const と配列の要素の型</strong></p>
+<p>L1 の <code>["easy", "normal", "hard", "expert"]</code> は 4 つの文字列の配列です。普通に書くと TypeScript はこれを「文字列の配列（<code>string[]</code>）」とだけ覚え、中身が何だったかは忘れます。
+末尾に <code>as const</code> を付けると、「この配列は<strong>この 4 つの値で、この順番のまま、二度と変わらない</strong>」と覚えさせられます。型は <code>readonly ["easy", "normal", "hard", "expert"]</code> になります。</p>
+<p>L2 はそこから「要素の型」を取り出す書き方です。内側から順に読みます。</p>
+<ol>
+<li><code>typeof DIFFICULTIES</code> — 型を書く場所に置いた <code>typeof 変数名</code> は、「その変数の型」を意味します。ここでは上の <code>readonly ["easy", …]</code>。</li>
+<li><code>( … )[number]</code> — 配列の型の後ろに <code>[number]</code> を付けると、「数の添字で取り出せる要素の型」、つまり<strong>要素の型を全部 <code>|</code> でつないだもの</strong>になります。</li>
+</ol>
+<p>結果、<code>Difficulty</code> は <code>"easy" | "normal" | "hard" | "expert"</code> という型になります（<code>|</code> は文法の索引の『型の別名 type と合併型 <code>|</code>』）。この型の変数には、この 4 つの文字列のどれかしか入れられません。</p>
+</blockquote>
+<p>難易度の名前を<strong>配列（実行時に使う値）と型（書き間違いの検査に使う印）の両方</strong>として持つための定番の書き方です。値の配列は <code>validate.ts</code> の L66 で 4 難易度を順に検査するときや、選曲画面で難易度ボタンを並べるとき（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L133）に使い、型のほうは「難易度を表す引数には、この 4 つ以外を渡せない」という検査に使います。名前を 1 か所に書くだけで両方がそろうので、難易度を足すときも直すのはここだけで済みます。</p>
+<p><code>export</code>（文法の索引の『import と export』）が付いているので、どちらも他のファイルから取り込めます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;easy&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;normal&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;hard&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;expert&quot;</span><span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Difficulty</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">)</span><span class="p">[</span><span class="kt">number</span><span class="p">]</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L9</p><p><code>DIFFICULTY_LABELS</code> は、難易度の内部名から画面に出す表示名への対応表です。<code>Record&lt;Difficulty, string&gt;</code>（文法の索引の『Record 型』）は「<code>Difficulty</code> の 4 つの値それぞれを鍵にして、文字列を持つ」という型なので、4 つのうち 1 つでも書き忘れると TypeScript がエラーにします。</p>
+<p>表示名は今のところ大文字にしただけですが、表を分けておくことで、内部名（JSON の鍵や保存データに使う）を変えずに表示だけを変えられます。使う所は選曲画面（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L143）、プレイ画面の見出し（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L203）、結果画面（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L41）です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">DIFFICULTY_LABELS</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="nx">easy</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;EASY&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="nx">normal</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;NORMAL&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="nx">hard</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;HARD&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="nx">expert</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;EXPERT&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="p">}</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L12</p><blockquote>
+<p><strong>文法: 文書コメント <code>/** … */</code></strong></p>
+<p><code>/*</code> から <code>*/</code> までは複数行に書けるコメントです。特に <code>/**</code> で始めたものは「直後の宣言の説明書き」として扱われ、エディタでその名前にマウスを乗せると、この文が表示されます。実行には何の影響もありません。</p>
+<p><strong>文法: タプル型</strong></p>
+<p><code>[number, number, number, number, number]</code> のように、角括弧の中に型を並べたものを<strong>タプル型</strong>と呼びます。「要素が<strong>ちょうど 5 個</strong>あり、<strong>何番目が何の型か</strong>が決まっている配列」という意味です。普通の配列の型 <code>number[]</code>（数がいくつ並んでいてもよい）とは違い、長さと位置ごとの意味が決まっています。</p>
+<p>前の <code>readonly</code> は「この配列の中身を書き換えない」という印です。<code>event[0] = 3</code> のような代入を書くと TypeScript がエラーにします。（オブジェクトの欄に付ける <code>readonly</code> は文法の索引の『interface と readonly』。）</p>
+<p>中身を取り出すときは <code>event[0]</code>（0 番目）、<code>event[1]</code>（1 番目）… と番号で指します。番号は 0 から数えます。</p>
+</blockquote>
+<p><code>MusicEvent</code> は<strong>鳴らすピアノの音 1 つ</strong>です。L11 の説明書きどおり、5 つの欄は次の意味です。</p>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>中身</th>
+<th>単位・値</th>
+<th>作る所（<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a>）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[0]</code></td>
+<td>鳴り始める時刻</td>
+<td>曲の頭からの秒</td>
+<td>L64 <code>score.seconds(n.start)</code></td>
+</tr>
+<tr>
+<td><code>[1]</code></td>
+<td>音高</td>
+<td>MIDI の音番号。60 が真ん中のド、1 増えるごとに半音上がる</td>
+<td>L64 <code>n.pitch</code></td>
+</tr>
+<tr>
+<td><code>[2]</code></td>
+<td>鳴っている長さ</td>
+<td>秒。ペダルを踏んでいる間に離した鍵盤は、ペダルを上げるまでの長さ</td>
+<td>L64 <code>score.sounding_end(n)</code> との差</td>
+</tr>
+<tr>
+<td><code>[3]</code></td>
+<td>ベロシティ（打鍵の強さ）</td>
+<td>MIDI の 1〜127</td>
+<td>L65 <code>n.velocity</code></td>
+</tr>
+<tr>
+<td><code>[4]</code></td>
+<td>手</td>
+<td>0 = 右手、1 = 左手</td>
+<td>L65 <code>0 if n.hand == "R" else 1</code></td>
+</tr>
+</tbody>
+</table>
+<p>実物の例です。「エリーゼのために」の曲データの最初の音は <code>[0.0, 76, 0.208, 62, 0]</code> で、「曲の 0 秒に、音番号 76（ミ）を 0.208 秒、強さ 62 で、右手で鳴らす」と読みます。</p>
+<p>曲データの <code>events</code> 欄は、この 5 つ組を<strong>時刻の早い順（同じ時刻なら音の低い順）</strong>に並べた配列です。並べているのは <a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の <code>event_order</code>（L81-83）で、この順番を前提にしているのが <a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a>（早い順に予約していき、先の音が出てきたらそこで止める）です。添字（配列の何番目か）は、次の <code>RawChartNote</code> から音を指す番号としても使われます。</p>
+<p>すべての欄が数なのは、JSON を小さくするためです。曲によっては音が 3000 個ほどあり（「幻想即興曲」の曲データでは 3014 個）、<code>{"time": …, "pitch": …}</code> のように欄の名前を毎回書くより、位置で意味を決めたほうがずっと短くなります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="cm">/** [開始秒, MIDI 音高, 長さ秒（ペダル込み）, ベロシティ, 手 0=右 1=左] */</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">MusicEvent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="p">[</span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">]</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L13–L15</p><p><code>RawChartNote</code> は<strong>譜面のノーツ 1 つ</strong>です。L14 の説明書きどおり 4 つの欄を持ちます。</p>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>中身</th>
+<th>単位・値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[0]</code></td>
+<td>判定線に届く時刻</td>
+<td>曲の頭からの秒</td>
+</tr>
+<tr>
+<td><code>[1]</code></td>
+<td>レーン</td>
+<td>0 から数えた番号。左端が 0。EASY/NORMAL は 0〜3、HARD/EXPERT は 0〜5</td>
+</tr>
+<tr>
+<td><code>[2]</code></td>
+<td>ロングノーツの長さ</td>
+<td>秒。<strong>0 ならふつうのタップのノーツ</strong></td>
+</tr>
+<tr>
+<td><code>[3]</code></td>
+<td>鳴らす音の添字の列</td>
+<td><code>events</code> 配列の何番目の音か、を並べた配列</td>
+</tr>
+</tbody>
+</table>
+<p>4 番目の欄だけ型が <code>readonly number[]</code>（長さの決まっていない、書き換えない数の配列）になっています。和音のように同時に鳴る複数の音を 1 つのノーツに結び付けるためです。</p>
+<h3 id="_1">ノーツと音のつながり</h3>
+<p>4 番目の欄が、このゲームの設計の中心です。例を 2 つ挙げます（どちらも「エリーゼのために」の EASY）。</p>
+<ul>
+<li><code>[29.583, 2, 0.0, [164, 165]]</code> — 29.583 秒にレーン 2 を叩くタップ。<code>events[164]</code> は <code>[29.583, 65, 0.208, 62, 0]</code>、<code>events[165]</code> は <code>[29.583, 72, 0.208, 62, 0]</code> で、同じ時刻に右手で弾く 2 音です。</li>
+<li><code>[76.25, 3, 1.19, [507, 508, 509, 510]]</code> — 76.25 秒から 1.19 秒押し続けるロングノーツ。指す 4 音は音番号 64・67・70・73 の和音で、どれも 76.25 秒から 1.25 秒鳴ります。</li>
+</ul>
+<p>ノーツの時刻 <code>[0]</code> は、指している音の時刻とまったく同じ値です。どちらも <a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> が同じ楽譜の同じ音から作るからで、「ノーツと音が合っていない」ということが作りの上で起こりません。</p>
+<p>どの音が結び付くかは <a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の <code>build_candidates</code>（L86-112）が決めます。<strong>同じ瞬間に同じ手で弾き始める音をまとめて 1 組</strong>にし（L89-91, L96）、その組の全員の添字を <code>links</code> にします。右手の組なら旋律のノーツに、左手の組ならベースのノーツになります。</p>
+<p>この結び付きは、ブラウザ側で 2 通りに使われます。</p>
+<ol>
+<li><strong>キー音モード</strong>（叩いた音だけ鳴らす設定）: <a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L60-63 で、どれかのノーツに結び付いた音の添字を集めて、自動で鳴らす音から外します。代わりに、ノーツを叩いて判定が付いたとき（L129-135）に、<code>links</code> の音をその場で鳴らします。結び付いていない音（例えば EASY では拾われない左手の伴奏）は、キー音モードでも自動で鳴り続けます。</li>
+<li><strong>検査</strong>: <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L81 が、添字が <code>events</code> の範囲内の整数であることを確かめます。範囲外の添字があると、叩いたときに鳴らす音が無いからです。</li>
+</ol>
+<p>ロングノーツの長さ <code>[2]</code> は、音の長さ <code>events[…][2]</code> とは別の値です。上の例では音が 1.25 秒鳴るのに、ノーツは 1.19 秒です。<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の <code>_hold_duration</code>（L266-273）が、鍵盤を離す位置（ペダルは含めない）か次のノーツの時刻のうち早いほうまでを取り、そこから 0.06 秒（<code>HOLD_RELEASE_GAP / 2</code>）引いているためです。長さが難易度ごとの下限に届かない音はタップのノーツ（<code>[2]</code> が 0）になります。</p>
+<p>名前の <code>Raw</code>（生の）は、JSON に書かれたままの形という意味です。ゲーム中は <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> がこれを、欄に名前の付いた <code>PlayNote</code>（session.ts の L6-12）に作り直して使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="cm">/** [時刻秒, レーン, ロングノーツの長さ秒（0 ならタップ）, 鳴らす音の添字] */</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">RawChartNote</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="p">[</span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">]</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L16–L21</p><p><code>ChartData</code> は 1 つの難易度の譜面です。<code>interface</code>（文法の索引の『interface と readonly』）で、オブジェクトがどんな名前の欄を持つかを並べています。</p>
+<ul>
+<li><code>level</code> — 画面に出すレベルの数（例「エリーゼのために」の EASY は 7、EXPERT は 23）。<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の <code>chart_level</code>（L330-343）が、各ノーツから見た直前 2 秒間のノーツの密度を集め、その 90 パーセンタイル（密なほうから 1 割の位置の値）から計算します。</li>
+<li><code>lanes</code> — レーン数。EASY/NORMAL は 4、HARD/EXPERT は 6（<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L39-44）。</li>
+<li><code>notes</code> — 上の <code>RawChartNote</code> の配列。時刻の早い順に並んでいます。</li>
+</ul>
+<p><code>readonly RawChartNote[]</code> は「<code>RawChartNote</code> が並んだ、書き換えない配列」です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">ChartData</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">level</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">notes</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">RawChartNote</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L22–L30</p><p><code>Credit</code> は楽譜の出どころです。曲データはすべて Mutopia Project の楽譜から作っているので、その曲のページの URL（<code>pieceUrl</code>）、Mutopia での番号（<code>mutopiaId</code>）、楽譜を入力した人（<code>maintainer</code>）、元にした版（<code>edition</code>）、ライセンス（<code>license</code>）を持ちます。「エリーゼのために」なら <code>mutopiaId</code> は 931、版は「Breitkopf &amp; Härtel, 1888」です。</p>
+<p><code>validate.ts</code> の <code>checkCredit</code>（L26-31）は、このうち <code>pieceUrl</code> が <code>https://www.mutopiaproject.org/</code> で始まることまで確かめます。画面に出すリンクが、よそのサイトを指さないようにするためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">Credit</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">mutopiaId</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">pieceUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">maintainer</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">edition</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">license</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L31–L41</p><p><code>SongInfo</code> は、曲データと曲一覧の<strong>両方に共通する</strong>欄です。</p>
+<ul>
+<li><code>id</code> — 曲の ID。<code>fur-elise</code> のような英小文字・数字・<code>-</code> の並びで、ファイル名 <code>public/songs/&lt;id&gt;.json</code> にもなります。形は <code>validate.ts</code> の L3 で検査します。</li>
+<li><code>title</code> / <code>titleEn</code> — 日本語と英語の題名。</li>
+<li><code>composer</code> / <code>composerEn</code> / <code>composerYears</code> — 作曲者の日本語名・英語名と生没年（「1770–1827」のような文字列）。</li>
+<li><code>bpm</code> — 曲の最初のテンポ（1 分あたりの拍数）。<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L41 で最初のテンポから計算し、L59 で整数に丸めています。表示用で、ゲームの進行には使いません。</li>
+<li><code>duration</code> — 曲の長さ（秒）。最後の音が鳴り終わる時刻です（build_songs.py の L42）。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">SongInfo</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">title</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">titleEn</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">composer</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">composerEn</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">composerYears</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">bpm</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">duration</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L42–L46</p><blockquote>
+<p><strong>文法: interface の継承 <code>extends</code></strong></p>
+<p><code>interface SongSummary extends SongInfo { … }</code> は、「<code>SongInfo</code> の欄を全部持ち、さらに <code>{ … }</code> の中の欄も持つ」という意味です。共通の欄を何度も書かずに済みます。</p>
+</blockquote>
+<p><code>SongSummary</code> は<strong>選曲画面に並べる 1 曲分</strong>で、<code>public/songs/index.json</code> の <code>songs</code> 配列の要素がこの形です。<code>SongInfo</code> の欄に加えて、難易度ごとのレベル（<code>levels</code>）とノーツ数（<code>noteCounts</code>）を持ちます。どちらも <code>Record&lt;Difficulty, number&gt;</code> なので、4 難易度すべての数がそろっています。</p>
+<p>選曲画面は一覧を開くたびに全曲の譜面を読み込むわけにはいかないので、<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> が曲データからこの要約だけを抜き出して <code>index.json</code> に書いておきます（L86-91）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">SongSummary</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">SongInfo</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">levels</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="o">&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">noteCounts</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="o">&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L47–L55</p><blockquote>
+<p><strong>文法: 数のリテラル型</strong></p>
+<p><code>readonly version: 2</code> の <code>2</code> は値ではなく<strong>型</strong>です。「この欄には数の 2 だけが入る」という意味で、<code>version: number</code>（どんな数でもよい）より狭い型です。文字列でも同じ書き方ができ、L2 の <code>"easy" | "normal" | …</code> も文字列のリテラル型を <code>|</code> でつないだものです。</p>
+</blockquote>
+<p><code>Song</code> は<strong>曲 1 つ分のデータ全体</strong>で、<code>public/songs/&lt;id&gt;.json</code> の中身そのものです。<code>SongInfo</code> の欄に加えて次を持ちます。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>型</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>version</code></td>
+<td><code>2</code></td>
+<td>曲データの形式の版。v1 の形式と区別するため。<code>validate.ts</code> の L55 が 2 以外を受け付けない</td>
+</tr>
+<tr>
+<td><code>credit</code></td>
+<td><code>Credit</code></td>
+<td>楽譜の出どころ（L23-30）</td>
+</tr>
+<tr>
+<td><code>bars</code></td>
+<td>数の配列</td>
+<td>小節線の時刻（秒）。描画で横線を引くのに使う</td>
+</tr>
+<tr>
+<td><code>beats</code></td>
+<td>数の配列</td>
+<td>拍の時刻（秒）。同じく描画用</td>
+</tr>
+<tr>
+<td><code>events</code></td>
+<td><code>MusicEvent</code> の配列</td>
+<td>鳴らす音すべて（L12）</td>
+</tr>
+<tr>
+<td><code>charts</code></td>
+<td>難易度 → <code>ChartData</code></td>
+<td>4 難易度の譜面（L17-21）</td>
+</tr>
+</tbody>
+</table>
+<p><code>bars</code> と <code>beats</code> は判定には使わず、レーンに小節線・拍線を描くためだけのものです（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L207-208 で描画用の値に渡しています）。</p>
+<p>1 つの曲データに <strong>4 難易度の譜面と、鳴らす音の列が 1 本だけ</strong>入っている点に注目してください。どの難易度で遊んでも鳴る曲は同じで、難易度によって変わるのは「どの音にノーツを付けるか」だけです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">Song</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">SongInfo</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">version</span><span class="o">:</span><span class="w"> </span><span class="kt">2</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">credit</span><span class="o">:</span><span class="w"> </span><span class="kt">Credit</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">bars</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">beats</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">events</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">MusicEvent</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">charts</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="nx">ChartData</span><span class="o">&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

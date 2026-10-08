@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>楽譜のファイルが、ゲームが読む譜面になるまで（Python） | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html" class="current">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="python">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</h1>
+<p><code>tools/</code> の 5 本は、ゲームを遊ぶ前に 1 回だけ動かす下ごしらえです。最後に <code>public/songs/&lt;曲&gt;.json</code> ができ、ブラウザはそれを読むだけです。</p>
+<pre class="mermaid">flowchart TD
+  A[&quot;fetch_sources.py&lt;br/&gt;楽譜を取ってきて、PD か確かめる&quot;] --&gt; B[&quot;score.py&lt;br/&gt;MIDI を読み、小節・拍の強さ・右手左手を出す&quot;]
+  B --&gt; C[&quot;chart.py build_candidates&lt;br/&gt;旋律の候補を拾う&quot;]
+  C --&gt; D[&quot;chart.py select_line&lt;br/&gt;難易度ごとに、拍の強い音から採る&quot;]
+  D --&gt; E[&quot;chart.py add_bass&lt;br/&gt;上の難易度だけ左手を足す&quot;]
+  E --&gt; F[&quot;chart.py assign_lanes&lt;br/&gt;音の上下をレーンの左右に写す&quot;]
+  F --&gt; G[&quot;build_songs.py&lt;br/&gt;JSON に書き出す&quot;]
+</pre>
+
+<h2 id="1-fetch_sourcespy">1. 楽譜を取ってくる — <code>fetch_sources.py</code></h2>
+<p>曲の一覧 <code>tools/songs.json</code> に書いた 12 曲について、Mutopia Project から MIDI と LilyPond のソース（<code>.ly</code>）を取ってきます。取得先は <code>https://www.mutopiaproject.org/ftp/</code> に固定してあり（<a href="../code/tools-fetch_sources.py.html#L24">L24</a>）、<code>.ly</code> のヘッダに <code>license = "Public Domain"</code> か <code>copyright = "Public Domain"</code> が無い曲はそこで止めます（<a href="../code/tools-fetch_sources.py.html#L28">L28</a>）。</p>
+<p>録音ではなく楽譜を使うのは、権利の確認を楽譜の版だけで済ませるためです。演奏の録音には演奏した人の権利が付きますが、楽譜から鳴らす音にはそれがありません。</p>
+<h2 id="2-scorepy">2. 楽譜を読む — <code>score.py</code></h2>
+<p>MIDI は「何 tick 目に、どの高さの音を、どの強さで押した・離した」という出来事の列です。<code>load_score</code>（<a href="../code/tools-score.py.html#L168">L168</a>）がこれを 1 音ずつの <code>Note</code> にまとめ、次の情報を足します。</p>
+<table>
+<thead>
+<tr>
+<th>情報</th>
+<th>どう決めるか</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>秒</td>
+<td>テンポの変化をたどって tick を秒に直す（<code>TempoMap</code>）</td>
+</tr>
+<tr>
+<td>小節線</td>
+<td>拍子記号から。曲が小節の途中から始まる（弱起）ときは、<code>.ly</code> の <code>\partial</code> から長さを読んでずらす</td>
+</tr>
+<tr>
+<td>拍の強さ（拍節レベル）</td>
+<td>0 = 小節の頭、1 = 拍の頭、2 = 半拍、3 = さらに半分、4 = それ以外（<a href="../code/tools-score.py.html#L110">L110</a>）</td>
+</tr>
+<tr>
+<td>右手か左手か</td>
+<td>MIDI のトラックごとの平均の高さで、高い方の半分を右手にする（<a href="../code/tools-score.py.html#L202">L202-204</a>）</td>
+</tr>
+<tr>
+<td>鳴っている長さ</td>
+<td>ダンパーペダルを踏んでいる間は音を延ばす。鳴らす音にだけ使い、ロングノーツの判定には使わない</td>
+</tr>
+</tbody>
+</table>
+<p>拍の強さが、このあと難易度を作るときの物差しになります。</p>
+<h2 id="3-build_candidates">3. 旋律の候補を拾う — <code>build_candidates</code></h2>
+<p>ピアノの曲は同時にいくつも音が鳴るので、全部をノーツにすると叩けません。<code>build_candidates</code>（<a href="../code/tools-chart.py.html#L86">chart.py L86</a>）は、同じ時刻に鳴る音のまとまりから 1 つを代表に選びます。</p>
+<ul>
+<li>右手は、いちばん高い音を旋律とみなします。ただし、それより高い音が前から鳴り続けているときは内側の声部なので外します（<code>_is_inner_voice</code>、<a href="../code/tools-chart.py.html#L115">L115</a>）。</li>
+<li>左手は、いちばん低い音をベースとみなします。</li>
+<li>70 ms より短く、拍の格子から外れた右手の音は装飾音とみなして外します（<a href="../code/tools-chart.py.html#L106">L106</a>）。</li>
+</ul>
+<p>代表に選ばなかった音も、<code>links</code> として候補に持たせます。叩いたときに和音ごと鳴らせるようにするためです。</p>
+<h2 id="4-select_line">4. 難易度ごとに採る — <code>select_line</code></h2>
+<p>小節ごとに「難易度の上限に収まる範囲で、いちばん細かい拍の強さまで」旋律の音を採ります（<a href="../code/tools-chart.py.html#L137">L137</a>）。上限は <code>DIFFICULTIES</code>（<a href="../code/tools-chart.py.html#L39">L39-44</a>）の「採る最大レベル」と「1 秒あたりのノーツ数」です。</p>
+<p>『エリーゼのために』の最初の小節（0.417〜1.667 秒、8 分の 3 拍子）で見てみます。旋律の候補は 6 つあります。</p>
+<table>
+<thead>
+<tr>
+<th>時刻（秒）</th>
+<th>音</th>
+<th>拍の強さ</th>
+<th>EASY</th>
+<th>NORMAL</th>
+<th>HARD</th>
+<th>EXPERT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.417</td>
+<td>ミ</td>
+<td>0（小節の頭）</td>
+<td>○</td>
+<td>○</td>
+<td>○</td>
+<td>○</td>
+</tr>
+<tr>
+<td>0.625</td>
+<td>レ♯</td>
+<td>2（半拍）</td>
+<td></td>
+<td></td>
+<td></td>
+<td>○</td>
+</tr>
+<tr>
+<td>0.833</td>
+<td>ミ</td>
+<td>1（拍の頭）</td>
+<td></td>
+<td>○</td>
+<td>○</td>
+<td>○</td>
+</tr>
+<tr>
+<td>1.042</td>
+<td>シ</td>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td>○</td>
+</tr>
+<tr>
+<td>1.250</td>
+<td>レ</td>
+<td>1</td>
+<td></td>
+<td>○</td>
+<td>○</td>
+<td>○</td>
+</tr>
+<tr>
+<td>1.458</td>
+<td>ド</td>
+<td>2</td>
+<td></td>
+<td></td>
+<td></td>
+<td>○</td>
+</tr>
+</tbody>
+</table>
+<p>EASY の上限は「レベル 1 まで、1 秒に 1.8 個まで」です。レベル 1 までを採ると 3 個 ÷ 1.25 秒 = 2.4 個/秒で上限を超えるので、1 段粗いレベル 0 に落とし、小節の頭の 1 個だけを採ります。NORMAL は上限 3.0 個/秒なので、レベル 2 までの 6 個（4.8 個/秒）は超え、レベル 1 までの 3 個（2.4 個/秒）で収まります。</p>
+<p>HARD の上限は 4.8 個/秒で、6 個 ÷ 1.25 秒はちょうど 4.8 です。それでも 3 個になるのは、MIDI のテンポが 4 分音符 1 つ 0.833333 秒（マイクロ秒単位）で記録されていて、この小節の長さが 1.2499995 秒になるためです。6 ÷ 1.2499995 = 4.8000019 個/秒がわずかに上限を超え、1 段粗いレベル 1 に落ちます。EXPERT は上限 7.5 個/秒なので、6 個すべてを採ります。</p>
+<p>拍の頭から順に採るので、どの難易度でも<strong>叩く位置が拍の格子からはみ出しません</strong>。間引いても曲のリズムの骨格が残るのはこのためです。</p>
+<p>採ったあとに 2 つ整えます。</p>
+<ul>
+<li>前のノーツと最小間隔より近いものは、拍の強い方だけを残します（<code>_enforce_gap</code>、<a href="../code/tools-chart.py.html#L156">L156</a>）。</li>
+<li>長い空白は、採らなかった旋律の音で埋めます（<code>_fill_gaps</code>、<a href="../code/tools-chart.py.html#L172">L172</a>）。遅い曲で EASY がすかすかにならないようにするためです。</li>
+</ul>
+<h2 id="5-add_bass">5. 左手を足す — <code>add_bass</code></h2>
+<p>HARD と EXPERT だけ、強い拍の左手の音を足します（<a href="../code/tools-chart.py.html#L205">L205</a>）。旋律と同時に鳴るものは 2 本同時押しにし、旋律の無い拍には左手だけのノーツを置きます。</p>
+<h2 id="6-assign_lanes">6. レーンを決める — <code>assign_lanes</code></h2>
+<p>レーンは音の高さに合わせます（<a href="../code/tools-chart.py.html#L226">L226</a>）。</p>
+<ol>
+<li>前後 3 秒の旋律の音域の中で、その音がどのくらい高いかで基準のレーンを決めます（<code>_contour_lane</code>、<a href="../code/tools-chart.py.html#L276">L276</a>）。</li>
+<li>直前の音より高ければ右へ、低ければ左へ動かします。同じ音の繰り返しは同じレーンです（<code>_apply_motion</code>、<a href="../code/tools-chart.py.html#L286">L286</a>）。</li>
+<li>そのレーンが前のノーツ（ロングノーツの途中を含む）でふさがっていれば、近い空きレーンを探します（<code>_free_lane</code>、<a href="../code/tools-chart.py.html#L310">L310</a>）。</li>
+</ol>
+<p>こうすると、旋律が上がっていく所では指が右へ、下がる所では左へ流れます。耳で聞いた動きと手の動きが一致するのが狙いです。</p>
+<p>一定以上長く続く音は、ロングノーツ（押しっぱなしにするノーツ）になります（<code>_hold_duration</code>、<a href="../code/tools-chart.py.html#L266">L266</a>）。</p>
+<h2 id="7-build_songspy">7. 書き出す — <code>build_songs.py</code></h2>
+<p>1 曲を 1 つの JSON にまとめます（<code>song_payload</code>、<a href="../code/tools-build_songs.py.html#L29">L29</a>）。中身は大きく 2 つです。</p>
+<ul>
+<li><code>events</code> — 鳴らす音すべて。<code>[開始秒, 音の高さ, 長さ秒, 強さ, 右手0/左手1]</code></li>
+<li><code>charts</code> — 難易度ごとの譜面。ノーツ 1 つが <code>[時刻秒, レーン, ロングの長さ秒, 鳴らす音の番号の列]</code></li>
+</ul>
+<p>ノーツの最後の要素が <code>events</code> の番号を指しているので、ノーツと音は同じものから作られています。『エリーゼのために』では <code>events</code> が 905 音、ノーツは EASY 184・NORMAL 225・HARD 452・EXPERT 635 個です。</p>
+<p>難易度の数字（レベル）は、2 秒ごとの密度の上位 1 割あたりの値 p90 から <code>round(1 + p90 × 3.2)</code> で出します（<code>chart_level</code>、<a href="../code/tools-chart.py.html#L330">chart.py L330</a>）。</p>
+<h2 id="8-build_samplespy">8. ピアノの音 — <code>build_samples.py</code></h2>
+<p>鳴らす音は、FreePats の Upright Piano KW（CC0）の録音です。<code>build_samples.py</code> が元の flac をブラウザで扱いやすい mp3 に変換し、どの鍵盤の範囲にどの録音を使うかを <code>manifest.json</code> に書きます。ブラウザ側の <code>sampler.ts</code> は、この表を見て、鳴らす音の高さを受け持つ録音を、強さに応じて弱い打鍵・強い打鍵の 2 種類から選びます。録音の基準の高さとの差は、再生速度を <code>2 ** (半音の差 / 12)</code> 倍にして合わせます（<a href="../code/src-audio-sampler.ts.html#L53">sampler.ts L53</a>）。</p>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#1-fetch_sourcespy">1. 楽譜を取ってくる — fetch_sources.py</a></li><li class="d2"><a href="#2-scorepy">2. 楽譜を読む — score.py</a></li><li class="d2"><a href="#3-build_candidates">3. 旋律の候補を拾う — build_candidates</a></li><li class="d2"><a href="#4-select_line">4. 難易度ごとに採る — select_line</a></li><li class="d2"><a href="#5-add_bass">5. 左手を足す — add_bass</a></li><li class="d2"><a href="#6-assign_lanes">6. レーンを決める — assign_lanes</a></li><li class="d2"><a href="#7-build_songspy">7. 書き出す — build_songs.py</a></li><li class="d2"><a href="#8-build_samplespy">8. ピアノの音 — build_samples.py</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad: true, theme: "neutral"});</script>
+
+</body>
+</html>
