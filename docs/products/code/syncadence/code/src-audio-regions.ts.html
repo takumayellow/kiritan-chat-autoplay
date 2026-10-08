@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/audio/regions.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html" class="current">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 67 行</p>
+<h1><code>src/audio/regions.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ピアノの音源の目録を確かめ、「この高さ・この強さの音には、どの録音を使うか」「どのくらいの音量で鳴らすか」を決める、計算だけのファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>目録 <code>manifest.json</code> の形（<code>SampleManifest</code>・<code>SampleRegion</code>）と、その検査（<code>parseManifest</code>、L21-34）。</li>
+<li>強さから、弱い音用と強い音用のどちらの録音を使うかを決める（<code>layerFor</code>、L36-38）。</li>
+<li>音の高さから、それを受け持つ録音を探す（<code>findRegion</code>、L41-50）。</li>
+<li>録音の先頭の無音の長さを求める（<code>detectAttack</code>、L53-61）。</li>
+<li>強さから音量を決める（<code>velocityGain</code>、L64-67）。</li>
+</ul>
+<p>音を鳴らしたりファイルを取ってきたりはせず、受け取った値から答えを返すだけです。そのため、試験（<code>src/audio/audio.test.ts</code>）でブラウザ無しに確かめられます。実際に使うのは <a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> です。</p>
+<p><strong>目録の中身。</strong> 音源には 66 個の録音があり、目録はそれぞれについて「ファイル名・録音した高さ・受け持つ高さの範囲・弱い音用か強い音用か」を持っています。例えば最初の項目は</p>
+<div class="codehilite"><pre><span></span><code>{ &quot;file&quot;: &quot;A0vH.mp3&quot;, &quot;key&quot;: 21, &quot;lo&quot;: 21, &quot;hi&quot;: 22, &quot;layer&quot;: &quot;H&quot; }
+</code></pre></div>
+
+<p>で、「一番低いラ（高さ 21）を強く弾いた録音で、高さ 21〜22 の強い音に使う」という意味です。強い音用 36 個、弱い音用 30 個で、どちらもピアノの全音域 21〜108 をすき間なく受け持っています。この目録は <a class="xref" href="tools-build_samples.py.html"><code>tools/build_samples.py</code></a> が、音源に付いてくる SFZ という形式の定義ファイルから作ります。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a>（L1 で取り込み）</td>
+<td>L22 で目録の検査、L27・L48 で録音の選択、L37 で立ち上がりの位置、L55 で音量</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/audio/audio.test.ts</code>（L103 から）</td>
+<td>各関数の試験</td>
+</tr>
+<tr>
+<td>読む（間接）</td>
+<td><code>public/samples/kw/manifest.json</code></td>
+<td><a class="xref" href="tools-build_samples.py.html"><code>tools/build_samples.py</code></a> が書き出した目録</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L19 <code>/^[A-Za-z0-9]+\.mp3$/</code> — 正規表現（<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L1-3 の解説）</li>
+<li>L23 <code>data as Record&lt;string, unknown&gt;</code> — 型アサーション（<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L23-31 の解説）と Record 型（文法の索引の『Record 型』）</li>
+<li>L42 <code>filter</code>（文法の索引の『map・filter・reduce』）、L43 <code>find</code>・L58 <code>findIndex</code> — 条件に合う要素を探す</li>
+<li>L45 <code>let best: SampleRegion | undefined;</code> — 値を入れずに作る変数</li>
+<li>L53 <code>Float32Array</code> — 小数だけを詰めた配列</li>
+<li>L66 <code>v ** 1.6</code> — べき乗（<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の L44-64 の解説）</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong><code>findRegion</code></strong>（L41-50）。受け持ちの範囲に入る録音をまず探し、無ければ録音した高さが一番近いものを使います。</li>
+<li><strong><code>velocityGain</code></strong>（L64-67）。強さ 1〜127 を、0.18〜1 の音量に曲線で直します。弱い音でも聞こえるように、下を持ち上げています。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong><code>parseManifest</code> が確かめるのは一部の欄だけです。</strong> <code>name</code>・<code>license</code>・<code>source</code> の 3 つは調べていません。また <code>regions</code> の中に <code>null</code> のような項目が混ざっていると、L27 で欄を読もうとした所でエラー（<code>TypeError</code>）になります。どちらも、目録はこのプロジェクト自身が作って置くファイルで、外から来る信用できないデータではないので、大きな問題にはなりません。</li>
+<li><strong>強さ 81 以上が強い音用です</strong>（L37 と目録の <code>velocitySplit: 81</code>）。曲の音の約 83% が強さ 81 以上で、強い音用の録音を使います。</li>
+<li><code>findRegion</code> の「一番近い高さで代用する」処理（L45-49）は、今の目録と曲のデータでは使われません。目録が全音域を受け持っており、曲の音の高さは 23〜100 に収まっているからです。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><code>Layer</code> は、録音の種類を表す型で、<code>"L"</code>（弱く弾いた録音）か <code>"H"</code>（強く弾いた録音）のどちらかです（文法の索引の『型の別名 type と合併型 <code>|</code>』）。</p>
+<p>ピアノは強く弾くと、音が大きくなるだけでなく、音色も明るく硬くなります。1 つの録音の音量を変えるだけではこの違いが出ないので、音源は同じ高さを強さ違いで 2 回録音しています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Layer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;L&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;H&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L10</p><p><code>SampleRegion</code> は、録音 1 つの情報です。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+<th>例（<code>Ds4vL.mp3</code>）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>file</code></td>
+<td>mp3 のファイル名</td>
+<td><code>Ds4vL.mp3</code></td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td>録音した高さ（MIDI の番号）</td>
+<td>63（真ん中のド 60 の 3 半音上のレ♯）</td>
+</tr>
+<tr>
+<td><code>lo</code></td>
+<td>受け持つ高さの下限</td>
+<td>62</td>
+</tr>
+<tr>
+<td><code>hi</code></td>
+<td>受け持つ高さの上限</td>
+<td>64</td>
+</tr>
+<tr>
+<td><code>layer</code></td>
+<td>弱い音用か強い音用か</td>
+<td><code>"L"</code></td>
+</tr>
+</tbody>
+</table>
+<p>この例の録音は、高さ 62・63・64 の弱い音に使われ、62 は少し遅く、64 は少し速く再生して高さを合わせます（<code>sampler.ts</code> の L53）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">file</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">lo</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">hi</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">layer</span><span class="o">:</span><span class="w"> </span><span class="kt">Layer</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L18</p><p><code>SampleManifest</code> は目録全体の形です。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+<th>実際の値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>音源の名前</td>
+<td><code>Upright Piano KW (2022-02-21)</code></td>
+</tr>
+<tr>
+<td><code>license</code></td>
+<td>使ってよい条件</td>
+<td><code>CC0-1.0</code>（権利の放棄）</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>入手先</td>
+<td>FreePats の配布元</td>
+</tr>
+<tr>
+<td><code>velocitySplit</code></td>
+<td>これ以上の強さは強い音用</td>
+<td>81</td>
+</tr>
+<tr>
+<td><code>regions</code></td>
+<td>録音の一覧</td>
+<td>66 個</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">SampleManifest</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">license</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">velocitySplit</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">regions</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="p">[</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L19–L20</p><p><code>FILE</code> は、ファイル名として受け付ける形を表す正規表現です（<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L1-3 の解説）。</p>
+<ul>
+<li><code>^</code> と <code>$</code> は、文字列の先頭と末尾です。全体がこの形でなければ合いません。</li>
+<li><code>[A-Za-z0-9]+</code> は、英字か数字が 1 文字以上続くことです。</li>
+<li><code>\.mp3</code> は、文字どおり <code>.mp3</code> です。<code>.</code> は正規表現では「どんな 1 文字でも」の意味になるので、<code>\</code> を付けて「点そのもの」にしています。</li>
+</ul>
+<p><code>sampler.ts</code> はこのファイル名を URL の後ろにつないで取ってくる（L34）ので、<code>/</code> や <code>..</code> を含む名前を受け付けると、決めた置き場所の外を指してしまいます。英字と数字だけに絞れば、必ず <code>samples/kw/</code> の中の mp3 を指します（曲 ID を絞る <a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L17 と同じ考え方です）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">FILE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sr">/^[A-Za-z0-9]+\.mp3$/</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L21–L35</p><p><code>parseManifest(data)</code> は、取ってきた目録が正しい形かを確かめ、正しければ <code>SampleManifest</code> として返します。おかしければエラーを投げます。受け取る <code>data</code> の型 <code>unknown</code> は「中身の分からない値」です（<a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L5-10 の解説）。</p>
+<ol>
+<li>L22 オブジェクトでなければエラー。<code>typeof null</code> も <code>"object"</code> になるので、<code>null</code> は別に調べます（<code>typeof</code> は <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L4-9 の解説）。</li>
+<li>L23 欄を読めるように、<code>Record&lt;string, unknown&gt;</code>（「どんな名前の欄でもあってよく、中身は分からない」）とみなす。</li>
+<li>L24 <code>velocitySplit</code> が数で、<code>regions</code> が配列でなければエラー。<code>Array.isArray(x)</code> は <code>x</code> が配列なら真を返します。</li>
+<li>L25-32 録音の項目を 1 つずつ（<code>for … of</code>。<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L23-31 の解説）確かめる。
+   - ファイル名が文字列で、L19 の形に合う。
+   - <code>key</code>・<code>lo</code>・<code>hi</code> の 3 つが全部整数。<code>[r.key, r.lo, r.hi]</code> で 3 つを並べた配列をその場で作り、<code>every</code>（<a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L10-13 の解説）で全部を調べています。<code>Number.isInteger(v)</code> は <code>v</code> が整数なら真です。
+   - <code>layer</code> が <code>"L"</code> か <code>"H"</code>。</li>
+<li>L33 全部通れば、<code>data</code> を <code>SampleManifest</code> とみなして返す。</li>
+</ol></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">parseManifest</span><span class="p">(</span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">SampleManifest</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;音源の目録が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">m</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="nx">velocitySplit</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">m</span><span class="p">.</span><span class="nx">regions</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;音源の目録が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">m</span><span class="p">.</span><span class="nx">regions</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">=</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">      </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">file</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">      </span><span class="nx">FILE</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">      </span><span class="p">[</span><span class="nx">r</span><span class="p">.</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">lo</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">hi</span><span class="p">]</span><span class="p">.</span><span class="nx">every</span><span class="p">(</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Number</span><span class="p">.</span><span class="nx">isInteger</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">      </span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">layer</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;L&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">layer</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;H&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;音源の目録の項目が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">SampleManifest</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L36–L39</p><p><code>layerFor(velocity, split)</code> は、強さ <code>velocity</code> が <code>split</code> 以上なら <code>"H"</code>、それより小さければ <code>"L"</code> を返します（<code>? :</code> は <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L51-62 の解説）。</p>
+<p><code>split</code> には目録の <code>velocitySplit</code>（81）が渡されます。例えば「エリーゼのために」の音は全部強さ 62 なので弱い音用、強さ 90 の音が多い曲では強い音用の録音を使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">layerFor</span><span class="p">(</span><span class="nx">velocity</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">split</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Layer</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">velocity</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">split</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">&quot;H&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;L&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L40–L51</p><blockquote>
+<p><strong>文法: find と findIndex</strong></p>
+<p><code>配列.find(条件の関数)</code> は、条件の関数が真を返す<strong>最初の要素</strong>を返します。1 つも無ければ <code>undefined</code> です。</p>
+<p><code>配列.findIndex(条件の関数)</code> は、同じく最初に条件に合う要素の<strong>番号</strong>を返します。1 つも無ければ <code>-1</code> です。</p>
+<p>どちらも、見つかった時点で探すのをやめます。</p>
+</blockquote>
+<p><code>findRegion(regions, pitch, layer)</code> は、高さ <code>pitch</code> の音に使う録音を返します。</p>
+<ol>
+<li>L42 種類が <code>layer</code> の録音だけを <code>filter</code>（文法の索引の『map・filter・reduce』）で取り出して <code>pool</code> にする。</li>
+<li>L43-44 その中から、受け持ちの範囲 <code>lo</code>〜<code>hi</code> に <code>pitch</code> が入る最初の録音を <code>find</code> で探し、あれば返す。</li>
+<li>L45-49 無ければ、録音した高さ <code>key</code> が <code>pitch</code> に一番近い録音を探して返す。</li>
+</ol>
+<p>3 は、全部の録音を順に見て、「まだ候補が無い」か「今の候補より近い」なら候補を入れ替えるやり方です。<code>Math.abs(r.key − pitch)</code> が高さの差の大きさです。比べ方が <code>&lt;</code>（より小さい）なので、差が同じ録音が 2 つあれば先に見たほうが残ります。</p>
+<p>L45 の <code>let best: SampleRegion | undefined;</code> は、値を入れずに変数だけを作る書き方です。そうすると最初の値は <code>undefined</code> になります。<code>pool</code> が空なら一度も入れ替わらず、<code>undefined</code> を返します。</p>
+<p>例えば弱い音用で高さ 67（ソ）を探すと、<code>Fs4vL.mp3</code>（録音の高さ 66、受け持ち 65〜67）が見つかり、<code>sampler.ts</code> はそれを 1 半音分速く（約 1.0595 倍で）再生します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="cm">/** 音高を受け持つ区間を探す。見つからなければ、最も近い基準音の区間で代用する。 */</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">findRegion</span><span class="p">(</span><span class="nx">regions</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="p">[</span><span class="p">]</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">layer</span><span class="o">:</span><span class="w"> </span><span class="kt">Layer</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">pool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">regions</span><span class="p">.</span><span class="nx">filter</span><span class="p">(</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">layer</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">layer</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">exact</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">lo</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">pitch</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">pitch</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">hi</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">exact</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">exact</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">  </span><span class="kd">let</span><span class="w"> </span><span class="nx">best</span><span class="o">:</span><span class="w"> </span><span class="kt">SampleRegion</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">pool</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">best</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">key</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">pitch</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">best</span><span class="p">.</span><span class="nx">key</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">pitch</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="nx">best</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">r</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">best</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L52–L62</p><blockquote>
+<p><strong>文法: Float32Array</strong></p>
+<p><code>Float32Array</code> は、小数（32 ビットの浮動小数点数）だけをすき間なく詰めた配列です。ふつうの配列と同じく <code>[番号]</code> で読め、<code>for … of</code> や <code>findIndex</code> も使えますが、数以外は入らず、長さも変えられません。そのぶん大量の数を少ないメモリで速く扱えるので、音の波のデータに使われます。</p>
+</blockquote>
+<p><code>detectAttack(samples, sampleRate, threshold)</code> は、録音の中で音が立ち上がる位置を秒で返します。</p>
+<p><code>samples</code> は音の波を細かく区切って測った値の列で、1 秒あたり <code>sampleRate</code> 個（例えば 48,000 個）あります。それぞれ −1〜1 の数で、無音なら 0 に近くなります。</p>
+<ol>
+<li>L54-55 全部の値の大きさ（絶対値）の最大 <code>peak</code> を求める。</li>
+<li>L56 全部 0（完全な無音）なら 0 を返す。</li>
+<li>L57 <code>peak</code> の 5%（<code>threshold</code> の既定値 0.05）を境 <code>limit</code> にする。</li>
+<li>L58 大きさが初めて <code>limit</code> 以上になる位置を <code>findIndex</code> で探す。ここが「音が立ち上がった所」です。</li>
+<li>L59-60 その位置から 2 ms 分（48,000 個毎秒なら 96 個）手前に戻し、秒に直して返す。0 より前にはしません。</li>
+</ol>
+<p>2 ms 戻すのは、立ち上がりの直前のごく小さな音まで削ると、打鍵の頭が欠けて硬い音に聞こえるからと読めます（※ 推測: 理由はコードに書かれていません）。</p>
+<p><code>sampler.ts</code> の L37 は、<code>decodeAudioData</code> で直した音のデータの 1 つ目のチャンネル（<code>getChannelData(0)</code>）を渡しています。直した後のデータは <code>AudioContext</code> の 1 秒あたりの個数にそろえられるので、<code>buffer.sampleRate</code> もそれに合わせて渡します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="cm">/** 立ち上がり（ピーク比 threshold を初めて超える位置）を秒で返す。mp3 の先頭の無音を飛ばすのに使う。 */</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">detectAttack</span><span class="p">(</span><span class="nx">samples</span><span class="o">:</span><span class="w"> </span><span class="kt">Float32Array</span><span class="p">,</span><span class="w"> </span><span class="nx">sampleRate</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">threshold</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.05</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">  </span><span class="kd">let</span><span class="w"> </span><span class="nx">peak</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">s</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">samples</span><span class="p">)</span><span class="w"> </span><span class="nx">peak</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">peak</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">peak</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">limit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">peak</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">threshold</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">samples</span><span class="p">.</span><span class="nx">findIndex</span><span class="p">(</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">s</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">limit</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">preRoll</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nx">sampleRate</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.002</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">preRoll</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">sampleRate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L63–L67</p><p><code>velocityGain(velocity)</code> は、MIDI の強さ（1〜127）から音量（0.18〜1）を決めます。</p>
+<ol>
+<li>L65 強さを 1〜127 の範囲に収め（<code>Math.max</code> で 1 未満を 1 に、<code>Math.min</code> で 127 超を 127 にする）、127 で割って 0〜1 の数 <code>v</code> にする。</li>
+<li>L66 <code>0.18 + 0.82 × v の 1.6 乗</code> を返す。</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>強さ</th>
+<th>音量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>0.1804</td>
+</tr>
+<tr>
+<td>40</td>
+<td>0.3091</td>
+</tr>
+<tr>
+<td>62</td>
+<td>0.4403</td>
+</tr>
+<tr>
+<td>80</td>
+<td>0.5714</td>
+</tr>
+<tr>
+<td>81</td>
+<td>0.5793</td>
+</tr>
+<tr>
+<td>100</td>
+<td>0.7394</td>
+</tr>
+<tr>
+<td>127</td>
+<td>1.0</td>
+</tr>
+</tbody>
+</table>
+<p>0.18 を足しているので、どんなに弱い音でも音量は 0.18 より下がりません。L63 のコメントのとおり、弱い音が聞こえなくなるのを防ぐためです。1.6 乗は、強さの差を音量の差として少し強調する曲線です。強さが半分の 63.5 のとき、音量は 0.18 + 0.82 × 0.5 の 1.6 乗 ≒ 0.45 で、最大の半分よりやや下になります。</p>
+<p>強い音用と弱い音用で録音そのものの大きさも違うので、実際に聞こえる大きさは、この音量と選んだ録音の両方で決まります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="cm">/** MIDI ベロシティから音量。強弱の差は残しつつ、弱音でも聞こえるようにする。 */</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">velocityGain</span><span class="p">(</span><span class="nx">velocity</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">velocity</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="mf">127</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">127</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mf">0.18</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.82</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="o">**</span><span class="w"> </span><span class="mf">1.6</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

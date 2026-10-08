@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作品のコードを読む</title>
+  <style>
+    :root {
+      --bg: #0f0f17;
+      --card: #22223a;
+      --accent: #e84a7a;
+      --accent-light: #ff6b9d;
+      --text: #eaeaf0;
+      --text-muted: #9a9ab0;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .header {
+      text-align: center;
+      padding: 2.5rem 1rem 1.5rem;
+      background: linear-gradient(135deg, #1a1a2e 0%, #2d1b3d 100%);
+      border-bottom: 1px solid rgba(232, 74, 122, 0.2);
+    }
+
+    .header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .header p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.6;
+      margin-top: 0.5rem;
+    }
+
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.5rem 1rem;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      display: block;
+    }
+
+    .card:active { transform: scale(0.97); }
+
+    @media (hover: hover) {
+      .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(232, 74, 122, 0.15);
+      }
+    }
+
+    .card-banner {
+      height: 96px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-banner .emoji { font-size: 2.8rem; }
+
+    .card-body { padding: 1rem 1.25rem 1.25rem; }
+
+    .card-body h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-body p {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .card-tags { margin-top: 0.6rem; }
+
+    .card-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+      margin-right: 0.3rem;
+      font-weight: 600;
+      background: rgba(127, 90, 240, 0.2);
+      color: #b08df8;
+    }
+
+    .banner-rhythm { background: linear-gradient(135deg, #2d1b4e 0%, #4a1942 100%); }
+
+    .note {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 1rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .footer a {
+      color: var(--accent-light);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>作品のコードを読む</h1>
+    <p>展示している作品が中でどう動いているかを、<br>ソースコード 1 行ずつの解説つきで読めます。<br>プログラミングの書き方を知らなくても読めるように書いています。</p>
+  </div>
+
+  <div class="cards">
+
+    <a class="card" href="./syncadence/">
+      <div class="card-banner banner-rhythm">
+        <span class="emoji">🎵</span>
+      </div>
+      <div class="card-body">
+        <h2>SynCadence Rhythm</h2>
+        <p>楽譜のファイルから難易度ごとの譜面を自動で作る仕組みと、ピアノの音・流れるノーツ・叩いた瞬間の時刻をぴったりそろえる仕組み。</p>
+        <div class="card-tags">
+          <span class="card-tag">TypeScript</span>
+          <span class="card-tag">React</span>
+          <span class="card-tag">Python</span>
+        </div>
+      </div>
+    </a>
+
+  </div>
+
+  <p class="note">スマホでも読めますが、コードの行が長いので、横向きかパソコンのほうが読みやすいです。</p>
+
+  <div class="footer">
+    <p><a href="../">← 作品一覧に戻る</a></p>
+  </div>
+
+</body>
+</html>

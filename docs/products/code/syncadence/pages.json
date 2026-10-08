@@ -1,0 +1,187 @@
+[
+ {
+  "title": "目次",
+  "url": "index.html",
+  "kind": "index"
+ },
+ {
+  "title": "全体像 — 何をするプログラムで、どのファイルがどこを担うか",
+  "url": "notes/01-overview.html",
+  "kind": "note"
+ },
+ {
+  "title": "楽譜のファイルが、ゲームが読む譜面になるまで（Python）",
+  "url": "notes/02-from-score.html",
+  "kind": "note"
+ },
+ {
+  "title": "ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）",
+  "url": "notes/03-one-note.html",
+  "kind": "note"
+ },
+ {
+  "title": "音と画面と入力の時刻をそろえる仕組み",
+  "url": "notes/04-timing.html",
+  "kind": "note"
+ },
+ {
+  "title": "知らない書き方を引く — 文法の索引",
+  "url": "notes/05-syntax.html",
+  "kind": "note"
+ },
+ {
+  "title": "難易度・判定の幅・見た目を決めている数値",
+  "url": "notes/06-knobs.html",
+  "kind": "note"
+ },
+ {
+  "title": "src/audio/clock.ts",
+  "url": "code/src-audio-clock.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/audio/context.ts",
+  "url": "code/src-audio-context.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/audio/regions.ts",
+  "url": "code/src-audio-regions.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/audio/sampler.ts",
+  "url": "code/src-audio-sampler.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/audio/scheduler.ts",
+  "url": "code/src-audio-scheduler.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/engine.ts",
+  "url": "code/src-game-engine.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/judge.ts",
+  "url": "code/src-game-judge.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/keys.ts",
+  "url": "code/src-game-keys.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/rank.ts",
+  "url": "code/src-game-rank.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/session.ts",
+  "url": "code/src-game-session.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/game/stats.ts",
+  "url": "code/src-game-stats.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/main.tsx",
+  "url": "code/src-main.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/render/highway.ts",
+  "url": "code/src-render-highway.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/render/perspective.ts",
+  "url": "code/src-render-perspective.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/song/load.ts",
+  "url": "code/src-song-load.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/song/types.ts",
+  "url": "code/src-song-types.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/song/validate.ts",
+  "url": "code/src-song-validate.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/storage.ts",
+  "url": "code/src-storage.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/App.tsx",
+  "url": "code/src-ui-App.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/Calibrate.tsx",
+  "url": "code/src-ui-Calibrate.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/Play.tsx",
+  "url": "code/src-ui-Play.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/Result.tsx",
+  "url": "code/src-ui-Result.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/select.ts",
+  "url": "code/src-ui-select.ts.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/SettingsPanel.tsx",
+  "url": "code/src-ui-SettingsPanel.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/SongSelect.tsx",
+  "url": "code/src-ui-SongSelect.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "tools/build_samples.py",
+  "url": "code/tools-build_samples.py.html",
+  "kind": "code"
+ },
+ {
+  "title": "tools/build_songs.py",
+  "url": "code/tools-build_songs.py.html",
+  "kind": "code"
+ },
+ {
+  "title": "tools/chart.py",
+  "url": "code/tools-chart.py.html",
+  "kind": "code"
+ },
+ {
+  "title": "tools/fetch_sources.py",
+  "url": "code/tools-fetch_sources.py.html",
+  "kind": "code"
+ },
+ {
+  "title": "tools/score.py",
+  "url": "code/tools-score.py.html",
+  "kind": "code"
+ }
+]

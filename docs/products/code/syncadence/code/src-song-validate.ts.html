@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/song/validate.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html" class="current">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 86 行</p>
+<h1><code>src/song/validate.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ネット越しに受け取った曲一覧・曲データの JSON が、<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> で決めた形に本当になっているかを 1 欄ずつ確かめる、検問のファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>曲一覧（<code>index.json</code>）を検査して <code>SongSummary</code> の配列として返す <code>parseIndex</code>（L39-52）。</li>
+<li>曲データ（<code>&lt;id&gt;.json</code>）を検査して <code>Song</code> として返す <code>parseSong</code>（L54-86）。特に、<strong>譜面のノーツが指すレーンと音の添字が範囲内か</strong>を確かめます（L72-83）。</li>
+<li>曲 ID の形（英小文字・数字・<code>-</code> の 1〜64 文字）を表す正規表現 <code>SONG_ID</code>（L3）。</li>
+<li>その下ごしらえの小さな関数: オブジェクトか（L7）、数の配列か（L11）、欄が文字列か（L15）・数か（L19）、クレジット（L26）と曲の基本情報（L33）の検査。</li>
+</ul>
+<p>TypeScript の型は実行時には消えるので、外から来た JSON の形はこうして実際に調べるしかありません。問題が見つかったら、どこがおかしいかを書いたエラーを投げ、ゲームを始める前に止めます。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a>（L2 で取り込み、L13・L17・L18）</td>
+<td>取ってきた JSON の検査と、曲 ID の事前検査</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の <code>DIFFICULTIES</code> と型 <code>Song</code>・<code>SongSummary</code></td>
+<td>4 難易度を順に調べる。返す値の型</td>
+</tr>
+<tr>
+<td>検査する相手</td>
+<td><a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> が書き出す JSON</td>
+<td>ふつうは正しい形のはずだが、ファイルの破損・古い版の残り・書き換えに備える</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L3 <code>/^[a-z0-9-]{1,64}$/</code> — 正規表現</li>
+<li>L7 <code>value is Json</code> — 型ガード</li>
+<li>L8 <code>typeof value === "object"</code> — 実行時の型の確認と、<code>===</code> / <code>!==</code></li>
+<li>L12 <code>.every((v) =&gt; …)</code> — 配列の全要素が条件を満たすか</li>
+<li>L15 <code>: void</code> — 何も返さない関数</li>
+<li>L16 <code>obj[key]</code> — 角括弧で欄を読む</li>
+<li>L28 <code>for (const key of [...])</code> — 配列の要素を順に取り出す繰り返し</li>
+<li>L30 <code>credit.pieceUrl as string</code>、L50 <code>as unknown as SongSummary</code> — 型アサーション</li>
+<li>L76 <code>note.slice(0, 3)</code> — 配列の一部を切り出す</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>型ガード <code>isObject</code>（L7-9）。これを通った後の <code>data.version</code> のような書き方が、なぜ許されるのか。</li>
+<li><code>parseSong</code> のノーツの検査（L72-83）。<code>types.ts</code> の <code>RawChartNote</code> の 4 欄を 1 つずつ確かめています。</li>
+<li>最後の <code>as unknown as Song</code>（L85）。検査が済んだ値に「これは <code>Song</code> だ」という札を付け直す所です。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>調べていない欄もあります。</strong> 例えばノーツの時刻が 0 以上か、時刻順に並んでいるか、ロングノーツの長さが 0 以上か、<code>events</code> の音高やベロシティが整数かは調べません。<code>lanes</code> が整数かどうかも調べていません。これらは <a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> が正しく作る前提です。</li>
+<li><strong>曲一覧ではクレジットを調べません。</strong> <code>parseIndex</code> は <code>checkInfo</code> と難易度ごとの数だけを見ます。曲一覧の <code>SongSummary</code> にはクレジットの欄が無いので、これで合っています。</li>
+<li><strong><code>as unknown as …</code> は検査ではありません。</strong> L50 と L85 の書き換えは「ここまで調べたので信じる」という宣言です。上の検査から漏れた欄があっても、TypeScript はもう気付きません。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L3</p><p>L1 は <code>types.ts</code> から値の <code>DIFFICULTIES</code> と、型の <code>Song</code>・<code>SongSummary</code> を取り込みます。名前の前の <code>type</code> は「これは型だけ」という印です（<a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L1 と同じ）。</p>
+<blockquote>
+<p><strong>文法: 正規表現</strong></p>
+<p><code>/</code> と <code>/</code> で囲んだものは<strong>正規表現</strong>という、文字列の形を表すパターンです。<code>SONG_ID</code> の中身を左から読みます。</p>
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>^</code></td>
+<td>文字列の先頭</td>
+</tr>
+<tr>
+<td><code>[a-z0-9-]</code></td>
+<td>英小文字・数字・<code>-</code> のどれか 1 文字</td>
+</tr>
+<tr>
+<td><code>{1,64}</code></td>
+<td>直前のものが 1 回以上 64 回以下続く</td>
+</tr>
+<tr>
+<td><code>$</code></td>
+<td>文字列の末尾</td>
+</tr>
+</tbody>
+</table>
+<p>合わせて「先頭から末尾まで全部が英小文字・数字・<code>-</code> で、長さが 1〜64 文字」となります。<code>SONG_ID.test("fur-elise")</code> は真、<code>SONG_ID.test("../x")</code> は偽を返します。<code>^</code> と <code>$</code> が無いと、途中に合う部分があるだけで真になってしまうので、両端をしばるのが大事です。</p>
+</blockquote>
+<p><code>SONG_ID</code> は <code>export</code> されていて、<a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L17 がファイル名を組み立てる前の確認に使います。曲 ID はファイル名 <code>songs/&lt;id&gt;.json</code> になるので、<code>/</code> や <code>.</code> を含められないこの形に絞っておくと、<code>songs/</code> の外を指されることがありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Song</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">SongSummary</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./types&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">SONG_ID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sr">/^[a-z0-9-]{1,64}$/</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L4–L9</p><p>L5 の <code>type Json = Record&lt;string, unknown&gt;;</code> は、「文字列の欄名を持ち、欄の中身はまだ分からないオブジェクト」に <code>Json</code> という短い名前を付けています（<code>type</code> は文法の索引の『型の別名 type と合併型 <code>|</code>』、<code>Record</code> は『Record 型』、<code>unknown</code> は <a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L6 で説明）。</p>
+<blockquote>
+<p><strong>文法: 型ガード <code>x is T</code></strong></p>
+<p><code>isObject</code> の戻り値の型 <code>value is Json</code> は、「この関数が <code>true</code> を返したら、引数 <code>value</code> は <code>Json</code> 型だと思ってよい」と TypeScript に教える書き方です。実際に返すのはただの真偽値（<code>true</code> / <code>false</code>）です。</p>
+<p>こう書いた関数を <code>if</code> の条件に使うと、TypeScript はその <code>if</code> の内側（<code>true</code> だった側）で <code>value</code> を <code>Json</code> として扱います。<code>unknown</code> のままでは <code>data.version</code> と書けませんが、<code>isObject(data)</code> を確かめた後なら書けるようになります。この「確かめた後で型を狭める」働きを<strong>型の絞り込み</strong>と呼びます。</p>
+<p>L40 の <code>!isObject(data) || …</code> のように「<code>false</code> なら投げる」と書いた場合は、その行より後ろ全体で <code>data</code> が <code>Json</code> 扱いになります。</p>
+<p><strong>文法: 実行時の型の確認 <code>typeof</code> と <code>===</code> / <code>!==</code></strong></p>
+<p>式の中に置いた <code>typeof 値</code> は、その値の種類を <code>"number"</code>・<code>"string"</code>・<code>"object"</code> などの文字列で返します（L2 の型の位置の <code>typeof</code> とは別物で、こちらは実行時に動きます）。</p>
+<p><code>===</code> は「型まで含めて等しい」、<code>!==</code> は「等しくない」です。JavaScript には <code>==</code> もありますが、<code>1 == "1"</code> が真になるような変換が入るので、このコードでは <code>===</code> を使っています（例外は <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の <code>!= null</code>）。</p>
+</blockquote>
+<p><code>isObject</code> は、<code>{ … }</code> の形のオブジェクトなら真を返します。3 つの条件を <code>&amp;&amp;</code>（かつ）でつないでいます。</p>
+<ol>
+<li><code>typeof value === "object"</code> — オブジェクトの仲間か。ただし JavaScript では、値が無いことを表す <code>null</code> と配列も <code>"object"</code> になります。</li>
+<li><code>value !== null</code> — <code>null</code> を除く。</li>
+<li><code>!Array.isArray(value)</code> — <code>Array.isArray</code> は配列なら真を返すので、<code>!</code>（否定）で配列を除く。</li>
+</ol></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="kr">type</span><span class="w"> </span><span class="nx">Json</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">isObject</span><span class="p">(</span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="nx">Json</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L13</p><blockquote>
+<p><strong>文法: every</strong></p>
+<p><code>配列.every(関数)</code> は、配列の<strong>全要素</strong>について関数を呼び、全部が真を返したときだけ真を返します。1 つでも偽があれば、そこで止めて偽を返します。空の配列には真を返します。</p>
+<p>渡している <code>(v) =&gt; …</code> はアロー関数（文法の索引の『アロー関数』）で、「要素 <code>v</code> を受け取って、条件の真偽を返す」関数です。</p>
+</blockquote>
+<p><code>isNumberArray</code> は、「配列で、しかも要素が全部ふつうの数」なら真を返す型ガードです。</p>
+<p><code>Number.isFinite(v)</code> は、<code>v</code> が無限大や NaN（数でない数）ではない、有限の数なら真を返します。JSON には <code>Infinity</code> と書く方法はありませんが、<code>1e999</code> のように大きすぎる数を書くと、読み込んだときに無限大になります。時刻や音高が無限大だと計算が壊れるので、ここで弾きます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">value</span><span class="p">.</span><span class="nx">every</span><span class="p">(</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">v</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">Number</span><span class="p">.</span><span class="nb">isFinite</span><span class="p">(</span><span class="nx">v</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L14–L22</p><blockquote>
+<p><strong>文法: 何も返さない関数 <code>: void</code></strong></p>
+<p><code>function requireString(…): void</code> の <code>: void</code> は、「この関数は値を返さない」という戻り値の型です。この 2 つの関数は、問題が無ければ黙って終わり、問題があればエラーを投げる、という使い方をします。</p>
+<p><strong>文法: 角括弧で欄を読む <code>obj[key]</code></strong></p>
+<p><code>obj.title</code> は欄の名前をコードに直接書く読み方です。<code>obj[key]</code> は、<strong>変数 <code>key</code> に入っている文字列</strong>を欄の名前として読みます。<code>key</code> が <code>"title"</code> なら <code>obj.title</code> と同じです。欄の名前を後から決めたいときに使います。</p>
+</blockquote>
+<p><code>requireString(obj, "title")</code> は「<code>obj</code> の <code>title</code> 欄が文字列でなければ、欄の名前入りのエラーを投げる」関数です。<code>requireNumber</code> は同じことを数について行い、L13 と同じく有限の数であることまで確かめます。</p>
+<p>L20 で <code>obj[key]</code> を一度 <code>value</code> に入れているのは、<code>typeof value</code> と <code>Number.isFinite(value)</code> の 2 か所で同じ値を使うためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">requireString</span><span class="p">(</span><span class="nx">obj</span><span class="o">:</span><span class="w"> </span><span class="kt">Json</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">obj</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="sb">曲データの </span><span class="si">${</span><span class="nx">key</span><span class="si">}</span><span class="sb"> が文字列ではありません</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">requireNumber</span><span class="p">(</span><span class="nx">obj</span><span class="o">:</span><span class="w"> </span><span class="kt">Json</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">obj</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nb">Number</span><span class="p">.</span><span class="nb">isFinite</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="sb">曲データの </span><span class="si">${</span><span class="nx">key</span><span class="si">}</span><span class="sb"> が数値ではありません</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L23–L31</p><blockquote>
+<p><strong>文法: for … of</strong></p>
+<p><code>for (const key of [...])</code> は、配列の要素を先頭から 1 つずつ <code>key</code> に入れて、後ろの文を繰り返します。番号（0, 1, 2 …）ではなく要素そのものを取り出す繰り返しです。</p>
+<p><strong>文法: 型アサーション <code>as</code></strong></p>
+<p><code>credit.pieceUrl as string</code> は、「<code>credit.pieceUrl</code> の型を <code>string</code> だと思って扱え」と TypeScript に<strong>言い切る</strong>書き方です。値そのものは何も変わらず、実行時には何の確認もしません。確かめたのは人間の側だ、という宣言です。</p>
+<p>（<code>as const</code> は値を変えない宣言という意味では仲間ですが、役目が違います。文法の索引の『as const と配列の要素の型』。）</p>
+</blockquote>
+<p><code>checkCredit</code> は曲データの <code>credit</code> 欄（<code>types.ts</code> の <code>Credit</code>）を調べます。</p>
+<ol>
+<li>L27 オブジェクトでなければエラー。</li>
+<li>L28 文字列であるべき 5 つの欄を <code>requireString</code> で確かめる。</li>
+<li>L29 <code>mutopiaId</code> が数か確かめる。</li>
+<li>L30 <code>pieceUrl</code> が L24 の正規表現 <code>PIECE_URL</code> に合うか確かめる。</li>
+</ol>
+<p>L28 で <code>pieceUrl</code> が文字列だと確かめた後なので、L30 の <code>as string</code> は安全です。TypeScript は <code>requireString</code> を通ったことから型を絞り込めないので、ここで言い切っています。</p>
+<p><code>PIECE_URL</code> の <code>\/</code> と <code>\.</code> は、正規表現の中で特別な意味を持つ <code>/</code> と <code>.</code> を「ただの文字」として書くための形です。<code>^</code> があるので「<code>https://www.mutopiaproject.org/</code> で<strong>始まる</strong>」ことを確かめます。このリンクは画面にクレジットとして出すので、<code>javascript:</code> のような危ない文字列や、よそのサイトへのリンクが入り込まないようにしています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">PIECE_URL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sr">/^https:\/\/www\.mutopiaproject\.org\//</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">checkCredit</span><span class="p">(</span><span class="nx">credit</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">credit</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲データのクレジットがありません&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;source&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;pieceUrl&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;maintainer&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;edition&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;license&quot;</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="nx">requireString</span><span class="p">(</span><span class="nx">credit</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">  </span><span class="nx">requireNumber</span><span class="p">(</span><span class="nx">credit</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;mutopiaId&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">PIECE_URL</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">credit</span><span class="p">.</span><span class="nx">pieceUrl</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;クレジットのリンクが不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L32–L37</p><p><code>checkInfo</code> は、曲一覧と曲データに共通の基本情報（<code>types.ts</code> の <code>SongInfo</code>）を調べます。題名や作曲者などの 6 欄は文字列、<code>bpm</code> と <code>duration</code> は数であることを確かめ、最後に <code>id</code> が L3 の <code>SONG_ID</code> の形かを確かめます。L36 でも <code>as string</code> を使うのは L30 と同じ理由です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">checkInfo</span><span class="p">(</span><span class="nx">obj</span><span class="o">:</span><span class="w"> </span><span class="kt">Json</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;title&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;titleEn&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;composer&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;composerEn&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;composerYears&quot;</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="nx">requireString</span><span class="p">(</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;bpm&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;duration&quot;</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="nx">requireNumber</span><span class="p">(</span><span class="nx">obj</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">SONG_ID</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲 ID の形式が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L38–L52</p><p><code>parseIndex</code> は曲一覧 <code>index.json</code> の検査です。</p>
+<ol>
+<li>L40 全体がオブジェクトで、<code>version</code> が 2 で、<code>songs</code> が配列であること。<code>||</code>（または）でつないでいるので、どれか 1 つでも外れればエラーです。左から順に調べ、真が見つかった所で止まるので、<code>data</code> がオブジェクトでなければ <code>data.version</code> は読みません。</li>
+<li>L41 <code>data.songs.map(…)</code> で、各項目を調べながら新しい配列を作ります（<code>map</code> は文法の索引の『map・filter・reduce』）。</li>
+<li>L42-43 項目がオブジェクトで、基本情報がそろっていること。</li>
+<li>L44-49 <code>levels</code> と <code>noteCounts</code> の 2 つの表について、4 難易度すべての値が数であること。<code>DIFFICULTIES.every((d) =&gt; …)</code> で 4 つの名前を順に試しています。</li>
+<li>L50 検査を通った項目を <code>SongSummary</code> として返す。</li>
+</ol>
+<p>L50 の <code>entry as unknown as SongSummary</code> は <code>as</code> を 2 回重ねています。<code>entry</code> の型（<code>Json</code>）と <code>SongSummary</code> はかけ離れているので、TypeScript は直接の <code>as SongSummary</code> を「何かの間違いでは」とエラーにします。いったん「何でもあり得る」<code>unknown</code> を経由すると、どんな型にも言い切れるようになります。検査を自分で済ませたので型を付け直す、という意味です。</p>
+<p>L46 は数かどうかだけを見ていて、L13 のような有限かどうかの確認はしていません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">parseIndex</span><span class="p">(</span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">SongSummary</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">version</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="mf">2</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">songs</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲一覧の形式が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">songs</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">entry</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">entry</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲一覧の項目が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">    </span><span class="nx">checkInfo</span><span class="p">(</span><span class="nx">entry</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">key</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;levels&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;noteCounts&quot;</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">table</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">entry</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">table</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">DIFFICULTIES</span><span class="p">.</span><span class="nx">every</span><span class="p">(</span><span class="p">(</span><span class="nx">d</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">table</span><span class="p">[</span><span class="nx">d</span><span class="p">]</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">        </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="sb">曲一覧の </span><span class="si">${</span><span class="nx">key</span><span class="si">}</span><span class="sb"> が不正です</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">      </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">unknown</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">SongSummary</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L53–L63</p><p><code>parseSong</code> は曲データ <code>&lt;id&gt;.json</code> の検査です。前半では次を順に確かめます。</p>
+<ol>
+<li>L55 オブジェクトで、<code>version</code> が 2。</li>
+<li>L56 基本情報（<code>checkInfo</code>）。</li>
+<li>L57 中の <code>id</code> が、頼んだ曲 ID（引数 <code>expectedId</code>）と同じ。<a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> が <code>songs/fur-elise.json</code> を取ってきたのに中身が別の曲だった、という取り違えを見つけます。</li>
+<li>L58 クレジット（<code>checkCredit</code>）。</li>
+<li>L59 <code>bars</code> と <code>beats</code> が数の配列。</li>
+<li>L60-63 <code>events</code> が配列で、各要素が「長さ 5 の数の配列」。<code>types.ts</code> の <code>MusicEvent</code> の 5 つ組の形です。</li>
+</ol>
+<p>L60 で <code>data.events</code> を一度 <code>events</code> という変数に入れているのは、後ろの L81 で <code>events.length</code>（音の数）を使うためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">parseSong</span><span class="p">(</span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">,</span><span class="w"> </span><span class="nx">expectedId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Song</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">version</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="mf">2</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲データの形式が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">  </span><span class="nx">checkInfo</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">id</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="nx">expectedId</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;曲 ID が一致しません&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">  </span><span class="nx">checkCredit</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">credit</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">bars</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">data</span><span class="p">.</span><span class="nx">beats</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;小節線・拍の形式が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">events</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">events</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">events</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">events</span><span class="p">.</span><span class="nx">every</span><span class="p">(</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">5</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">    </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;音のデータの形式が不正です&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L64–L86</p><p>後半は 4 難易度の譜面です。L66 の <code>for (const name of DIFFICULTIES)</code> で <code>"easy"</code> から <code>"expert"</code> まで順に調べます（L28 と同じ for … of）。</p>
+<p>L68 では各譜面がオブジェクトで、<code>lanes</code>（レーン数）と <code>level</code> が数、<code>notes</code> が配列であることを確かめます。</p>
+<p>L72-83 が<strong>ノーツ 1 つずつの検査</strong>です。<code>types.ts</code> の <code>RawChartNote</code>（<code>[時刻, レーン, 長さ, 鳴らす音の添字の列]</code>）の形を、条件を <code>&amp;&amp;</code> で 8 つつないで確かめます。</p>
+<table>
+<thead>
+<tr>
+<th>行</th>
+<th>条件</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L74</td>
+<td><code>Array.isArray(note)</code></td>
+<td>配列である</td>
+</tr>
+<tr>
+<td>L75</td>
+<td><code>note.length === 4</code></td>
+<td>要素がちょうど 4 つ</td>
+</tr>
+<tr>
+<td>L76</td>
+<td><code>isNumberArray(note.slice(0, 3))</code></td>
+<td>最初の 3 つ（時刻・レーン・長さ）が有限の数</td>
+</tr>
+<tr>
+<td>L77</td>
+<td><code>Number.isInteger(note[1])</code></td>
+<td>レーンが整数</td>
+</tr>
+<tr>
+<td>L78-79</td>
+<td><code>note[1] &gt;= 0 &amp;&amp; note[1] &lt; lanes</code></td>
+<td>レーンが 0 以上、レーン数未満</td>
+</tr>
+<tr>
+<td>L80</td>
+<td><code>isNumberArray(note[3])</code></td>
+<td>4 番目が数の配列</td>
+</tr>
+<tr>
+<td>L81</td>
+<td><code>.every((i) =&gt; …)</code></td>
+<td>その数が全部、0 以上 <code>events.length</code> 未満の整数</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>文法: slice</strong></p>
+<p><code>配列.slice(開始, 終了)</code> は、<code>開始</code> 番目から <code>終了</code> 番目の<strong>手前まで</strong>を切り出した新しい配列を返します。元の配列は変わりません。<code>note.slice(0, 3)</code> は 0・1・2 番目の 3 つです。</p>
+</blockquote>
+<p>L78-79 と L81 がこのファイルで最も大事な確認です。</p>
+<ul>
+<li>レーンが範囲外だと、<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L58 でそのノーツはどのレーンの列にも入りません。それでも判定の総数（<code>total</code>）には数えられるので、判定が総数に届かず、曲がいつまでも終わらなくなります。</li>
+<li>添字が範囲外だと、そのノーツを叩いたときに鳴らす音が見つかりません（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L132-133 は <code>events[link]</code> が無ければ黙って飛ばします）。</li>
+</ul>
+<p>L81 の <code>(note[3] as number[])</code> は、L80 で数の配列だと確かめた後の言い切りです（L30 と同じ型アサーション）。一方、<code>chart.notes</code> は L68 の <code>Array.isArray</code> で「配列」と分かっただけなので、TypeScript は要素の <code>note</code> を <code>any</code>（型の検査をしない、何でもよい値）として扱います。そのため <code>note[1] &gt;= 0</code> のような書き方は、TypeScript の検査を受けずにそのまま通ります。中身を守っているのは、この L74-81 の条件だけです。</p>
+<p>どの条件が外れても、L82 で「<code>easy</code> の譜面のノーツが不正です」のように難易度の名前入りのエラーを投げます。4 難易度すべてを通ったら、L85 で <code>Song</code> として返します（L50 と同じ <code>as unknown as</code>）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">charts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">data</span><span class="p">.</span><span class="nx">charts</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">charts</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;譜面がありません&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">name</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">chart</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">charts</span><span class="p">[</span><span class="nx">name</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">isObject</span><span class="p">(</span><span class="nx">chart</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">lanes</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">level</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">chart</span><span class="p">.</span><span class="nx">notes</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl"><span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">name</span><span class="si">}</span><span class="sb"> の譜面が不正です</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">lanes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">lanes</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">note</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">chart</span><span class="p">.</span><span class="nx">notes</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">=</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="w">        </span><span class="nb">Array</span><span class="p">.</span><span class="nx">isArray</span><span class="p">(</span><span class="nx">note</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">        </span><span class="nx">note</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">4</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="w">        </span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">note</span><span class="p">.</span><span class="nx">slice</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="mf">3</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">        </span><span class="nb">Number</span><span class="p">.</span><span class="nx">isInteger</span><span class="p">(</span><span class="nx">note</span><span class="p">[</span><span class="mf">1</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="w">        </span><span class="nx">note</span><span class="p">[</span><span class="mf">1</span><span class="p">]</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="w">        </span><span class="nx">note</span><span class="p">[</span><span class="mf">1</span><span class="p">]</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">lanes</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="w">        </span><span class="nx">isNumberArray</span><span class="p">(</span><span class="nx">note</span><span class="p">[</span><span class="mf">3</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">        </span><span class="p">(</span><span class="nx">note</span><span class="p">[</span><span class="mf">3</span><span class="p">]</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="p">.</span><span class="nx">every</span><span class="p">(</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Number</span><span class="p">.</span><span class="nx">isInteger</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">events</span><span class="p">.</span><span class="nx">length</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">name</span><span class="si">}</span><span class="sb"> の譜面のノーツが不正です</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">unknown</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Song</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

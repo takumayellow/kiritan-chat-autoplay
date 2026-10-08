@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>目次 | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="index">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="code/tools-chart.py.html">chart.py</a></li>
+<li><a href="code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="hero">
+<h1>Syncadence のコードを読む</h1>
+<div class="lead"><p>ピアノの名曲の楽譜から譜面を作り、ブラウザで叩くリズムゲーム。
+<strong>楽譜のファイルが譜面になるまで</strong>と、<strong>画面のノーツを 1 つ叩いて判定が出るまで</strong>の 2 本の流れを、
+1 行ずつたどって読むための資料。</p></div>
+<p class="lead small">読んでいるのは takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）時点。コードの写しは 1 文字も変えていない。解説はコードの横に置いてあり、コードそのものには混ぜていない。</p>
+</header>
+<h2 id="notes">読む順序</h2>
+<div class="cards">
+<a class="card" href="notes/01-overview.html"><span class="n">01</span><strong>全体像 — 何をするプログラムで、どのファイルがどこを担うか</strong><span class="blurb">何をするプログラムで、どのファイルがどこを担うか</span></a>
+<a class="card" href="notes/02-from-score.html"><span class="n">02</span><strong>楽譜のファイルが、ゲームが読む譜面になるまで（Python）</strong><span class="blurb">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</span></a>
+<a class="card" href="notes/03-one-note.html"><span class="n">03</span><strong>ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</strong><span class="blurb">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</span></a>
+<a class="card" href="notes/04-timing.html"><span class="n">04</span><strong>音と画面と入力の時刻をそろえる仕組み</strong><span class="blurb">音と画面と入力の時刻をそろえる仕組み</span></a>
+<a class="card" href="notes/05-syntax.html"><span class="n">05</span><strong>知らない書き方を引く — 文法の索引</strong><span class="blurb">TypeScript・React・Python の書き方の索引</span></a>
+<a class="card" href="notes/06-knobs.html"><span class="n">06</span><strong>難易度・判定の幅・見た目を決めている数値</strong><span class="blurb">難易度・判定の幅・見た目を決めている数値</span></a>
+</div>
+<h2 id="code">コード</h2>
+<p class="lead small">1 ファイル 1 ページ。元コードを行番号つきで区切り、区切りごとに解説が付いている。</p>
+<h3>画面 (src/ui)</h3>
+<ul class="filelist">
+<li><a href="code/src-ui-App.tsx.html"><code>App.tsx</code><span class="meta">121 行</span></a><span class="blurb">いまどの画面（選曲・プレイ・結果・タイミング調整）を出しているかを 1 つの値で覚え、その値に応じて画面の部品を 1 つだけ選んで描く、ゲーム全体の「司令塔」の部品です。</span></li>
+<li><a href="code/src-ui-Calibrate.tsx.html"><code>Calibrate.tsx</code><span class="meta">132 行</span></a><span class="blurb">0.6 秒おきに 20 回鳴るクリック音に合わせてキーか画面を叩いてもらい、音が聞こえてから押すまでのずれの中央値を測って「入力の補正」に入れる、タイミング調整の画面の部品です。</span></li>
+<li><a href="code/src-ui-Play.tsx.html"><code>Play.tsx</code><span class="meta">259 行</span></a><span class="blurb">プレイ画面そのものです。曲と音源を読み込み、毎フレーム「進行を 1 歩進めて絵を描く」ループを回し、キーボードとタッチの入力を進行役（PlayEngine）に渡し、READY・PAUSE などの重ね表示を出し分けます。</span></li>
+<li><a href="code/src-ui-Result.tsx.html"><code>Result.tsx</code><span class="meta">90 行</span></a><span class="blurb">1 曲を遊び終えた後に、ランク・スコア・判定ごとの回数・最大コンボと、押したタイミングの偏りを出し、偏りが大きければ「入力の補正」の変更を 1 ボタンで提案する結果画面の部品です。</span></li>
+<li><a href="code/src-ui-SettingsPanel.tsx.html"><code>SettingsPanel.tsx</code><span class="meta">82 行</span></a><span class="blurb">ノーツの速さ・テンポ・音量・2 つの補正・キー音・オートプレイの 7 つの設定を、スライダーや入力欄やチェックボックスで変えられるようにする設定の部品です。</span></li>
+<li><a href="code/src-ui-SongSelect.tsx.html"><code>SongSelect.tsx</code><span class="meta">176 行</span></a><span class="blurb">左に曲の一覧、右に選んだ曲の詳細（難易度ごとのレベル・ノーツ数・ランク、自己ベスト、PLAY ボタン）を並べ、矢印キーと Enter でも操作できる選曲画面の部品です。</span></li>
+<li><a href="code/src-ui-select.ts.html"><code>select.ts</code><span class="meta">26 行</span></a><span class="blurb">選曲画面（src/ui/SongSelect.tsx）が使う 4 つの小さな計算、つまりジャケットの色と文字、↑↓←→ での移動先を、画面の部品から切り離して置いたファイルです。</span></li>
+</ul>
+<h3>進行と判定 (src/game)</h3>
+<ul class="filelist">
+<li><a href="code/src-game-engine.ts.html"><code>engine.ts</code><span class="meta">220 行</span></a><span class="blurb">1 プレイ分の進行役 PlayEngine です。曲の 0 秒をいつ鳴らすかを決めて音を予約し、入力の時刻を「そのとき聞こえていた曲の位置」に直して判定に回し、毎フレーム描画に渡す材料をまとめます。</span></li>
+<li><a href="code/src-game-judge.ts.html"><code>judge.ts</code><span class="meta">31 行</span></a><span class="blurb">押した時刻のずれ（ミリ秒）を PERFECT・GREAT・GOOD・MISS のどれかに決める「判定幅」と、判定ごとのスコアの重みを決めておくファイルです。</span></li>
+<li><a href="code/src-game-keys.ts.html"><code>keys.ts</code><span class="meta">22 行</span></a><span class="blurb">どのキーがどのレーンに当たるか、そして曲を始める合図にどのキーを使ってよいかを決める、小さな表と 3 つの関数です。</span></li>
+<li><a href="code/src-game-rank.ts.html"><code>rank.ts</code><span class="meta">14 行</span></a><span class="blurb">スコア（0〜1,000,000）から SSS〜D のランクを決める表と、それを引く関数です。</span></li>
+<li><a href="code/src-game-session.ts.html"><code>session.ts</code><span class="meta">185 行</span></a><span class="blurb">1 回のプレイの「どのノーツをもう叩いたか」「コンボはいくつか」「スコアはいくつか」を覚えておき、押した・離した・時間が経った、の 3 つの出来事から判定を出すファイルです。</span></li>
+<li><a href="code/src-game-stats.ts.html"><code>stats.ts</code><span class="meta">39 行</span></a><span class="blurb">押したタイミングのずれを数でまとめる関数です。結果画面の「早め・遅め」の表示と、タイミングを測る画面の「入力の補正」の値は、ここで計算します。</span></li>
+</ul>
+<h3>音と時計 (src/audio)</h3>
+<ul class="filelist">
+<li><a href="code/src-audio-clock.ts.html"><code>clock.ts</code><span class="meta">68 行</span></a><span class="blurb">「いまスピーカーから聞こえているのは曲の何秒目か」を、ブラウザの 2 つの時計の対応から求めるファイルです。</span></li>
+<li><a href="code/src-audio-context.ts.html"><code>context.ts</code><span class="meta">17 行</span></a><span class="blurb">ブラウザで音を鳴らすための土台 AudioContext と、ピアノの音源 Sampler を、アプリ全体で 1 組だけ作って使い回すためのファイルです。</span></li>
+<li><a href="code/src-audio-regions.ts.html"><code>regions.ts</code><span class="meta">67 行</span></a><span class="blurb">ピアノの音源の目録を確かめ、「この高さ・この強さの音には、どの録音を使うか」「どのくらいの音量で鳴らすか」を決める、計算だけのファイルです。</span></li>
+<li><a href="code/src-audio-sampler.ts.html"><code>sampler.ts</code><span class="meta">64 行</span></a><span class="blurb">本物のピアノを 1 音ずつ録音した音（サンプル）を読み込んでおき、指定された高さ・強さ・時刻・長さでその音を鳴らす、ゲームの「ピアノ」にあたるファイルです。</span></li>
+<li><a href="code/src-audio-scheduler.ts.html"><code>scheduler.ts</code><span class="meta">35 行</span></a><span class="blurb">曲の伴奏の音を、いまの位置から 0.4 秒先までずつ、AudioContext に「この時刻に鳴らして」と前もって予約していくファイルです。</span></li>
+</ul>
+<h3>描画 (src/render)</h3>
+<ul class="filelist">
+<li><a href="code/src-render-highway.ts.html"><code>highway.ts</code><span class="meta">422 行</span></a><span class="blurb">プレイ画面の 1 コマ（レーン・拍の線・ノーツ・判定線・光・判定の文字・コンボ・スコア・進み具合）を、canvas に毎フレーム描き直すファイルです。</span></li>
+<li><a href="code/src-render-perspective.ts.html"><code>perspective.ts</code><span class="meta">86 行</span></a><span class="blurb">奥から手前へ流れるレーンの「どこに何を描くか」を、画面の大きさと時刻から計算する、絵を 1 枚も描かない計算専用のファイルです。</span></li>
+</ul>
+<h3>曲データの読み込み (src/song)</h3>
+<ul class="filelist">
+<li><a href="code/src-song-load.ts.html"><code>load.ts</code><span class="meta">19 行</span></a><span class="blurb">サーバーに置いた曲一覧と曲データの JSON を、ブラウザからネット越しに取ってきて、形を確かめてから渡すファイルです。</span></li>
+<li><a href="code/src-song-types.ts.html"><code>types.ts</code><span class="meta">55 行</span></a><span class="blurb">曲データ（public/songs/&lt;id&gt;.json）と曲一覧（public/songs/index.json）が、どんな形の値なのかを TypeScript の「型」として書き下したファイルです。</span></li>
+<li><a href="code/src-song-validate.ts.html"><code>validate.ts</code><span class="meta">86 行</span></a><span class="blurb">ネット越しに受け取った曲一覧・曲データの JSON が、src/song/types.ts で決めた形に本当になっているかを 1 欄ずつ確かめる、検問のファイルです。</span></li>
+</ul>
+<h3>入口と保存 (src)</h3>
+<ul class="filelist">
+<li><a href="code/src-main.tsx.html"><code>main.tsx</code><span class="meta">12 行</span></a><span class="blurb">ブラウザがページを開いたときに最初に動き、画面全体を描く部品 App を HTML の空の箱 &lt;div id=&quot;root&quot;&gt; の中に描き始めるだけの、12 行の入口です。</span></li>
+<li><a href="code/src-storage.ts.html"><code>storage.ts</code><span class="meta">119 行</span></a><span class="blurb">設定・自己ベスト・最後に選んだ曲と難易度を、ブラウザの中の小さな保存場所（localStorage）に書き込み、次に開いたときに読み戻すファイルです。読み戻した値は型と範囲を 1 つずつ確かめ、壊れていれば既定値に戻しま</span></li>
+</ul>
+<h3>譜面を作る (tools・Python)</h3>
+<ul class="filelist">
+<li><a href="code/tools-build_samples.py.html"><code>build_samples.py</code><span class="meta">123 行</span></a><span class="blurb">ゲームの音として鳴らすピアノの録音（FreePats の Upright Piano KW）を取ってきて、ブラウザで読み込みやすい小さな mp3 と、その目録（manifest.json）に作り直すファイルです。</span></li>
+<li><a href="code/tools-build_songs.py.html"><code>build_songs.py</code><span class="meta">98 行</span></a><span class="blurb">保存してある楽譜から、ゲームが読み込む曲データ（public/songs/&lt;曲ID&gt;.json）と曲の一覧（public/songs/index.json）を書き出すファイルです。</span></li>
+<li><a href="code/tools-chart.py.html"><code>chart.py</code><span class="meta">353 行</span></a><span class="blurb">楽譜データ（tools/score.py の Score）から、EASY・NORMAL・HARD・EXPERT の 4 つの譜面を自動で作るファイルで、このゲームの譜面の形はすべてここで決まります。</span></li>
+<li><a href="code/tools-fetch_sources.py.html"><code>fetch_sources.py</code><span class="meta">102 行</span></a><span class="blurb">Mutopia Project から曲ごとの楽譜（LilyPond の .ly）と MIDI を取ってきて、楽譜のヘッダに「Public Domain」と書かれていない曲を止める、取り込みの入口のファイルです。</span></li>
+<li><a href="code/tools-score.py.html"><code>score.py</code><span class="meta">230 行</span></a><span class="blurb">MIDI ファイルを読み、「どの音が、何秒に、どちらの手で、拍のどれくらい強い位置で鳴るか」を引ける楽譜データ（Score）に変える、譜面づくりの土台のファイルです。</span></li>
+</ul>
+<h2 id="howto">このサイトの作り</h2>
+<div class="readme">
+<p>ピアノの名曲を、楽譜から自動で作った譜面で叩くブラウザのリズムゲーム「Syncadence」を、楽譜のファイルが譜面になるまで（Python）と、ノーツ 1 つが流れてきて判定されるまで（TypeScript）の 2 本の筋でたどって読むための資料。本線の 30 ファイルを丸ごと写し、1 行ずつ解説を付けてある。TypeScript・React・Python の書き方を知らなくても読めるよう、出てきた書き方はその場で説明している。</p>
+<p>読む対象はコミット <strong><code>eb9c698</code></strong>（<code>main</code>）。</p>
+<h2 id="_1">何が入っているか</h2>
+<table>
+<thead>
+<tr>
+<th>ディレクトリ</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notes/</code></td>
+<td>章ごとの解説</td>
+</tr>
+<tr>
+<td><code>source/</code></td>
+<td>元ファイルの<strong>丸ごとコピー</strong>。1 バイトも変えていない</td>
+</tr>
+<tr>
+<td><code>guide/</code></td>
+<td><code>source/</code> に対する 1 行ずつの解説。<code>@@ 12-20</code> で「この行範囲の話」と宣言する</td>
+</tr>
+<tr>
+<td><code>assets/shots/</code></td>
+<td>解説に載せるスクリーンショット</td>
+</tr>
+<tr>
+<td><code>tools/shots/</code></td>
+<td>スクリーンショットを撮り直すスクリプト</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">読む順序</h2>
+<ol>
+<li><code>notes/01-overview.md</code> — 何をするプログラムで、どのファイルがどこを担うか</li>
+<li><code>notes/02-from-score.md</code> — 楽譜のファイルが、ゲームが読む譜面になるまで</li>
+<li><code>notes/03-one-note.md</code> — ノーツ 1 つが流れてきて、叩いて、判定が出るまで</li>
+<li><code>notes/04-timing.md</code> — 音と画面と入力の時刻をそろえる仕組み</li>
+<li>コードをプレイの流れに沿って（<code>01-overview</code> の「読む順序」）</li>
+<li>知らない書き方が出てきたら <code>notes/05-syntax.md</code> で引く</li>
+<li><code>notes/06-knobs.md</code> — 難易度・判定の幅・見た目を決めている数値</li>
+</ol>
+<h2 id="_3">サイトを作る</h2>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/takumayellow/code-reading-kit
+python<span class="w"> </span>-m<span class="w"> </span>learnkit<span class="w"> </span>check<span class="w"> </span>docs/learning
+python<span class="w"> </span>-m<span class="w"> </span>learnkit<span class="w"> </span>build<span class="w"> </span>docs/learning
+</code></pre></div>
+
+<p><code>docs/learning/site/index.html</code> を開けば読める。<code>site/</code> は生成物なので追跡しない。</p>
+<p>元のコードが進んだら、<code>kit.toml</code> の <code>[source].commit</code> を上げて <code>check</code> を回すと、変わったファイルが落ちる。そのファイルだけ写し直して、解説の行範囲を直す。</p>
+<h2 id="_4">スクリーンショットを撮り直す</h2>
+<div class="codehilite"><pre><span></span><code>npm<span class="w"> </span>run<span class="w"> </span>dev
+pip<span class="w"> </span>install<span class="w"> </span>playwright<span class="w"> </span>pillow<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+python<span class="w"> </span>docs/learning/tools/shots/take_shots.py<span class="w"> </span>http://localhost:5173/
+</code></pre></div>
+
+<p><code>assets/shots/</code> の 6 枚を上書きする。結果画面は、譜面のノーツを人が叩いたように時刻を揺らして（平均 +18 ms・標準偏差 22 ms）押して撮っている。</p></div>
+</article>
+
+</main>
+<script src="site.js"></script>
+
+</body>
+</html>

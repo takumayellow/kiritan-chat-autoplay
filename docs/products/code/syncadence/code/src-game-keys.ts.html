@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/game/keys.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html" class="current">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 22 行</p>
+<h1><code>src/game/keys.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>どのキーがどのレーンに当たるか、そして曲を始める合図にどのキーを使ってよいかを決める、小さな表と 3 つの関数です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>レーン数ごとのキーの割り当て <code>LANE_KEYS</code>（L2-5）。4 レーンは D・F・J・K、6 レーンは S・D・F・J・K・L。</li>
+<li>キーの名前をレーン番号に直す <code>laneOfKey</code>（L11-14）と、レーンの下に出す文字を作る <code>keyLabels</code>（L7-9）。</li>
+<li>READY の画面で「何かキーを押すとスタート」に使ってよいキーかを答える <code>isStartKey</code>（L19-22）。ブラウザや OS の操作に使うキーは除く。</li>
+</ul>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L111, L140（<code>laneOfKey</code>）、L117（<code>isStartKey</code>）</td>
+<td>押されたキーをレーンに直す、開始の合図かを見る</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L52（<code>keyLabels</code>）</td>
+<td>描画の材料 <code>Frame.keyLabels</code> に入れ、レーンの下に文字を出す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L77（<code>isStartKey</code>）</td>
+<td>タイミングを測る画面で、叩いたキーを数えてよいかを見る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>なし</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L17 <code>/^(F\d{1,2}|Tab|…)$/</code> — 正規表現</li>
+<li>L19 <code>Pick&lt;KeyboardEvent, "code" | "ctrlKey" | "metaKey" | "altKey"&gt;</code> — 型から欄を選び出す <code>Pick</code></li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong>キーは「場所」で決まる。</strong> 使うのは <code>KeyboardEvent.code</code>（<code>"KeyD"</code> など）で、押したときに入る文字ではありません。英字配列でもほかの配列でも、キーボード上の同じ場所のキーが同じレーンになります。</li>
+<li><strong>開始の合図は「除く」方式。</strong> 使ってよいキーを並べるのではなく、使ってはいけないキー（<code>RESERVED</code>）だけを並べ、それ以外は全部合図にします。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L5</p><p><code>LANE_KEYS</code> は、レーン数を鍵にして、左のレーンから順のキーの並びを引く表です（文法の索引の「Record 型」「interface と readonly」）。<code>Record&lt;number, readonly string[]&gt;</code> は「鍵は数、値は書き換えない文字列の配列」という型です。</p>
+<table>
+<thead>
+<tr>
+<th>レーン数</th>
+<th>難易度</th>
+<th>キー（左から）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4</td>
+<td>EASY・NORMAL</td>
+<td>D F J K</td>
+</tr>
+<tr>
+<td>6</td>
+<td>HARD・EXPERT</td>
+<td>S D F J K L</td>
+</tr>
+</tbody>
+</table>
+<p>どちらも、キーボードのホームポジション（左手の人差し指が F、右手の人差し指が J）に指を置いたまま叩ける並びです。4 レーンは左右の人差し指と中指、6 レーンは薬指まで使います。</p>
+<p>並べているのは <code>KeyboardEvent.code</code> の名前です。<code>code</code> は<strong>キーの場所</strong>の名前で、Shift を押していても、日本語入力が有効でも、同じキーなら同じ名前（<code>"KeyD"</code>）になります。押したときに入る文字（<code>KeyboardEvent.key</code>）を使うと、大文字・小文字や入力の方式で値が変わってしまいます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="cm">/** レーン数ごとのキー割り当て（KeyboardEvent.code）。ホームポジションに指を置いたまま叩ける並び。 */</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">LANE_KEYS</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="kt">string</span><span class="p">[</span><span class="p">]</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="w">  </span><span class="mf">4</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;KeyD&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyF&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyJ&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyK&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="mf">6</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;KeyS&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyD&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyF&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyJ&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyK&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;KeyL&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="p">}</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L6–L10</p><p>レーンの下に出す文字の並びを作ります。</p>
+<ol>
+<li><code>LANE_KEYS[lanes] ?? []</code> — そのレーン数の並び。表に無いレーン数なら空の配列（文法の索引の「オプショナルチェーン <code>?.</code> と <code>??</code>」）</li>
+<li><code>.map((code) =&gt; code.replace("Key", ""))</code> — 各名前から <code>"Key"</code> を取り除く（文法の索引の「map・filter・reduce」）。<code>"KeyD"</code> は <code>"D"</code> になる</li>
+</ol>
+<p>結果は 4 レーンなら <code>["D", "F", "J", "K"]</code> です。<code>PlayEngine</code> が作るときに 1 度だけ呼び（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L52）、毎フレームの <code>Frame</code> に入れます。タッチだけの端末では <code>Play.tsx</code> が空にして渡すので出ません（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L97）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">keyLabels</span><span class="p">(</span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">LANE_KEYS</span><span class="p">[</span><span class="nx">lanes</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">code</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">code</span><span class="p">.</span><span class="nx">replace</span><span class="p">(</span><span class="s2">&quot;Key&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L15</p><p>キーの名前 <code>code</code> が、いまのレーン数の並びの何番目かを返します。</p>
+<p><code>indexOf(code)</code> は、配列の中で <code>code</code> と同じ要素の番号（0 から）を返し、見つからなければ <code>-1</code> を返します。L13 で <code>-1</code> を <code>null</code> に直し（文法の索引の「条件演算子 <code>? :</code>」）、「レーンのキーではない」をはっきりさせています。戻り値の型 <code>number | null</code> がその約束です。</p>
+<p>たとえば 4 レーンで <code>"KeyJ"</code> なら <code>2</code>（左から 3 番目のレーン）、<code>"KeyS"</code> なら <code>null</code> です。6 レーンでは <code>"KeyS"</code> は <code>0</code> になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">laneOfKey</span><span class="p">(</span><span class="nx">code</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">LANE_KEYS</span><span class="p">[</span><span class="nx">lanes</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="p">.</span><span class="nx">indexOf</span><span class="p">(</span><span class="nx">code</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L16–L22</p><p><strong>開始の合図に使わないキー</strong>と、それを使った判定です。</p>
+<blockquote>
+<p><strong>文法: 正規表現</strong></p>
+<p><code>/ … /</code> で囲んだものは<strong>正規表現</strong>で、「文字列がこういう形をしているか」を表す模様です。<code>模様.test(文字列)</code> は、文字列が模様に合えば <code>true</code> を返します。</p>
+<p>L17 で使っている記号:</p>
+<table>
+<thead>
+<tr>
+<th>記号</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>^</code> と <code>$</code></td>
+<td>文字列の先頭と末尾。両方あると「文字列<strong>全体</strong>がこの形」</td>
+</tr>
+<tr>
+<td><code>( A \| B \| C )</code></td>
+<td>A か B か C のどれか</td>
+</tr>
+<tr>
+<td><code>\d</code></td>
+<td>数字 1 文字</td>
+</tr>
+<tr>
+<td><code>{1,2}</code></td>
+<td>直前のものが 1 回か 2 回</td>
+</tr>
+<tr>
+<td><code>.*</code></td>
+<td>何かの文字が 0 個以上（何が続いてもよい）</td>
+</tr>
+</tbody>
+</table>
+<p>たとえば <code>F\d{1,2}</code> は「F の後に数字が 1〜2 個」で、<code>"F5"</code> や <code>"F12"</code> に合います。<code>Shift.*</code> は「Shift で始まる」で、<code>"ShiftLeft"</code> にも <code>"ShiftRight"</code> にも合います。<code>^</code> と <code>$</code> があるので、<code>"KeyF"</code> は <code>F\d{1,2}</code> には合いません。</p>
+</blockquote>
+<p><code>RESERVED</code> に入っているキー:</p>
+<table>
+<thead>
+<tr>
+<th>模様</th>
+<th>合うキーの例</th>
+<th>何に使われるか</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>F\d{1,2}</code></td>
+<td>F5・F11・F12</td>
+<td>更新・全画面・開発者ツール</td>
+</tr>
+<tr>
+<td><code>Tab</code></td>
+<td>Tab</td>
+<td>操作できる部品の間の移動</td>
+</tr>
+<tr>
+<td><code>Escape</code></td>
+<td>Esc</td>
+<td>一時停止（プレイ中）、戻る（タイミングを測る画面）</td>
+</tr>
+<tr>
+<td><code>Meta.*</code>・<code>OS.*</code></td>
+<td>Windows キー・Command キー</td>
+<td>OS の操作。<code>OS…</code> は古いブラウザでの同じキーの名前</td>
+</tr>
+<tr>
+<td><code>Alt.*</code>・<code>Control.*</code>・<code>Shift.*</code></td>
+<td>Alt・Ctrl・Shift の単独押し</td>
+<td>ほかのキーと組み合わせる修飾キー</td>
+</tr>
+<tr>
+<td><code>ContextMenu</code>・<code>PrintScreen</code></td>
+<td>メニューキー・PrtSc</td>
+<td>右クリックメニュー・画面の撮影</td>
+</tr>
+<tr>
+<td><code>Browser…</code></td>
+<td>ブラウザの戻る・進む・更新のキー</td>
+<td>ブラウザの操作</td>
+</tr>
+<tr>
+<td><code>AudioVolume.*</code>・<code>MediaPlayPause</code></td>
+<td>音量・再生のキー</td>
+<td>音量の調整など</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>文法: Pick</strong></p>
+<p><code>Pick&lt;型, "欄1" | "欄2"&gt;</code> は、ある型から指定した欄だけを取り出した新しい型を作ります。<code>Pick&lt;KeyboardEvent, "code" | "ctrlKey" | "metaKey" | "altKey"&gt;</code> は「<code>code</code>・<code>ctrlKey</code>・<code>metaKey</code>・<code>altKey</code> の 4 つを持つ物」です。</p>
+<p>本物の <code>KeyboardEvent</code> はこの 4 つを持っているので、そのまま渡せます。一方、試験のときは <code>{ code: "KeyA", ctrlKey: false, metaKey: false, altKey: false }</code> のような小さなオブジェクトを渡すだけで済みます。関数が本当に使う欄だけを要求する書き方です。</p>
+</blockquote>
+<p><code>isStartKey</code> の判定（L19-22）:</p>
+<ol>
+<li>Ctrl・Command（<code>metaKey</code>）・Alt を押しながらなら、合図にしない（L20）。Ctrl+R（更新）や Alt+Tab（ウィンドウの切り替え）で曲が始まらないようにするため</li>
+<li>そうでなければ、<code>RESERVED</code> に<strong>合わない</strong>キーなら合図にする（L21）。<code>!</code> は「〜ではない」</li>
+</ol>
+<p>Shift は L20 で確かめていないので、Shift+D は合図になります（Shift 単独は <code>RESERVED</code> で除かれる）。</p>
+<p><strong>なぜ除く方式なのか。</strong> 曲は「何かキーを押すとスタート」なので、どのキーを押した人にも応えたい一方、F11 で全画面にした・Alt+Tab で戻ってきた、という操作で勝手に始まると困ります。始めてよいキーを並べると漏れが出るので、始めてはいけないキーの方を並べています。</p>
+<p><code>Play.tsx</code> は合図に使ったキーを判定に回しません（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L116-120）。D を押して始めても、その D はノーツを叩いたことになりません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="cm">/** 開始の合図に使わないキー。ブラウザやOSの操作（全画面・更新・開発者ツールなど）に任せる。 */</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">RESERVED</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sr">/^(F\d{1,2}|Tab|Escape|Meta.*|Alt.*|Control.*|Shift.*|OS.*|ContextMenu|PrintScreen|BrowserBack|BrowserForward|BrowserRefresh|AudioVolume.*|MediaPlayPause)$/</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">isStartKey</span><span class="p">(</span><span class="nx">event</span><span class="o">:</span><span class="w"> </span><span class="kt">Pick</span><span class="o">&lt;</span><span class="nx">KeyboardEvent</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;code&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;ctrlKey&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;metaKey&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;altKey&quot;</span><span class="o">&gt;</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">ctrlKey</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">metaKey</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">event</span><span class="p">.</span><span class="nx">altKey</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="o">!</span><span class="nx">RESERVED</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">event</span><span class="p">.</span><span class="nx">code</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

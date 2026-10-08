@@ -1,0 +1,294 @@
+/* learnkit のサイト共通スタイル。pygments の配色はビルド時に末尾へ足す */
+:root {
+  --bg: #fbfbf9; --panel: #ffffff; --fg: #22262e; --muted: #6a7280; --line: #e4e6ea;
+  --accent: #1f6feb; --accent-soft: #eaf1fd; --sidebar: #f5f6f8;
+  --code-bg: #fcfcfa; --code-line: #ecedf0; --gap-bg: #f7f8f9;
+  --mono: "Cascadia Mono", "Consolas", "BIZ UDGothic", monospace;
+  --sans: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  /* 文字の大きさはここだけで決める。各所はこの段階のどれかを参照する */
+  --fs-h1: 31px; --fs-h2: 22px; --fs-h3: 18px; --fs-h4: 16px;
+  --fs-lead: 17px;     /* 導入文・小見出しの帯 */
+  --fs-body: 16.5px;   /* 本文・章 */
+  --fs-note: 16px;     /* コード横の解説・intro・README */
+  --fs-ui: 15px;       /* サイドバー・カードの見出し */
+  --fs-small: 14px;    /* 表・目次・キャプション・補足 */
+  --fs-label: 13px;    /* 行範囲・メタ情報などのラベル */
+  --fs-code: 14.5px;   /* コードページの本体 */
+  --fs-ln: 13px;       /* 行番号 */
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; display: flex; align-items: flex-start;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--sans); font-size: var(--fs-body); line-height: 1.9;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── サイドバー ── */
+.sidebar {
+  position: sticky; top: 0; flex: 0 0 288px; width: 288px; height: 100vh;
+  overflow-y: auto; background: var(--sidebar); border-right: 1px solid var(--line);
+  font-size: var(--fs-ui);
+}
+.sidebar-inner { padding: 20px 14px 60px; }
+.sidebar .brand {
+  display: block; font-size: var(--fs-lead); font-weight: 700; color: var(--fg);
+  text-decoration: none; margin: 4px 6px 18px; letter-spacing: .01em;
+}
+.sidebar .brand span { color: var(--accent); }
+.navlabel {
+  font-size: 12px; letter-spacing: .14em; color: var(--muted);
+  margin: 18px 6px 6px; text-transform: uppercase;
+}
+.navsub { font-size: var(--fs-label); color: var(--muted); margin: 12px 6px 3px; font-weight: 600; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { margin: 1px 0; }
+.sidebar a {
+  display: block; padding: 4px 8px; border-radius: 6px; line-height: 1.5;
+  color: #3a444f; text-decoration: none; overflow-wrap: anywhere;
+}
+.sidebar a:hover { background: #e8eaee; }
+.sidebar a.current { background: var(--accent); color: #fff; }
+.navtoggle {
+  display: none; position: fixed; z-index: 30; top: 10px; left: 10px;
+  width: 38px; height: 34px; border: 1px solid var(--line); border-radius: 8px;
+  background: #fff; font-size: 17px; cursor: pointer;
+}
+
+/* ── 本文 ── */
+main { flex: 1 1 auto; min-width: 0; display: flex; gap: 26px; padding: 34px 38px 140px; }
+article { flex: 1 1 auto; min-width: 0; max-width: 940px; }
+body.code article { max-width: 1320px; }
+h1 { font-size: var(--fs-h1); line-height: 1.45; margin: 0 0 14px; letter-spacing: .01em; }
+h1 code { font-size: .82em; background: none; padding: 0; }
+h2 {
+  font-size: var(--fs-h2); margin: 44px 0 12px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+h3 { font-size: var(--fs-h3); margin: 28px 0 8px; }
+h4 { font-size: var(--fs-h4); margin: 18px 0 4px; }
+p, li { overflow-wrap: anywhere; }
+a { color: var(--accent); }
+code {
+  font-family: var(--mono); font-size: .9em;
+  background: #f1f2f4; padding: 1px 5px; border-radius: 4px;
+}
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+      overflow-x: auto; padding: 12px 14px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; margin: 14px 0; font-size: var(--fs-small); }
+th, td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; vertical-align: top; }
+th { background: var(--sidebar); }
+blockquote {
+  margin: 16px 0; padding: 4px 18px; border-left: 3px solid var(--accent);
+  background: var(--accent-soft); color: #36404c; border-radius: 0 6px 6px 0;
+}
+figure { margin: 18px 0; }
+figure img {
+  max-width: 100%; border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(20,24,32,.06); cursor: zoom-in; background: #fff;
+}
+figure.zoom img { max-width: none; cursor: zoom-out; }
+figcaption { font-size: var(--fs-small); color: var(--muted); margin-top: 6px; }
+pre.mermaid { background: none; border: none; text-align: center; padding: 0; }
+
+/* ── 目次（右） ── */
+.toc {
+  position: sticky; top: 28px; flex: 0 0 212px; width: 212px;
+  max-height: calc(100vh - 60px); overflow-y: auto; font-size: var(--fs-small);
+  border-left: 1px solid var(--line); padding-left: 14px;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 2px 0; }
+.toc li.d3 { padding-left: 11px; font-size: var(--fs-label); }
+.toc a { color: #525b68; text-decoration: none; display: block; line-height: 1.5; }
+.toc a:hover { color: var(--accent); }
+
+/* ── トップページ ── */
+.hero { margin-bottom: 8px; }
+.hero .lead { font-size: var(--fs-lead); color: #3c444f; margin: 6px 0; }
+.hero .lead.small { font-size: var(--fs-note); color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+.card {
+  display: block; padding: 14px 16px; background: var(--panel); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 10px; color: var(--fg);
+  transition: border-color .12s, transform .12s;
+}
+.card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.card .n { font-family: var(--mono); font-size: var(--fs-label); color: var(--accent); }
+.card strong { display: block; margin: 2px 0 4px; font-size: var(--fs-body); }
+.card .blurb { font-size: var(--fs-small); color: var(--muted); line-height: 1.7; }
+.filelist { list-style: none; margin: 8px 0 18px; padding: 0; }
+.filelist li { padding: 7px 0; border-bottom: 1px dotted var(--line); }
+.filelist a { text-decoration: none; }
+.filelist code { background: none; padding: 0; font-size: var(--fs-ui); }
+.filelist .meta { color: var(--muted); font-size: var(--fs-label); margin-left: 8px; font-family: var(--mono); }
+.filelist .blurb { display: block; color: var(--muted); font-size: var(--fs-small); line-height: 1.65; }
+.readme { font-size: var(--fs-note); color: #454d59; }
+
+/* ── コードページ ── */
+.page-head { margin-bottom: 22px; }
+.eyebrow { font-family: var(--mono); font-size: var(--fs-label); color: var(--accent);
+           letter-spacing: .06em; margin: 0 0 4px; }
+.provenance { color: var(--muted); font-size: var(--fs-small); margin: 2px 0 0; }
+.intro {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 4px 22px 18px; margin: 18px 0 8px;
+}
+.intro h2 { font-size: var(--fs-lead); border: none; margin: 20px 0 4px; padding: 0; color: #2c333d; }
+.intro h2::before { content: "▎"; color: var(--accent); margin-right: 4px; }
+.intro > *:first-child { margin-top: 16px; }
+.intro { font-size: var(--fs-note); }
+.intro table { font-size: var(--fs-small); }
+.stream-head { margin-top: 38px; }
+.stream-hint { color: var(--muted); font-size: var(--fs-small); margin: 0 0 14px; }
+
+.chunk { display: grid; grid-template-columns: minmax(0, 9fr) minmax(0, 11fr);
+         gap: 20px; margin: 0 0 6px; padding: 10px 0; align-items: start; }
+.chunk + .chunk { border-top: 1px solid var(--code-line); }
+.chunk-note { font-size: var(--fs-note); line-height: 1.95; padding-top: 2px; }
+.chunk-note .span {
+  font-family: var(--mono); font-size: var(--fs-label); color: var(--muted);
+  margin: 0 0 4px; letter-spacing: .04em;
+}
+.chunk-note h3 {
+  font-size: var(--fs-lead); margin: 4px 0 8px; padding: 6px 10px; border-radius: 6px;
+  background: var(--accent-soft); color: #14417f;
+}
+.chunk-note h4 {
+  font-size: var(--fs-small); margin: 10px 0 3px; color: #8a5a00;
+  font-weight: 700; letter-spacing: .02em;
+}
+.chunk-note h4:not(:first-child) { margin-top: 14px; }
+.chunk-note p { margin: 4px 0; }
+.chunk-note ul, .chunk-note ol { margin: 4px 0; padding-left: 1.3em; }
+.chunk-note table { font-size: var(--fs-small); }
+.chunk-code { min-width: 0; position: sticky; top: 16px; }
+
+a.xref { text-decoration: none; border-bottom: 1px solid #c7d9f6; }
+a.xref code { color: var(--accent); background: #f0f5fd; }
+
+.codeblock { background: var(--code-bg); border: 1px solid var(--code-line);
+             border-radius: 8px; overflow-x: auto; }
+.codeblock table { border: none; margin: 0; width: 100%; font-size: var(--fs-code); }
+.codeblock td { border: none; padding: 0; vertical-align: top; }
+.codeblock td.ln {
+  width: 1%; user-select: none; text-align: right; padding: 0 10px 0 8px;
+  color: #a3aab4; font-family: var(--mono); font-size: var(--fs-ln); line-height: 1.75;
+}
+.codeblock td.ln a { color: inherit; text-decoration: none; }
+.codeblock td.cl {
+  white-space: pre; font-family: var(--mono); line-height: 1.75;
+  padding-right: 12px; width: 100%;
+}
+.codeblock tr:first-child td { padding-top: 8px; }
+.codeblock tr:last-child td { padding-bottom: 8px; }
+.codeblock td.ln a:target, tr:target td.cl { background: #fff6d6; }
+
+details.gap { margin: 8px 0 12px; background: var(--gap-bg);
+              border: 1px dashed var(--line); border-radius: 8px; }
+details.gap > summary {
+  cursor: pointer; padding: 6px 12px; font-family: var(--mono);
+  font-size: var(--fs-label); color: var(--muted); list-style: none;
+}
+details.gap > summary::-webkit-details-marker { display: none; }
+details.gap > summary::before { content: "▸ "; }
+details[open].gap > summary::before { content: "▾ "; }
+details.gap .gap-n { margin-left: 10px; font-family: var(--sans); }
+details.gap .codeblock { border: none; border-top: 1px solid var(--code-line);
+                         border-radius: 0 0 8px 8px; background: none; }
+
+@media (max-width: 1440px) {
+  .chunk { grid-template-columns: 1fr; gap: 6px; }
+  .chunk-code { position: static; }
+  .toc { display: none; }
+}
+@media (max-width: 860px) {
+  body { display: block; }
+  .navtoggle { display: block; }
+  .sidebar {
+    position: fixed; z-index: 20; top: 0; left: 0; height: 100vh; width: 288px;
+    transform: translateX(-100%); transition: transform .18s;
+  }
+  body.nav-open .sidebar { transform: none; }
+  main { padding: 58px 16px 100px; }
+}
+
+/* pygments */
+pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.codehilite .hll { background-color: #ffffcc }
+.codehilite { background: #f8f8f8; }
+.codehilite .c { color: #3D7B7B; font-style: italic } /* Comment */
+.codehilite .err { border: 1px solid #F00 } /* Error */
+.codehilite .k { color: #008000; font-weight: bold } /* Keyword */
+.codehilite .o { color: #666 } /* Operator */
+.codehilite .ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.codehilite .cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.codehilite .cp { color: #9C6500 } /* Comment.Preproc */
+.codehilite .cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.codehilite .c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.codehilite .cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.codehilite .gd { color: #A00000 } /* Generic.Deleted */
+.codehilite .ge { font-style: italic } /* Generic.Emph */
+.codehilite .ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.codehilite .gr { color: #E40000 } /* Generic.Error */
+.codehilite .gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.codehilite .gi { color: #008400 } /* Generic.Inserted */
+.codehilite .go { color: #717171 } /* Generic.Output */
+.codehilite .gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.codehilite .gs { font-weight: bold } /* Generic.Strong */
+.codehilite .gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.codehilite .gt { color: #04D } /* Generic.Traceback */
+.codehilite .kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.codehilite .kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.codehilite .kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.codehilite .kp { color: #008000 } /* Keyword.Pseudo */
+.codehilite .kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.codehilite .kt { color: #B00040 } /* Keyword.Type */
+.codehilite .m { color: #666 } /* Literal.Number */
+.codehilite .s { color: #BA2121 } /* Literal.String */
+.codehilite .na { color: #687822 } /* Name.Attribute */
+.codehilite .nb { color: #008000 } /* Name.Builtin */
+.codehilite .nc { color: #00F; font-weight: bold } /* Name.Class */
+.codehilite .no { color: #800 } /* Name.Constant */
+.codehilite .nd { color: #A2F } /* Name.Decorator */
+.codehilite .ni { color: #717171; font-weight: bold } /* Name.Entity */
+.codehilite .ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.codehilite .nf { color: #00F } /* Name.Function */
+.codehilite .nl { color: #767600 } /* Name.Label */
+.codehilite .nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.codehilite .nt { color: #008000; font-weight: bold } /* Name.Tag */
+.codehilite .nv { color: #19177C } /* Name.Variable */
+.codehilite .ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.codehilite .w { color: #BBB } /* Text.Whitespace */
+.codehilite .mb { color: #666 } /* Literal.Number.Bin */
+.codehilite .mf { color: #666 } /* Literal.Number.Float */
+.codehilite .mh { color: #666 } /* Literal.Number.Hex */
+.codehilite .mi { color: #666 } /* Literal.Number.Integer */
+.codehilite .mo { color: #666 } /* Literal.Number.Oct */
+.codehilite .sa { color: #BA2121 } /* Literal.String.Affix */
+.codehilite .sb { color: #BA2121 } /* Literal.String.Backtick */
+.codehilite .sc { color: #BA2121 } /* Literal.String.Char */
+.codehilite .dl { color: #BA2121 } /* Literal.String.Delimiter */
+.codehilite .sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.codehilite .s2 { color: #BA2121 } /* Literal.String.Double */
+.codehilite .se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.codehilite .sh { color: #BA2121 } /* Literal.String.Heredoc */
+.codehilite .si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.codehilite .sx { color: #008000 } /* Literal.String.Other */
+.codehilite .sr { color: #A45A77 } /* Literal.String.Regex */
+.codehilite .s1 { color: #BA2121 } /* Literal.String.Single */
+.codehilite .ss { color: #19177C } /* Literal.String.Symbol */
+.codehilite .bp { color: #008000 } /* Name.Builtin.Pseudo */
+.codehilite .fm { color: #00F } /* Name.Function.Magic */
+.codehilite .vc { color: #19177C } /* Name.Variable.Class */
+.codehilite .vg { color: #19177C } /* Name.Variable.Global */
+.codehilite .vi { color: #19177C } /* Name.Variable.Instance */
+.codehilite .vm { color: #19177C } /* Name.Variable.Magic */
+.codehilite .il { color: #666 } /* Literal.Number.Integer.Long */
+.codehilite .err { border: none; background: none; color: inherit; }

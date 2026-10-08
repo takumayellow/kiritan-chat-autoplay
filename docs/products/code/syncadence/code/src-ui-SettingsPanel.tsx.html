@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/ui/SettingsPanel.tsx | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html" class="current">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TSX · 全 82 行</p>
+<h1><code>src/ui/SettingsPanel.tsx</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ノーツの速さ・テンポ・音量・2 つの補正・キー音・オートプレイの 7 つの設定を、スライダーや入力欄やチェックボックスで変えられるようにする設定の部品です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>部品</th>
+<th>範囲</th>
+<th>行</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ノーツの速さ（<code>approachSeconds</code>）</td>
+<td>スライダー</td>
+<td>0.6〜4.0 秒</td>
+<td>L17-28</td>
+</tr>
+<tr>
+<td>テンポ（<code>rate</code>）</td>
+<td>選択肢</td>
+<td>50%〜100% の 6 段階</td>
+<td>L29-39</td>
+</tr>
+<tr>
+<td>音量（<code>volume</code>）</td>
+<td>スライダー</td>
+<td>0%〜100%</td>
+<td>L40-44</td>
+</tr>
+<tr>
+<td>入力の補正（<code>inputOffsetMs</code>）</td>
+<td>数の入力欄</td>
+<td>−300〜300 ms</td>
+<td>L45-56</td>
+</tr>
+<tr>
+<td>表示の補正（<code>visualOffsetMs</code>）</td>
+<td>数の入力欄</td>
+<td>−300〜300 ms</td>
+<td>L57-68</td>
+</tr>
+<tr>
+<td>キー音（<code>keysound</code>）</td>
+<td>チェックボックス</td>
+<td>オン・オフ</td>
+<td>L69-72</td>
+</tr>
+<tr>
+<td>オートプレイ（<code>autoplay</code>）</td>
+<td>チェックボックス</td>
+<td>オン・オフ</td>
+<td>L73-76</td>
+</tr>
+</tbody>
+</table>
+<p>この部品も、設定を自分では覚えていません。今の設定を <code>settings</code> で受け取って表示し、変えられたら、その 1 つだけを変えた新しい設定を <code>onSettings</code> で渡します。保存は <code>App</code> がします（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L53-56）。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/ui/SettingsDrawer.tsx</code>（解説キット外）の L38</td>
+<td>選曲画面の右から出す引き出しの中身として描かれる</td>
+</tr>
+<tr>
+<td>型を借りる</td>
+<td><a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> の <code>Settings</code></td>
+<td>設定の形（<a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> の L3-16）</td>
+</tr>
+</tbody>
+</table>
+<p>各設定がゲームのどこで効くか:</p>
+<table>
+<thead>
+<tr>
+<th>設定</th>
+<th>効く所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>approachSeconds</code></td>
+<td>ノーツの流れる区間の長さ（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L129）と、曲の始まりの待ち（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L88）</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td>時計の進む速さ（<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L30-68）</td>
+</tr>
+<tr>
+<td><code>volume</code></td>
+<td>全体の音量（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L57）</td>
+</tr>
+<tr>
+<td><code>inputOffsetMs</code></td>
+<td>判定に使う時刻（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L124）</td>
+</tr>
+<tr>
+<td><code>visualOffsetMs</code></td>
+<td>描く時刻（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L204）</td>
+</tr>
+<tr>
+<td><code>keysound</code></td>
+<td>叩いた音だけを鳴らす（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L59-63、L129）</td>
+</tr>
+<tr>
+<td><code>autoplay</code></td>
+<td>自動で叩く見本の再生。自己ベストに残さない（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L66）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L12 <code>&lt;K extends keyof Settings&gt;(key: K, value: Settings[K]) =&gt; …</code> — ジェネリクスの制約 <code>extends</code> と <code>keyof</code>、<code>T[K]</code></li>
+<li>L12 <code>{ ...settings, [key]: value }</code> — 文法の索引の『スプレッド構文 <code>...</code>』と『角括弧での項目の読み書き <code>obj[key]</code> と <code>{ [key]: 値 }</code>』</li>
+<li>L19-26 <code>value={…}</code> と <code>onChange={…}</code> の組 — 制御された入力欄</li>
+<li>L25 <code>Number(…)</code> — 文字列を数に直す</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L12 の <code>set</code>。7 つの設定を、1 つの関数で、型の誤りなく書き換えます。<code>set("volume", true)</code> のように設定と合わない値を渡すと、実行する前に TypeScript が誤りを見つけます。</li>
+<li>L24-25 のノーツの速さのスライダーは、値を<strong>逆向き</strong>に表示しています。右へ動かすほど速く（到達までの秒が短く）なります。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>±300 の範囲が 5 か所に書かれています。</strong> L49-53、L61-65、設定を読み込むとき（<a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> の L40-41）、結果画面の提案（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74）、タイミング調整（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L115）です。範囲を変えるときは、すべてを合わせる必要があります。</li>
+<li><strong>ノーツの速さの <code>4.6</code> は、範囲の両端 0.6 と 4 を足した数です。</strong> L21-22 の範囲や、<a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> の L39 の 0.6〜4 を変えたら、L24-25 の <code>4.6</code> も変える必要があります。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p>型の <code>Settings</code> だけを取り込みます（<a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『import と export』の囲み）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../storage&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L10</p><p><code>Props</code> は、今の設定、設定を変える関数、「タイミングを測る」を押したときの関数の 3 つです。</p>
+<p>L9 の <code>RATES</code> は、テンポの選択肢です。0.5（半分の速さ）から 1（元の速さ）まで 0.1 刻みの 6 つです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="kd">interface</span><span class="w"> </span><span class="nx">Props</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">settings</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onSettings</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onCalibrate</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">RATES</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">0.6</span><span class="p">,</span><span class="w"> </span><span class="mf">0.7</span><span class="p">,</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span><span class="w"> </span><span class="mf">0.9</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L13</p><blockquote>
+<p><strong>文法: ジェネリクスの制約 <code>extends</code> と <code>keyof</code>、<code>T[K]</code></strong></p>
+<ul>
+<li><code>keyof Settings</code> は、<code>Settings</code> の項目名を全部並べた合併型です。<code>"approachSeconds" | "inputOffsetMs" | "visualOffsetMs" | "keysound" | "volume" | "rate" | "autoplay"</code> と同じです。</li>
+<li><code>Settings[K]</code> は、「<code>Settings</code> の項目 <code>K</code> の値の型」です。<code>Settings["volume"]</code> は <code>number</code>、<code>Settings["keysound"]</code> は <code>boolean</code> です。</li>
+<li><code>&lt;K extends keyof Settings&gt;</code> は、型引数 <code>K</code>（文法の索引の『ジェネリクス（型引数 <code>&lt;T&gt;</code>）』）に「<code>keyof Settings</code> のどれかでなければならない」という制約を付けます。</li>
+</ul>
+<p>合わせると、<code>set</code> は呼ぶたびに次のように型が決まります。</p>
+<table>
+<thead>
+<tr>
+<th>呼び方</th>
+<th><code>K</code></th>
+<th><code>value</code> の型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set("volume", 0.5)</code></td>
+<td><code>"volume"</code></td>
+<td><code>number</code></td>
+</tr>
+<tr>
+<td><code>set("keysound", true)</code></td>
+<td><code>"keysound"</code></td>
+<td><code>boolean</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>set("volume", true)</code> や <code>set("speed", 1)</code> は、型の検査で誤りになります。</p>
+<p><code>.tsx</code> のファイルでは、アロー関数の前の <code>&lt;K&gt;</code> だけだと JSX のタグと見分けがつかないので、<code>&lt;K extends …&gt;</code> のように <code>extends</code> を書いて型引数だとはっきりさせる必要があります。</p>
+</blockquote>
+<p>L12 の <code>set(key, value)</code> は、設定の 1 つの項目だけを変えた新しい設定を作って、<code>onSettings</code> に渡します。</p>
+<ol>
+<li><code>...settings</code> — 今の設定の項目を全部写す</li>
+<li><code>[key]: value</code> — 項目名 <code>key</code> の値を <code>value</code> にする。<code>key</code> が <code>"volume"</code> なら <code>volume: value</code> と書いたのと同じ</li>
+<li><code>onSettings(1 と 2 でできた設定)</code> — <code>App</code> に渡す</li>
+</ol>
+<p>もとの <code>settings</code> は書き換えずに、新しいオブジェクトを作ります。React は「オブジェクトが新しくなったか」で変化を見つけるので、もとを書き換えると変化に気付けません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">SettingsPanel</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">onSettings</span><span class="p">,</span><span class="w"> </span><span class="nx">onCalibrate</span><span class="w"> </span><span class="p">}</span><span class="o">:</span><span class="w"> </span><span class="nx">Props</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">set</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">K</span><span class="w"> </span><span class="na">extends</span><span class="w"> </span><span class="na">keyof</span><span class="w"> </span><span class="na">Settings</span><span class="p">&gt;</span><span class="p">(</span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">K</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">[</span><span class="nx">K</span><span class="p">]</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">onSettings</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L14–L28</p><blockquote>
+<p><strong>文法: 制御された入力欄（value と onChange）</strong></p>
+<p>React では、入力欄に <code>value={値}</code> を渡すと、入力欄にはいつもその値が表示されます。利用者が動かしても、<code>value</code> が変わらなければ元に戻ります。値を変えるには、<code>onChange</code> で変化を受け取り、もとの値（ここでは設定）を変えて、描き直してもらいます。</p>
+<ol>
+<li>利用者がスライダーを動かす</li>
+<li><code>onChange</code> が呼ばれ、<code>e.target.value</code> で新しい値を受け取る</li>
+<li><code>set</code> で設定を変え、<code>App</code> が保存して描き直す</li>
+<li>新しい設定から <code>value</code> が計算され、スライダーがその位置になる</li>
+</ol>
+<p>表示される値と設定がいつも一致するので、「画面ではこう見えるのに、設定は違う」ということが起きません。このように React が値を握っている入力欄を「制御された入力欄」と呼びます。チェックボックスでは <code>value</code> の代わりに <code>checked</code> を使います（L70、L74）。</p>
+<p><strong>文法: Number() で文字列を数に直す</strong></p>
+<p><code>e.target.value</code> は、スライダーでも数の入力欄でも、いつも<strong>文字列</strong>（<code>"2.5"</code>）です。<code>Number("2.5")</code> で数の 2.5 にしてから使います。</p>
+<p>数として読めない文字列は <code>NaN</code>（「数ではない」を表す特別な数）になり、空の文字列 <code>""</code> は 0 になります。</p>
+</blockquote>
+<p>ノーツの速さのスライダーです。<code>approachSeconds</code> は、ノーツが奥に現れてから判定線に届くまでの秒数で、小さいほど速く流れます。スライダーは右へ動かすほど値が大きくなるので、そのまま結ぶと「右へ動かすと遅くなる」ことになります。そこで、表示と設定の間で向きを逆にしています。</p>
+<table>
+<thead>
+<tr>
+<th><code>approachSeconds</code>（設定）</th>
+<th>スライダーの値 <code>4.6 - 設定</code></th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4.0（一番遅い）</td>
+<td>0.6</td>
+<td>左端</td>
+</tr>
+<tr>
+<td>1.6（最初の値）</td>
+<td>3.0</td>
+<td>やや右</td>
+</tr>
+<tr>
+<td>0.6（一番速い）</td>
+<td>4.0</td>
+<td>右端</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>L24 — 設定からスライダーの値を出す。<code>4.6 - 1.6</code> は、コンピューターの小数の計算では 3 ぴったりではなく 2.9999999999999996 になりますが、ブラウザが刻み（<code>step</code>、0.1）に合わせて 3 の位置に置きます</li>
+<li>L25 — スライダーの値から設定に戻す。内側から順に読むと:
+  1. <code>Number(e.target.value)</code> — スライダーの値を数にする。例 <code>"3.1"</code> → 3.1
+  2. <code>4.6 - 3.1</code> — 設定の秒にする。1.5 に近い数（小数の誤差が付く）
+  3. <code>* 10</code> して <code>Math.round</code> で整数にし、<code>/ 10</code> する — 小数第 1 位に丸めて、誤差を消す。1.5
+  4. <code>set("approachSeconds", 1.5)</code></li>
+<li>L27 — <code>toFixed(1)</code> は数を小数第 1 位までの文字列にする。<code>1.5 秒で到達</code> のように出る</li>
+</ul>
+<p><code>&lt;label&gt;</code> で入力欄と説明の文字を囲むと、文字を押しても入力欄を操作したことになり、画面読み上げソフトも入力欄の名前としてその文字を読みます。<code>&lt;output&gt;</code> は、計算した結果を表示する欄の HTML 要素です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;</span><span class="nt">section</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;panel settings&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">h2</span><span class="p">&gt;</span><span class="nx">設定</span><span class="p">&lt;/</span><span class="nt">h2</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;field&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">ノーツの速さ</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">          </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;range&quot;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">          </span><span class="na">min</span><span class="o">=</span><span class="p">{</span><span class="mf">0.6</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">          </span><span class="na">max</span><span class="o">=</span><span class="p">{</span><span class="mf">4</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">          </span><span class="na">step</span><span class="o">=</span><span class="p">{</span><span class="mf">0.1</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">          </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="mf">4.6</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">          </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;approachSeconds&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="p">(</span><span class="mf">4.6</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">Number</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">10</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">10</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">        </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">output</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="p">.</span><span class="nx">toFixed</span><span class="p">(</span><span class="mf">1</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="nx">秒で到達</span><span class="p">&lt;/</span><span class="nt">output</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L39</p><p>テンポの選択肢です。<code>&lt;select&gt;</code> は押すと一覧が開く選択欄で、<code>&lt;option&gt;</code> がその 1 つずつです。</p>
+<ul>
+<li>L31 — <code>value={settings.rate}</code> で、今のテンポの選択肢を選んだ状態にする。選び直されたら、<code>Number(…)</code> で数にして設定を変える</li>
+<li>L32-36 — <code>RATES</code> の 6 つから選択肢を作る（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L51 と同じ「配列から JSX を並べる」書き方）。表示は <code>Math.round(r * 100)</code> で 50%〜100%</li>
+</ul>
+<p>L38 のとおり、テンポを落としても音の高さは変わりません。このゲームは、録音した曲を遅く再生するのではなく、ピアノの 1 音 1 音を予約して鳴らしているので、音と音の間隔だけを広げられるからです。曲の 1 秒を実際の時間で 1/<code>rate</code> 秒にする計算は <a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L64-67 にあります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;field&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">テンポ</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">select</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">rate</span><span class="p">}</span><span class="w"> </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;rate&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">Number</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">          </span><span class="p">{</span><span class="nx">RATES</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">option</span><span class="w"> </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">r</span><span class="p">}</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">r</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">              </span><span class="p">{</span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">100</span><span class="p">)</span><span class="p">}</span><span class="o">%</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;/</span><span class="nt">option</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">          </span><span class="p">)</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;/</span><span class="nt">select</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">output</span><span class="p">&gt;</span><span class="nx">音の高さは変わりません</span><span class="p">&lt;/</span><span class="nt">output</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L40–L44</p><p>音量のスライダーです。0〜1 を 0.05 刻みで動かし、L43 で <code>Math.round(値 * 100)</code> の百分率（最初の値 0.8 なら <code>80%</code>）を出します。こちらは向きを逆にする必要がないので、設定をそのまま <code>value</code> にしています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;field&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">音量</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span><span class="w"> </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;range&quot;</span><span class="w"> </span><span class="na">min</span><span class="o">=</span><span class="p">{</span><span class="mf">0</span><span class="p">}</span><span class="w"> </span><span class="na">max</span><span class="o">=</span><span class="p">{</span><span class="mf">1</span><span class="p">}</span><span class="w"> </span><span class="na">step</span><span class="o">=</span><span class="p">{</span><span class="mf">0.05</span><span class="p">}</span><span class="w"> </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">volume</span><span class="p">}</span><span class="w"> </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;volume&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">Number</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">output</span><span class="p">&gt;</span><span class="p">{</span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">volume</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">100</span><span class="p">)</span><span class="p">}</span><span class="o">%</span><span class="p">&lt;/</span><span class="nt">output</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L45–L68</p><p>入力の補正と表示の補正です。<code>type="number"</code> は数を打ち込む欄で、横の小さな矢印で 1 ずつ増減もできます。</p>
+<table>
+<thead>
+<tr>
+<th>補正</th>
+<th>正にすると</th>
+<th>使う場面</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>入力の補正</td>
+<td>判定に使う時刻から引くので、遅めに押しても合う</td>
+<td>押すのが遅れがち、キーボードの反応が遅い</td>
+</tr>
+<tr>
+<td>表示の補正</td>
+<td>描く時刻から引くので、ノーツが遅れて判定線に届く</td>
+<td>画面の表示が音より遅れる</td>
+</tr>
+</tbody>
+</table>
+<p><code>min</code>・<code>max</code> は、欄の矢印で動かせる範囲です。キーボードで打てば範囲の外の数も入るので、L53 と L65 でも範囲に収めます。L53 を内側から読むと:</p>
+<ol>
+<li><code>Number(e.target.value)</code> — 打った文字を数にする</li>
+<li><code>|| 0</code> — 数にできなければ 0 にする。欄を空にしたとき（<code>""</code> は 0）や、数として読めないとき（<code>NaN</code> は偽とみなされる）</li>
+<li><code>Math.round(…)</code> — 整数のミリ秒に丸める</li>
+<li><code>Math.min(300, …)</code> と <code>Math.max(-300, …)</code> — −300〜300 に収める</li>
+<li><code>set("inputOffsetMs", …)</code></li>
+</ol>
+<p>L65 は、項目が <code>visualOffsetMs</code> であるほかは L53 と同じです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;field&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">入力の補正</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">          </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;number&quot;</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">          </span><span class="na">min</span><span class="o">=</span><span class="p">{</span><span class="o">-</span><span class="mf">300</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">          </span><span class="na">max</span><span class="o">=</span><span class="p">{</span><span class="mf">300</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">          </span><span class="na">step</span><span class="o">=</span><span class="p">{</span><span class="mf">1</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">          </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">          </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;inputOffsetMs&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nb">Number</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">        </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">output</span><span class="p">&gt;</span><span class="nx">ms</span><span class="err">（</span><span class="nx">遅めに押す人は正</span><span class="err">）</span><span class="p">&lt;/</span><span class="nt">output</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;field&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">表示の補正</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">          </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;number&quot;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">          </span><span class="na">min</span><span class="o">=</span><span class="p">{</span><span class="o">-</span><span class="mf">300</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">          </span><span class="na">max</span><span class="o">=</span><span class="p">{</span><span class="mf">300</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">          </span><span class="na">step</span><span class="o">=</span><span class="p">{</span><span class="mf">1</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">          </span><span class="na">value</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">visualOffsetMs</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">          </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;visualOffsetMs&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nb">Number</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">        </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">output</span><span class="p">&gt;</span><span class="nx">ms</span><span class="err">（</span><span class="nx">正でノーツが遅れて届く</span><span class="err">）</span><span class="p">&lt;/</span><span class="nt">output</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L69–L76</p><p>キー音とオートプレイのチェックボックスです。チェックボックスでは、オンかオフかを <code>checked</code> で渡し、変わったら <code>e.target.checked</code>（<code>true</code> か <code>false</code>）で受け取ります。</p>
+<ul>
+<li>キー音 — オンにすると、叩いたノーツの音だけが鳴り、叩き損ねた音は鳴りません。オートプレイと同時にオンにしても、キー音は使われません（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L59）</li>
+<li>オートプレイ — 自動で叩く見本です。オンで遊んだ結果は自己ベストに残りません</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;check&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span><span class="w"> </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;checkbox&quot;</span><span class="w"> </span><span class="na">checked</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">keysound</span><span class="p">}</span><span class="w"> </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;keysound&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">checked</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">キー音</span><span class="err">（</span><span class="nx">叩いた音だけが鳴る</span><span class="err">）</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">label</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;check&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">input</span><span class="w"> </span><span class="na">type</span><span class="o">=</span><span class="s">&quot;checkbox&quot;</span><span class="w"> </span><span class="na">checked</span><span class="o">=</span><span class="p">{</span><span class="nx">settings</span><span class="p">.</span><span class="nx">autoplay</span><span class="p">}</span><span class="w"> </span><span class="na">onChange</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">set</span><span class="p">(</span><span class="s2">&quot;autoplay&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">.</span><span class="nx">checked</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="p">&gt;</span><span class="nx">オートプレイ</span><span class="err">（</span><span class="nx">見本</span><span class="err">。</span><span class="nx">スコアは残りません</span><span class="err">）</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">label</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L77–L82</p><p>「タイミングを測る」ボタンで <code>onCalibrate</code> を呼び、<code>App</code> がタイミング調整の画面（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a>）に切り替えます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;secondary&quot;</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="nx">onCalibrate</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="w">        </span><span class="nx">タイミングを測る</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;/</span><span class="nt">section</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

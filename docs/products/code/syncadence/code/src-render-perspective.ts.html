@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/render/perspective.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html" class="current">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 86 行</p>
+<h1><code>src/render/perspective.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>奥から手前へ流れるレーンの「どこに何を描くか」を、画面の大きさと時刻から計算する、絵を 1 枚も描かない計算専用のファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>画面の幅・高さ・レーン数から、レーンの置き方（奥の端と判定線の高さ、判定線でのレーン全体の幅）を決める <code>makeTrack</code>（L39-45）。</li>
+<li>「判定線に着くまであと何割の時間か」を、画面の奥行き（<strong>深さ</strong>）に変える <code>depthOf</code>（L51-56）。ノーツが奥ではゆっくり、手前ほど速く動いて見えるのはこの関数の曲線のおかげです。</li>
+<li>深さと画面の y 座標を行き来する <code>yAt</code>・<code>depthAtY</code>（L58-65）と、深さからレーンの横幅・左右の端を出す <code>spreadAt</code>・<code>laneEdge</code>（L68-76）。</li>
+<li>タッチした x 座標がどのレーンかを決める <code>laneAtX</code>（L82-86）。</li>
+</ul>
+<p>このファイルでいう「深さ」は 0 が奥の端（<code>farY</code>）、1 が判定線（<code>judgeY</code>）の、画面の縦の位置を 0〜1 に直した数です。1 より大きければ判定線より手前（画面の下のほう）を指します。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a>（L4 で import）</td>
+<td>毎フレームの描画で <code>makeTrack</code> を作り、<code>depthOf</code>・<code>yAt</code>・<code>depthAtY</code>・<code>spreadAt</code>・<code>laneEdge</code> で台形やノーツの位置を出す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の <code>laneAt</code>（L70-72）経由で <a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L151）</td>
+<td>画面を指で押したとき、押した位置のレーン番号を得る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>なし</td>
+<td><code>Math</code> の関数だけを使う。他のファイルには頼らない</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L1-6 <code>/** … */</code>、L53 <code>// …</code> — コメント</li>
+<li>L9 <code>const PERSPECTIVE = 2;</code> — const による定数</li>
+<li>L13 <code>export interface Track { readonly width: number; … }</code> — interface と readonly（文法の索引の『interface と readonly』）、<code>: number</code> の型注釈</li>
+<li>L39 <code>export function makeTrack(width: number, …): Track { … }</code> — function による関数の宣言と戻り値の型</li>
+<li>L41 <code>Math.max(…)</code>、L43 <code>Math.min(…)</code>、L84 <code>Math.floor(…)</code> — Math の関数</li>
+<li>L43 <code>条件 ? A : B</code> — 条件演算子</li>
+<li>L44 <code>{ width, height, lanes, centerX: width / 2, … }</code> — オブジェクトの書き方とプロパティの省略記法</li>
+<li>L52 <code>(x: number) =&gt; …</code> — アロー関数（文法の索引の『アロー関数』）</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>depthOf</code>（L51-56）の式は、整理すると <strong>深さ = (1 − u) ÷ (1 + 2u)</strong> になります。u = 0.5（残り時間が半分）でも深さはまだ 0.25 で、残りの 4 分の 1 の時間で一気に手前へ来ます。</li>
+<li><code>spreadAt</code>（L68-70）でレーンの幅は深さの 1 次式で広がり、<code>yAt</code>（L58-60）で y も深さの 1 次式です。だから<strong>レーンの左右の線は画面上でまっすぐ</strong>で、奥の 1 点に向かってすぼまります。</li>
+<li><code>makeTrack</code>（L39-45）の 4 つの比率（判定線 0.79、幅 0.79 / 高さの 1.4 倍 / 縦長は 0.94）が画面の骨組みを全部決めています。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>奥の端の 0.04 が 2 つある。</strong> L11 の <code>FAR_RATIO = 0.04</code>（奥の端での幅の比）と、L41 の <code>height * 0.04</code>（奥の端の y）は別物です。たまたま同じ値なだけで、片方を変えてももう片方は変わりません。</li>
+<li><strong>先頭のコメントの「比例」は厳密ではない。</strong> L4 は「幅と高さはどちらも深さに比例」と書きますが、幅は <code>FAR_RATIO + (1 − FAR_RATIO) × 深さ</code>（L69）で、深さ 0 でも 0 になりません。正確には「深さの 1 次式」です。</li>
+<li><strong>時刻から深さへの曲線と、レーンのすぼまり方は、同じカメラから計算したものではない。</strong> 詳しくは L47-56 の解説に書きました。見た目の調整として別々に決めた値です。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L12</p><blockquote>
+<p><strong>文法: コメント <code>//</code> と <code>/** */</code></strong></p>
+<p><code>/*</code> から <code>*/</code> までと、<code>//</code> から行の終わりまでは<strong>コメント</strong>で、プログラムとしては無視されます。人間向けのメモです。
+<code>/**</code>（星が 2 つ）で始まるものは、直後に書いた定数や関数の説明として扱われる習慣があり、エディタでその名前にマウスを乗せると説明が表示されます。</p>
+<p><strong>文法: const による定数</strong></p>
+<p><code>const PERSPECTIVE = 2;</code> は「<code>PERSPECTIVE</code> という名前に 2 を入れ、以後入れ替えない」という宣言です。<code>const</code> で作った名前に別の値を入れ直そうとするとエラーになります。行末の <code>;</code> は文の区切りです。
+大文字とアンダースコアだけの名前（<code>FAR_RATIO</code>）は「調整用の固定値」だと一目で分かるようにする慣習で、文法上の意味はありません。</p>
+</blockquote>
+<p>L1-6 はファイル全体の説明です。ここで言っていることは 2 つです。</p>
+<ol>
+<li>レーンは、奥の消失点へ向かって細くなる<strong>台形</strong>である。</li>
+<li>時刻から深さへは<strong>透視投影</strong>（遠くの物ほど小さく、ゆっくり動いて見える写し方）で写すので、ノーツは奥ではゆっくり、手前ほど速く動いて見える。</li>
+</ol>
+<p>この 2 つの計算に使うつまみが L9 と L11 の 2 つの定数です。</p>
+<ul>
+<li><code>PERSPECTIVE = 2</code>（L9）: 時刻から深さへの曲線の曲がり具合。L52 の <code>1 / (1 + PERSPECTIVE * x)</code> に入ります。0 にすると等速（深さが時間に比例）になり、大きくするほど「奥で詰まって手前で速い」が強くなります。</li>
+<li><code>FAR_RATIO = 0.04</code>（L11）: 奥の端でのレーン全体の幅が、判定線での幅の何倍か。0.04 なので 4%、判定線で 1512 px の幅（1920×1080 の画面）なら奥の端では 60.5 px です。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="cm"> * 奥から手前へ流れる、遠近の付いたレーンの座標。</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="cm"> *</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="cm"> * レーンは消失点へ向かって細くなる台形で、幅と高さはどちらも「深さ」に比例して変わる（深さ 0 が奥の端、1 が判定線）。</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="cm"> * 時刻から深さへは透視投影で写すので、ノーツは奥ではゆっくり、手前に来るほど速く動いて見える。</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="cm">/** 透視の強さ。大きいほど奥で詰まり、手前で速くなる。 */</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">PERSPECTIVE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="cm">/** 奥の端のレーン全体の幅（判定線での幅に対する比）。 */</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">FAR_RATIO</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.04</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L13–L25</p><blockquote>
+<p><strong>文法: 型注釈 <code>: 型</code></strong></p>
+<p>TypeScript では、名前の後ろに <code>: 型</code> を書いて「ここには何の種類の値が入るか」を宣言できます。<code>width: number</code> は「<code>width</code> には数が入る」という意味です。<code>number</code> は整数も小数も含む数の型、<code>string</code> は文字列、<code>boolean</code> は真偽（<code>true</code> / <code>false</code>）の型です。
+型注釈はプログラムの動きを変えません。ブラウザで動かす前に TypeScript が「数のはずの所に文字列を入れていないか」を確かめるためだけに使い、確かめ終わると消されます。</p>
+</blockquote>
+<p><code>Track</code> は「レーンの置き方」をまとめた入れ物の形です（文法の索引の『interface と readonly』）。<code>export</code> が付いているので、他のファイルから <code>Track</code> という名前で使えます（文法の索引の『import と export』）。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>中身</th>
+<th>決める行</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>width</code>, <code>height</code></td>
+<td>画面（canvas）の幅と高さ。CSS の px 単位</td>
+<td>L44</td>
+</tr>
+<tr>
+<td><code>lanes</code></td>
+<td>レーン数（4 か 6）</td>
+<td>L44</td>
+</tr>
+<tr>
+<td><code>centerX</code></td>
+<td>画面の横の真ん中。レーン全体はここを中心に左右対称に置く</td>
+<td>L44</td>
+</tr>
+<tr>
+<td><code>farY</code></td>
+<td>奥の端の y（画面の上からの px）</td>
+<td>L41</td>
+</tr>
+<tr>
+<td><code>judgeY</code></td>
+<td>判定線の y</td>
+<td>L40</td>
+</tr>
+<tr>
+<td><code>nearWidth</code></td>
+<td>判定線の高さでのレーン全体の幅</td>
+<td>L42-43</td>
+</tr>
+</tbody>
+</table>
+<p>すべて <code>readonly</code> なので、一度作った <code>Track</code> の中身は書き換えません。画面の大きさが変わったら、<code>makeTrack</code> で新しく作り直します（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の <code>drawFrame</code> は毎フレーム作り直しています）。</p>
+<p>canvas の y 座標は<strong>上が 0 で、下へ行くほど大きく</strong>なります。数学のグラフとは上下が逆なので、「奥（画面の上）は y が小さい」と覚えてください。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">Track</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">width</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">height</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">centerX</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 奥の端の y */</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">farY</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 判定線の y */</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">judgeY</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 判定線でのレーン全体の幅 */</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">nearWidth</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L26–L33</p><p>画面の骨組みを決める比率です。どれも <code>docs/research/05-ui-references.md</code> の 1.1 節で、Sonolus の pjsekai エンジン（プロセカの譜面を遊べるように作られた公開のエンジン）を 16:9 の画面で計算し直した値に合わせています。</p>
+<table>
+<thead>
+<tr>
+<th>定数</th>
+<th>値</th>
+<th>意味</th>
+<th>調べた元の値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>JUDGE_AT</code></td>
+<td>0.79</td>
+<td>判定線の y は画面の高さの 79%（上から）</td>
+<td>上から 79.1%</td>
+</tr>
+<tr>
+<td><code>LANDSCAPE_WIDTH</code></td>
+<td>0.79</td>
+<td>横長の画面で、判定線でのレーン全体の幅は画面の幅の 79% まで</td>
+<td>画面の幅の 78.7%</td>
+</tr>
+<tr>
+<td><code>LANDSCAPE_WIDTH_PER_HEIGHT</code></td>
+<td>1.4</td>
+<td>同じく、画面の高さの 1.4 倍まで（2 つの上限の小さいほうを使う）</td>
+<td>16:9 より横長なら高さの 1.40 倍で止まる</td>
+</tr>
+<tr>
+<td><code>PORTRAIT_WIDTH</code></td>
+<td>0.94</td>
+<td>縦長の画面では画面の幅の 94%</td>
+<td>プロセカは縦長に対応していないので独自の値。研究メモ 1.5 節で「指で叩けるよう広く取る」として前の v2 から据え置き</td>
+</tr>
+</tbody>
+</table>
+<p><code>JUDGE_AT</code> と <code>LANDSCAPE_WIDTH</code> が同じ 0.79 なのは偶然です（片方は高さの比、もう片方は幅の比）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="cm">/** 判定線の高さ（画面の上からの比）。 */</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">JUDGE_AT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.79</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="cm">/** 横長の画面で、判定線でのレーン全体の幅の上限（画面の幅に対する比と、画面の高さに対する比）。 */</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">LANDSCAPE_WIDTH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.79</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">LANDSCAPE_WIDTH_PER_HEIGHT</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.4</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="cm">/** 縦長の画面では指で叩けるよう、ほぼ画面幅いっぱいに使う。 */</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">PORTRAIT_WIDTH</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.94</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L34–L46</p><blockquote>
+<p><strong>文法: function による関数の宣言と戻り値の型</strong></p>
+<p><code>ts
+export function makeTrack(width: number, height: number, lanes: number): Track {
+  …
+  return { … };
+}</code></p>
+<p>は「<code>makeTrack</code> という名前の関数を作る。数を 3 つ受け取り、<code>Track</code> の形の値を返す」という宣言です。かっこの中の <code>width: number</code> は引数とその型（L13-24 の型注釈と同じ）、かっこの後ろの <code>: Track</code> は<strong>戻り値の型</strong>です。<code>return</code> の右の値が呼び出し元へ返ります。</p>
+<p><strong>文法: Math の関数</strong></p>
+<p><code>Math</code> は JavaScript に最初からある、数学の関数の詰め合わせです。このファイルで使うのは次の 3 つです。</p>
+<ul>
+<li><code>Math.max(a, b)</code> — 大きいほう。「少なくとも a」という<strong>下限</strong>を付けるのによく使う</li>
+<li><code>Math.min(a, b)</code> — 小さいほう。「多くても a」という<strong>上限</strong>を付けるのによく使う</li>
+<li><code>Math.floor(x)</code> — 小数を切り捨てた整数（負の数は小さいほうへ: <code>Math.floor(-0.5)</code> は −1）</li>
+</ul>
+<p><code>Math.min(上限, Math.max(下限, x))</code> と重ねると「x を下限から上限の間に収める」になります。このキットではこの形が何度も出てきます。</p>
+<p><strong>文法: 条件演算子 <code>? :</code></strong></p>
+<p><code>条件 ? A : B</code> は、条件が真なら A、偽なら B になる<strong>式</strong>です。if 文と違って値を返すので、そのまま <code>=</code> の右に書けます。</p>
+<p><strong>文法: オブジェクトの書き方とプロパティの省略記法</strong></p>
+<p><code>{ 名前: 値, 名前: 値 }</code> で、名前の付いた値をまとめた<strong>オブジェクト</strong>を作ります。<code>centerX: width / 2</code> は「<code>centerX</code> という名前に <code>width / 2</code> を入れる」。
+<code>{ width, height }</code> のように名前だけを書くと、「同じ名前の変数の値を、同じ名前で入れる」という省略になります。<code>{ width: width, height: height }</code> と同じ意味です。</p>
+</blockquote>
+<p>画面の大きさとレーン数から <code>Track</code> を作ります。評価される順に読むと次のとおりです。</p>
+<ol>
+<li>L40 判定線の y: 画面の高さ × 0.79。</li>
+<li>L41 奥の端の y: 画面の高さ × 0.04 と 8 px の大きいほう。画面の上の端にぴったり付けず、少しだけ下げます。高さが 200 px より低い画面では 8 px のほうが勝ちます。</li>
+<li>L42-43 判定線でのレーン全体の幅:
+   - 幅が高さ以上（横長か正方形）なら、<code>幅 × 0.79</code> と <code>高さ × 1.4</code> の小さいほう。
+   - 縦長なら <code>幅 × 0.94</code>。</li>
+<li>L44 それと <code>centerX</code>（幅の半分）をまとめて返す。</li>
+</ol>
+<p>実際の画面で計算すると、次のようになります（単位 px）。</p>
+<table>
+<thead>
+<tr>
+<th>画面</th>
+<th><code>judgeY</code></th>
+<th><code>farY</code></th>
+<th><code>nearWidth</code></th>
+<th>1 レーンの幅（4 / 6 レーン）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1920×1080</td>
+<td>853.2</td>
+<td>43.2</td>
+<td>1512（高さ × 1.4 のほう。幅 × 0.79 は 1516.8）</td>
+<td>378 / 252</td>
+</tr>
+<tr>
+<td>1280×720</td>
+<td>568.8</td>
+<td>28.8</td>
+<td>1008</td>
+<td>252 / 168</td>
+</tr>
+<tr>
+<td>2560×1080（ウルトラワイド）</td>
+<td>853.2</td>
+<td>43.2</td>
+<td>1512（画面の幅の 59%）</td>
+<td>378 / 252</td>
+</tr>
+<tr>
+<td>390×844（縦長のスマホ）</td>
+<td>666.76</td>
+<td>33.76</td>
+<td>366.6</td>
+<td>91.65 / 61.1</td>
+</tr>
+</tbody>
+</table>
+<p>16:9 ではちょうど 2 つの上限がほぼ同じ値になり、それより横長の画面では「高さ × 1.4」で幅が止まります。横に広い画面でもレーンが横に伸びすぎない、ということです。</p>
+<p>L37 のコメントのとおり、<strong>幅はレーン数によらず同じ</strong>です。6 レーンの譜面では 1 本 1 本が 4 レーンのときの 3 分の 2 になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="cm"> * 画面の大きさとレーン数から、レーンの置き方を決める。</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="cm"> * 判定線の高さと幅は、プロセカのプレイ画面の比率に合わせる（docs/research/05-ui-references.md）。</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="cm"> * 幅はレーン数によらず同じにして、レーンの数だけ 1 本を細くする。</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">makeTrack</span><span class="p">(</span><span class="nx">width</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">height</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">lanes</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Track</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">judgeY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">height</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">JUDGE_AT</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">farY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="mf">8</span><span class="p">,</span><span class="w"> </span><span class="nx">height</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.04</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">nearWidth</span><span class="w"> </span><span class="o">=</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">    </span><span class="nx">width</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">height</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nx">width</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">LANDSCAPE_WIDTH</span><span class="p">,</span><span class="w"> </span><span class="nx">height</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">LANDSCAPE_WIDTH_PER_HEIGHT</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nx">width</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">PORTRAIT_WIDTH</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">width</span><span class="p">,</span><span class="w"> </span><span class="nx">height</span><span class="p">,</span><span class="w"> </span><span class="nx">lanes</span><span class="p">,</span><span class="w"> </span><span class="nx">centerX</span><span class="o">:</span><span class="w"> </span><span class="kt">width</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="nx">farY</span><span class="p">,</span><span class="w"> </span><span class="nx">judgeY</span><span class="p">,</span><span class="w"> </span><span class="nx">nearWidth</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L47–L57</p><p>ここがノーツの「近づき方」を決める式です。</p>
+<p><strong>入力 u</strong> は「判定線に着くまでの残り時間を、ノーツが流れてくる時間（<code>approachSeconds</code>）で割った比」です。呼ぶ側（<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L132・L163）で <code>(ノーツの時刻 − 今の曲の位置) / (approachSeconds × 再生速度)</code> として計算されます。</p>
+<ul>
+<li>u = 1: ちょうど奥の端に現れた瞬間</li>
+<li>u = 0: ちょうど判定線の上</li>
+<li>u &lt; 0: 判定線を過ぎた</li>
+</ul>
+<p>L52 で <code>s(x) = 1 / (1 + 2x)</code> という小さな関数を作り（文法の索引の『アロー関数』）、L55 で</p>
+<div class="codehilite"><pre><span></span><code>深さ = (s(u) − s(1)) / (1 − s(1))
+</code></pre></div>
+
+<p>を返します。<code>s(1) = 1/3</code> なので、代入して整理すると</p>
+<div class="codehilite"><pre><span></span><code>深さ = (1/(1+2u) − 1/3) / (2/3) = (1 − u) / (1 + 2u)
+</code></pre></div>
+
+<p>です。<code>s(0) = 1</code> なので u = 0 で深さ 1、u = 1 で深さ 0 になるよう、<code>s(1)</code> を引いてから <code>1 − s(1)</code> で割って 0〜1 にそろえています。</p>
+<table>
+<thead>
+<tr>
+<th>u（残り時間の比）</th>
+<th>深さ</th>
+<th>レーンの幅の比（<code>spreadAt</code> ÷ <code>nearWidth</code>）</th>
+<th>pjsekai の値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>0</td>
+<td>0.040</td>
+<td>0.073</td>
+</tr>
+<tr>
+<td>0.75</td>
+<td>0.1</td>
+<td>0.136</td>
+<td>0.140</td>
+</tr>
+<tr>
+<td>0.5</td>
+<td>0.25</td>
+<td>0.280</td>
+<td>0.270</td>
+</tr>
+<tr>
+<td>0.25</td>
+<td>0.5</td>
+<td>0.520</td>
+<td>0.519</td>
+</tr>
+<tr>
+<td>0</td>
+<td>1</td>
+<td>1.000</td>
+<td>1.000</td>
+</tr>
+<tr>
+<td>−0.1</td>
+<td>1.375</td>
+<td>1.360</td>
+<td>—</td>
+</tr>
+<tr>
+<td>−0.3（下限）</td>
+<td>3.25</td>
+<td>3.160</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>右の 2 列は、<code>docs/research/05-ui-references.md</code> の 1.2 節で、pjsekai エンジンの <code>1.06 ^ (45 × (p − 1))</code> と比べた表と同じ値になります（レーンの幅の比は L69 の式で計算し直しました）。奥の端を除けば差は 0.02 以下で、この曲線はプロセカの流れ方とほぼ同じです。</p>
+<p><strong>なぜこの形だと「奥でゆっくり、手前で速い」のか。</strong> 時間が等しく進んでも、深さの増え方は一定ではありません。u が 1 → 0.75（最初の 4 分の 1）で深さは 0 → 0.1 しか進まないのに、0.25 → 0（最後の 4 分の 1）では 0.5 → 1 と半分を一気に進みます。</p>
+<p><code>1/(1+2u)</code> は、物までの距離が <code>1 + 2u</code> のとき画面上の大きさが距離に反比例する、という透視の式の形です。u = 1 の奥の端は判定線の 3 倍遠くにある、と見なしていることになります。</p>
+<p><strong>L54 の下限 −0.3 の理由。</strong> <code>1 + 2u</code> は u = −0.5 で 0 になり、割り算が壊れます（L53 のコメントの「発散」）。u を −0.3 で止めると深さは 3.25 で、判定線（深さ 1）より手前、画面の下の端（深さ 1.28、次の範囲で計算します）よりずっと外です。止めた所はもう画面に映らないので、見た目は変わりません。</p>
+<p><strong>時刻の曲線と、レーンのすぼまり方は別々に決めている。</strong> L55 の式をカメラで考えると、奥の端は判定線の 3 倍遠いので、レーンの幅は奥の端で 3 分の 1 になるはずです。ところが L69 は奥の端の幅を 4%（<code>FAR_RATIO</code>）にしています。つまりこのファイルは「ノーツの動く速さ」と「レーンの形」を 1 台のカメラで計算しているのではなく、それぞれ見た目で選んだ値を組み合わせています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="cm"> * 判定線から何秒先か（approach で割った 0〜1 の比 u）を深さへ写す。</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="cm"> * u = 0 が判定線（深さ 1）、u = 1 が奥の端（深さ 0）。u が負（判定線を過ぎた）なら 1 より大きくなる。</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">depthOf</span><span class="p">(</span><span class="nx">u</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">x</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="mf">1</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mf">1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">PERSPECTIVE</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">x</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">  </span><span class="c1">// 判定線を大きく過ぎた先は発散するので、画面の下に十分出る所で止める</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">clamped</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">u</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.3</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="p">(</span><span class="nx">clamped</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">s</span><span class="p">(</span><span class="mf">1</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mf">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">s</span><span class="p">(</span><span class="mf">1</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L58–L66</p><p>深さと画面の y の変換です。どちらも 1 次式で、互いに逆の計算になっています。</p>
+<ul>
+<li><code>yAt</code>（L58-60）: <code>farY + (judgeY − farY) × 深さ</code>。深さ 0 で <code>farY</code>、1 で <code>judgeY</code>。</li>
+<li><code>depthAtY</code>（L63-65）: <code>(y − farY) / (judgeY − farY)</code>。<code>yAt</code> を y について解いたもの。</li>
+</ul>
+<p>1920×1080 なら <code>judgeY − farY</code> は 853.2 − 43.2 = 810 px で、深さが 0.1 増えると 81 px 下へ行きます。</p>
+<p>画面の下の端（y = 1080）の深さは <code>depthAtY</code> で (1080 − 43.2) / 810 = <strong>1.28</strong> です。<code>farY = 高さ × 0.04</code>、<code>judgeY = 高さ × 0.79</code> なので、高さが 200 px 以上ならどの画面でも (1 − 0.04) / (0.79 − 0.04) = 0.96 / 0.75 = 1.28 になります。<a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> の L410 がこの値（<code>bottomDepth</code>）を計算し、レーンを画面の下の端まで伸ばすのに使います。</p>
+<p><code>depthAtY</code> は、深さを先に決められない物（判定線の帯の上下の端、キーの文字の位置、コンボの数字の高さ）を、y から逆にたどってレーンの幅を知るために <a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a> で使われます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">yAt</span><span class="p">(</span><span class="nx">track</span><span class="o">:</span><span class="w"> </span><span class="kt">Track</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">farY</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="nx">track</span><span class="p">.</span><span class="nx">judgeY</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">farY</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">depth</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="cm">/** y から深さを逆算する。 */</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">depthAtY</span><span class="p">(</span><span class="nx">track</span><span class="o">:</span><span class="w"> </span><span class="kt">Track</span><span class="p">,</span><span class="w"> </span><span class="nx">y</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">farY</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="nx">track</span><span class="p">.</span><span class="nx">judgeY</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">farY</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L67–L77</p><p>レーンの左右の位置です。</p>
+<p><strong><code>spreadAt</code>（L68-70）</strong> はレーン全体の幅で、</p>
+<div class="codehilite"><pre><span></span><code>幅 = nearWidth × (0.04 + 0.96 × 深さ)
+</code></pre></div>
+
+<p>深さ 0（奥の端）で <code>nearWidth</code> の 4%、深さ 1（判定線）でちょうど <code>nearWidth</code>、深さ 1.28（画面の下の端）で 1.2688 倍です。</p>
+<p><strong><code>laneEdge</code>（L73-76）</strong> は、深さ <code>depth</code> でのレーン番号 <code>lane</code> の<strong>左の線</strong>の x です。</p>
+<ol>
+<li>L74 その深さでの全体の幅 <code>spread</code> を出す。</li>
+<li>L75 全体の左の端 <code>centerX − spread / 2</code> から、1 本分の幅 <code>spread / lanes</code> を <code>lane</code> 本ぶん右へ進める。</li>
+</ol>
+<p><code>lane = 0</code> なら全体の左の端、<code>lane = lanes</code>（4 レーンなら 4）なら全体の右の端になります。L72 のコメントの「右端の外側の線」はこのことです。レーン <code>i</code> の右の線は <code>laneEdge(track, i + 1, depth)</code> で求めます。</p>
+<p><strong>レーンの線は画面上でまっすぐ。</strong> <code>yAt</code> も <code>spreadAt</code> も深さの 1 次式なので、ある線の x と y はどちらも深さに比例して動き、画面上では 1 本の直線になります。全部の線をさらに奥へ伸ばすと、幅が 0 になる深さ <code>−0.04 / 0.96 ≈ −0.042</code>、1920×1080 なら y ≈ 43.2 − 0.042 × 810 ≈ 9.5 px の所で 1 点に集まります。これが消失点です。</p>
+<p>研究メモ（<code>docs/research/05-ui-references.md</code> 1.1 節）の pjsekai は、消失点を y = 0 に置いて「レーンの x = レーンの位置 l × y」と書きます。このファイルの式も、y を消失点から測り直すと</p>
+<div class="codehilite"><pre><span></span><code>x − centerX = (lane / lanes − 1/2) × nearWidth × 0.96 × (深さ + 0.042)
+</code></pre></div>
+
+<p>となり、「横の位置 = レーン上の位置 × 消失点からの高さ」という同じ形です。違いは消失点を画面の中（上の端から約 9.5 px）に置いていることだけです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="cm">/** 深さ depth でのレーン全体の幅。 */</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">spreadAt</span><span class="p">(</span><span class="nx">track</span><span class="o">:</span><span class="w"> </span><span class="kt">Track</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">nearWidth</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="nx">FAR_RATIO</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="mf">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">FAR_RATIO</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">depth</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="cm">/** 深さ depth でのレーン lane の左右の端（lane = lanes なら右端の外側の線）。 */</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">laneEdge</span><span class="p">(</span><span class="nx">track</span><span class="o">:</span><span class="w"> </span><span class="kt">Track</span><span class="p">,</span><span class="w"> </span><span class="nx">lane</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">spread</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">spreadAt</span><span class="p">(</span><span class="nx">track</span><span class="p">,</span><span class="w"> </span><span class="nx">depth</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">centerX</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="nx">spread</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">lanes</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">lane</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L78–L86</p><p>画面上の x から、どのレーンを押したかを決めます。指で画面を叩いたときに使います。</p>
+<ol>
+<li>L83 判定線の高さ（深さ 1）での、全体の左の端の x。</li>
+<li>L84 そこから何本分右にあるかを、判定線での 1 本の幅 <code>nearWidth / lanes</code> で割って <code>Math.floor</code> で切り捨てる（L34-45 の「Math の関数」）。たとえば 1920×1080・4 レーンで左の端は 960 − 756 = 204 px、1 本の幅は 378 px なので、x = 700 なら (700 − 204) / 378 ≈ 1.31 で、レーン 1（左から 2 本目）です。</li>
+<li>L85 0 から <code>lanes − 1</code> の間に収める。左の端より左を叩くと L84 は負になりますが、0 に直されます。右の端より右も最後のレーンに直されます。</li>
+</ol>
+<p><strong>高さを見ていない</strong>のが要点です。レーンは奥ほど細いので、本当は y によってレーンの境目の x がずれます。それでも判定線での幅だけで決めるのは、L79-80 のコメントのとおり、指は判定線の近くを叩くので、高さによって当たる範囲が細くならないようにするためです。端のレーンを画面の端まで広げるのも同じ理由です（研究メモ 1.4 節。pjsekai は縦の範囲も区切るが、v2 は画面全体で受け付ける）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="cm"> * 画面上の x がどのレーンか。判定線の位置のレーン幅で決め、端のレーンは画面の端まで広げる。</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="cm"> * 指は判定線の近くを叩くので、高さによって当たり判定が狭まらないようにする。</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">laneAtX</span><span class="p">(</span><span class="nx">track</span><span class="o">:</span><span class="w"> </span><span class="kt">Track</span><span class="p">,</span><span class="w"> </span><span class="nx">x</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">laneEdge</span><span class="p">(</span><span class="nx">track</span><span class="p">,</span><span class="w"> </span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">lane</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">floor</span><span class="p">(</span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">left</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="nx">track</span><span class="p">.</span><span class="nx">nearWidth</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="nx">track</span><span class="p">.</span><span class="nx">lanes</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nx">track</span><span class="p">.</span><span class="nx">lanes</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">lane</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

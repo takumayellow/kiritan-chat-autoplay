@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知らない書き方を引く — 文法の索引 | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html" class="current">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="_1">知らない書き方を引く — 文法の索引</h1>
+<p>コードの横の解説では、TypeScript・React・Python の書き方を、そのファイルで初めて出てくる所で説明しています。ここはその一覧です。名前の後ろのファイル名と行番号を押すと、説明している所へ飛びます。</p>
+<p>並びは <code>notes/01-overview</code> の読む順序で最初に出てくる順です。同じ書き方を別のファイルでも説明しているときは、「ほかに」の後ろに並べています。</p>
+<h2 id="typescriptjavascript">TypeScript・JavaScript の書き方</h2>
+<ul>
+<li>import と export — <a href="../code/src-main.tsx.html#L1">main.tsx L1</a></li>
+<li>const と let — <a href="../code/src-main.tsx.html#L5">main.tsx L5</a>（ほかに <a href="../code/src-game-session.ts.html#L88">session.ts L88</a>、<a href="../code/src-render-perspective.ts.html#L1">perspective.ts L1</a>）</li>
+<li>非 null 表明 <code>!</code> — <a href="../code/src-main.tsx.html#L5">main.tsx L5</a></li>
+<li>例外を投げる throw — <a href="../code/src-main.tsx.html#L5">main.tsx L5</a>（ほかに <a href="../code/src-song-load.ts.html#L5">load.ts L5</a>）</li>
+<li>分割代入 — <a href="../code/src-ui-App.tsx.html#L28">App.tsx L28</a></li>
+<li>アロー関数 — <a href="../code/src-ui-App.tsx.html#L36">App.tsx L36</a></li>
+<li>instanceof — <a href="../code/src-ui-App.tsx.html#L36">App.tsx L36</a></li>
+<li>条件演算子 <code>? :</code> — <a href="../code/src-ui-App.tsx.html#L36">App.tsx L36</a>（ほかに <a href="../code/src-ui-Play.tsx.html#L43">Play.tsx L43</a>、<a href="../code/src-game-session.ts.html#L51">session.ts L51</a>、<a href="../code/src-render-perspective.ts.html#L34">perspective.ts L34</a>）</li>
+<li>オプショナルチェーン <code>?.</code> と <code>??</code> — <a href="../code/src-ui-App.tsx.html#L41">App.tsx L41</a></li>
+<li>厳密な比較 <code>===</code> と <code>!==</code> — <a href="../code/src-ui-App.tsx.html#L41">App.tsx L41</a></li>
+<li>スプレッド構文 <code>...</code> — <a href="../code/src-ui-App.tsx.html#L46">App.tsx L46</a></li>
+<li>オブジェクトの書き方とプロパティの省略記法 — <a href="../code/src-ui-App.tsx.html#L46">App.tsx L46</a>（ほかに <a href="../code/src-render-perspective.ts.html#L34">perspective.ts L34</a>）</li>
+<li>switch による場合分け — <a href="../code/src-ui-App.tsx.html#L75">App.tsx L75</a></li>
+<li>テンプレート文字列 — <a href="../code/src-ui-App.tsx.html#L75">App.tsx L75</a></li>
+<li>ドキュメントコメント <code>/** */</code> — <a href="../code/src-storage.ts.html#L3">storage.ts L3</a>（ほかに <a href="../code/src-song-types.ts.html#L10">types.ts L10</a>、<a href="../code/src-game-engine.ts.html#L17">engine.ts L17</a>）</li>
+<li>typeof — <a href="../code/src-storage.ts.html#L31">storage.ts L31</a></li>
+<li>try / catch — <a href="../code/src-storage.ts.html#L49">storage.ts L49</a></li>
+<li>角括弧での項目の読み書き <code>obj[key]</code> と <code>{ [key]: 値 }</code> — <a href="../code/src-storage.ts.html#L90">storage.ts L90</a>（ほかに <a href="../code/src-song-validate.ts.html#L14">validate.ts L14</a>）</li>
+<li>正規表現 — <a href="../code/src-storage.ts.html#L106">storage.ts L106</a>（ほかに <a href="../code/src-song-validate.ts.html#L1">validate.ts L1</a>、<a href="../code/src-game-keys.ts.html#L16">keys.ts L16</a>）</li>
+<li>async / await と Promise — <a href="../code/src-song-load.ts.html#L5">load.ts L5</a></li>
+<li>every — <a href="../code/src-song-validate.ts.html#L10">validate.ts L10</a></li>
+<li>何も返さない関数 <code>: void</code> — <a href="../code/src-song-validate.ts.html#L14">validate.ts L14</a>（ほかに <a href="../code/src-render-highway.ts.html#L74">highway.ts L74</a>）</li>
+<li>for...of による繰り返し — <a href="../code/src-song-validate.ts.html#L23">validate.ts L23</a>（ほかに <a href="../code/src-ui-select.ts.html#L3">select.ts L3</a>、<a href="../code/src-game-engine.ts.html#L49">engine.ts L49</a>）</li>
+<li>slice — <a href="../code/src-song-validate.ts.html#L64">validate.ts L64</a></li>
+<li>省略できる項目 <code>?:</code> — <a href="../code/src-ui-SongSelect.tsx.html#L27">SongSelect.tsx L27</a>（ほかに <a href="../code/src-audio-clock.ts.html#L3">clock.ts L3</a>）</li>
+<li>符号なし右シフト <code>&gt;&gt;&gt;</code> — <a href="../code/src-ui-select.ts.html#L3">select.ts L3</a></li>
+<li>作ってすぐ呼ぶ async 関数 — <a href="../code/src-ui-Play.tsx.html#L43">Play.tsx L43</a></li>
+<li><code>&amp;&amp;</code> の短絡評価 — <a href="../code/src-ui-Play.tsx.html#L43">Play.tsx L43</a>（ほかに <a href="../code/src-audio-sampler.ts.html#L44">sampler.ts L44</a>）</li>
+<li>Map と Set — <a href="../code/src-ui-Play.tsx.html#L143">Play.tsx L143</a></li>
+<li>class と constructor — <a href="../code/src-game-engine.ts.html#L30">engine.ts L30</a></li>
+<li>Array.from — <a href="../code/src-game-engine.ts.html#L49">engine.ts L49</a>（ほかに <a href="../code/src-game-session.ts.html#L51">session.ts L51</a>、<a href="../code/src-ui-Calibrate.tsx.html#L52">Calibrate.tsx L52</a>）</li>
+<li>map・filter・reduce — <a href="../code/src-game-engine.ts.html#L49">engine.ts L49</a></li>
+<li>ゲッター get — <a href="../code/src-game-engine.ts.html#L70">engine.ts L70</a></li>
+<li>void 演算子 — <a href="../code/src-game-engine.ts.html#L91">engine.ts L91</a></li>
+<li>引数の既定値 — <a href="../code/src-game-session.ts.html#L51">session.ts L51</a>（ほかに <a href="../code/src-render-highway.ts.html#L74">highway.ts L74</a>）</li>
+<li>オブジェクトを返すアロー関数と、欄の省略記法 — <a href="../code/src-game-session.ts.html#L51">session.ts L51</a></li>
+<li>sort と比較関数 — <a href="../code/src-game-session.ts.html#L51">session.ts L51</a>（ほかに <a href="../code/src-game-stats.ts.html#L1">stats.ts L1</a>）</li>
+<li>forEach — <a href="../code/src-game-session.ts.html#L51">session.ts L51</a>（ほかに <a href="../code/src-render-highway.ts.html#L192">highway.ts L192</a>）</li>
+<li><code>!= null</code> — <a href="../code/src-game-session.ts.html#L63">session.ts L63</a></li>
+<li>計算された欄の名前 — <a href="../code/src-game-session.ts.html#L75">session.ts L75</a></li>
+<li>while — <a href="../code/src-game-session.ts.html#L88">session.ts L88</a></li>
+<li>undefined — <a href="../code/src-game-session.ts.html#L88">session.ts L88</a></li>
+<li>forEach の中の return、while の中の continue と break — <a href="../code/src-game-session.ts.html#L130">session.ts L130</a></li>
+<li>数の中の区切り <code>_</code> — <a href="../code/src-game-judge.ts.html#L16">judge.ts L16</a>（ほかに <a href="../code/src-game-rank.ts.html#L1">rank.ts L1</a>）</li>
+<li><code>!</code> で値が「無い」かを調べる — <a href="../code/src-audio-context.ts.html#L10">context.ts L10</a></li>
+<li>Iterable（1 つずつ取り出せるもの） — <a href="../code/src-audio-sampler.ts.html#L18">sampler.ts L18</a></li>
+<li>Promise.all（約束をまとめて待つ） — <a href="../code/src-audio-sampler.ts.html#L18">sampler.ts L18</a></li>
+<li>べき乗 <code>**</code> — <a href="../code/src-audio-sampler.ts.html#L44">sampler.ts L44</a></li>
+<li>メソッドの連鎖 — <a href="../code/src-audio-sampler.ts.html#L44">sampler.ts L44</a></li>
+<li>find と findIndex — <a href="../code/src-audio-regions.ts.html#L40">regions.ts L40</a>（ほかに <a href="../code/src-game-rank.ts.html#L11">rank.ts L11</a>）</li>
+<li>コメント <code>//</code> と <code>/** */</code> — <a href="../code/src-render-perspective.ts.html#L1">perspective.ts L1</a></li>
+<li>Math の関数 — <a href="../code/src-render-perspective.ts.html#L34">perspective.ts L34</a></li>
+<li>文字列の引用符 — <a href="../code/src-render-highway.ts.html#L54">highway.ts L54</a></li>
+<li>剰余 <code>%</code> — <a href="../code/src-render-highway.ts.html#L54">highway.ts L54</a></li>
+<li>let と for — <a href="../code/src-render-highway.ts.html#L87">highway.ts L87</a></li>
+<li>比較 <code>===</code> と論理演算子 — <a href="../code/src-render-highway.ts.html#L87">highway.ts L87</a></li>
+<li>for...of と continue — <a href="../code/src-render-highway.ts.html#L127">highway.ts L127</a></li>
+<li>String() と padStart — <a href="../code/src-render-highway.ts.html#L261">highway.ts L261</a></li>
+<li><code>%</code> と、数をそのまま条件に使う書き方 — <a href="../code/src-game-stats.ts.html#L1">stats.ts L1</a></li>
+<li>Number() で文字列を数に直す — <a href="../code/src-ui-SettingsPanel.tsx.html#L14">SettingsPanel.tsx L14</a></li>
+</ul>
+<h2 id="typescript">TypeScript の型</h2>
+<ul>
+<li>型注釈 <code>: 型</code> — <a href="../code/src-ui-App.tsx.html#L22">App.tsx L22</a>（ほかに <a href="../code/src-render-perspective.ts.html#L13">perspective.ts L13</a>）</li>
+<li>型の別名 type と合併型 <code>|</code> — <a href="../code/src-ui-App.tsx.html#L22">App.tsx L22</a></li>
+<li>ジェネリクス（型引数 <code>&lt;T&gt;</code>） — <a href="../code/src-ui-App.tsx.html#L28">App.tsx L28</a>（ほかに <a href="../code/src-ui-Play.tsx.html#L24">Play.tsx L24</a>）</li>
+<li>Partial（全部を省略可能にした型） — <a href="../code/src-ui-App.tsx.html#L46">App.tsx L46</a></li>
+<li>interface と readonly — <a href="../code/src-storage.ts.html#L3">storage.ts L3</a></li>
+<li>引数と戻り値の型 — <a href="../code/src-storage.ts.html#L31">storage.ts L31</a></li>
+<li>型アサーション <code>as</code> — <a href="../code/src-storage.ts.html#L35">storage.ts L35</a>（ほかに <a href="../code/src-song-validate.ts.html#L23">validate.ts L23</a>）</li>
+<li>Record 型 — <a href="../code/src-storage.ts.html#L35">storage.ts L35</a></li>
+<li>as const と配列の要素の型 — <a href="../code/src-song-types.ts.html#L1">types.ts L1</a></li>
+<li>タプル型 — <a href="../code/src-song-types.ts.html#L10">types.ts L10</a></li>
+<li>interface の継承 <code>extends</code> — <a href="../code/src-song-types.ts.html#L42">types.ts L42</a></li>
+<li>数のリテラル型 — <a href="../code/src-song-types.ts.html#L47">types.ts L47</a></li>
+<li><code>import type</code> — <a href="../code/src-song-load.ts.html#L1">load.ts L1</a>（ほかに <a href="../code/src-ui-Play.tsx.html#L1">Play.tsx L1</a>、<a href="../code/src-render-highway.ts.html#L1">highway.ts L1</a>）</li>
+<li>unknown 型 — <a href="../code/src-song-load.ts.html#L5">load.ts L5</a></li>
+<li>型ガード <code>x is T</code> — <a href="../code/src-song-validate.ts.html#L4">validate.ts L4</a></li>
+<li>実行時の型の確認 <code>typeof</code> と <code>===</code> / <code>!==</code> — <a href="../code/src-song-validate.ts.html#L4">validate.ts L4</a></li>
+<li>関数の型 — <a href="../code/src-ui-SongSelect.tsx.html#L8">SongSelect.tsx L8</a>（ほかに <a href="../code/src-ui-Play.tsx.html#L10">Play.tsx L10</a>、<a href="../code/src-audio-scheduler.ts.html#L3">scheduler.ts L3</a>）</li>
+<li>kind で見分ける合併型 — <a href="../code/src-ui-Play.tsx.html#L19">Play.tsx L19</a></li>
+<li>unknown と instanceof — <a href="../code/src-ui-Play.tsx.html#L43">Play.tsx L43</a></li>
+<li>private とコンストラクタ引数のプロパティ — <a href="../code/src-game-engine.ts.html#L49">engine.ts L49</a></li>
+<li>Pick — <a href="../code/src-game-keys.ts.html#L16">keys.ts L16</a></li>
+<li>その場で書くオブジェクトの型 — <a href="../code/src-game-session.ts.html#L163">session.ts L163</a></li>
+<li>function による関数の宣言と戻り値の型 — <a href="../code/src-render-perspective.ts.html#L34">perspective.ts L34</a></li>
+<li>ジェネリクスの制約 <code>extends</code> と <code>keyof</code>、<code>T[K]</code> — <a href="../code/src-ui-SettingsPanel.tsx.html#L11">SettingsPanel.tsx L11</a></li>
+</ul>
+<h2 id="react">React（画面の部品）</h2>
+<ul>
+<li>JSX — <a href="../code/src-main.tsx.html#L8">main.tsx L8</a></li>
+<li>関数コンポーネントと props — <a href="../code/src-ui-App.tsx.html#L28">App.tsx L28</a></li>
+<li>useState — <a href="../code/src-ui-App.tsx.html#L28">App.tsx L28</a></li>
+<li>useEffect — <a href="../code/src-ui-App.tsx.html#L36">App.tsx L36</a></li>
+<li>useCallback — <a href="../code/src-ui-App.tsx.html#L46">App.tsx L46</a></li>
+<li>key（部品の見分け札） — <a href="../code/src-ui-App.tsx.html#L75">App.tsx L75</a></li>
+<li>JSX でのイベントの受け取り — <a href="../code/src-ui-SongSelect.tsx.html#L71">SongSelect.tsx L71</a></li>
+<li>JSX の中での条件付きの表示 <code>&amp;&amp;</code> — <a href="../code/src-ui-SongSelect.tsx.html#L88">SongSelect.tsx L88</a></li>
+<li>useRef — <a href="../code/src-ui-Play.tsx.html#L24">Play.tsx L24</a></li>
+<li>JSX の中での条件分岐 — <a href="../code/src-ui-Play.tsx.html#L185">Play.tsx L185</a></li>
+<li>制御された入力欄（value と onChange） — <a href="../code/src-ui-SettingsPanel.tsx.html#L14">SettingsPanel.tsx L14</a></li>
+</ul>
+<h2 id="_2">ブラウザの機能</h2>
+<ul>
+<li><code>import.meta.env.BASE_URL</code> — <a href="../code/src-song-load.ts.html#L3">load.ts L3</a></li>
+<li>requestAnimationFrame — <a href="../code/src-ui-Play.tsx.html#L68">Play.tsx L68</a></li>
+<li>イベントリスナーの登録と解除 — <a href="../code/src-ui-Play.tsx.html#L161">Play.tsx L161</a></li>
+<li>Float32Array — <a href="../code/src-audio-regions.ts.html#L52">regions.ts L52</a></li>
+<li>setTimeout と clearTimeout — <a href="../code/src-ui-Calibrate.tsx.html#L41">Calibrate.tsx L41</a></li>
+</ul>
+<h2 id="canvas-2d">Canvas 2D（絵を描く）</h2>
+<ul>
+<li>Canvas 2D — <a href="../code/src-render-highway.ts.html#L74">highway.ts L74</a></li>
+<li>Canvas 2D のグラデーションと色の書き方 — <a href="../code/src-render-highway.ts.html#L87">highway.ts L87</a></li>
+<li>Canvas 2D の save / restore と影 — <a href="../code/src-render-highway.ts.html#L192">highway.ts L192</a></li>
+<li>Canvas 2D の文字 — <a href="../code/src-render-highway.ts.html#L192">highway.ts L192</a></li>
+<li>Canvas 2D の globalAlpha と楕円 — <a href="../code/src-render-highway.ts.html#L223">highway.ts L223</a></li>
+<li>Canvas 2D の変形 translate と scale — <a href="../code/src-render-highway.ts.html#L261">highway.ts L261</a></li>
+</ul>
+<h2 id="python">Python</h2>
+<ul>
+<li>ドキュメント文字列 — <a href="../code/tools-fetch_sources.py.html#L1">fetch_sources.py L1</a></li>
+<li>Python の基本（import・def・型注釈・字下げ） — <a href="../code/tools-fetch_sources.py.html#L10">fetch_sources.py L10</a></li>
+<li><code>from __future__ import annotations</code> — <a href="../code/tools-fetch_sources.py.html#L10">fetch_sources.py L10</a></li>
+<li>パスの組み立て（<code>Path</code> と <code>/</code>） — <a href="../code/tools-fetch_sources.py.html#L21">fetch_sources.py L21</a></li>
+<li>正規表現と生文字列 <code>r"…"</code> — <a href="../code/tools-fetch_sources.py.html#L26">fetch_sources.py L26</a></li>
+<li>リストと辞書 — <a href="../code/tools-fetch_sources.py.html#L32">fetch_sources.py L32</a></li>
+<li><code>raise</code> による例外 — <a href="../code/tools-fetch_sources.py.html#L32">fetch_sources.py L32</a></li>
+<li>f 文字列 — <a href="../code/tools-fetch_sources.py.html#L32">fetch_sources.py L32</a></li>
+<li><code>not</code> — <a href="../code/tools-fetch_sources.py.html#L32">fetch_sources.py L32</a></li>
+<li>キーワード引数 — <a href="../code/tools-fetch_sources.py.html#L42">fetch_sources.py L42</a></li>
+<li>with 文 — <a href="../code/tools-fetch_sources.py.html#L42">fetch_sources.py L42</a></li>
+<li><code>None</code> と条件式 <code>A if 条件 else B</code> — <a href="../code/tools-fetch_sources.py.html#L50">fetch_sources.py L50</a></li>
+<li>負の添字 — <a href="../code/tools-fetch_sources.py.html#L55">fetch_sources.py L55</a></li>
+<li>タプル — <a href="../code/tools-fetch_sources.py.html#L55">fetch_sources.py L55</a></li>
+<li><code>or</code> で既定値を入れる — <a href="../code/tools-fetch_sources.py.html#L55">fetch_sources.py L55</a>（ほかに <a href="../code/tools-score.py.html#L46">score.py L46</a>）</li>
+<li>辞書内包表記 — <a href="../code/tools-fetch_sources.py.html#L70">fetch_sources.py L70</a></li>
+<li><code>if __name__ == "__main__":</code> — <a href="../code/tools-fetch_sources.py.html#L101">fetch_sources.py L101</a></li>
+<li>取り出さないグループ <code>(?:…)</code> — <a href="../code/tools-score.py.html#L21">score.py L21</a></li>
+<li>@dataclass — <a href="../code/tools-score.py.html#L26">score.py L26</a></li>
+<li>コメント <code>#</code> — <a href="../code/tools-score.py.html#L26">score.py L26</a></li>
+<li><code>in</code> による所属の判定 — <a href="../code/tools-score.py.html#L42">score.py L42</a></li>
+<li>Python の class と self — <a href="../code/tools-score.py.html#L46">score.py L46</a></li>
+<li>数の書き方 <code>500_000</code> と <code>1e6</code> — <a href="../code/tools-score.py.html#L46">score.py L46</a></li>
+<li>変数への型注釈と、名前の先頭の <code>_</code> — <a href="../code/tools-score.py.html#L46">score.py L46</a></li>
+<li>enumerate とタプルの分解 — <a href="../code/tools-score.py.html#L46">score.py L46</a></li>
+<li><code>continue</code> — <a href="../code/tools-score.py.html#L46">score.py L46</a></li>
+<li>二分探索 <code>bisect.bisect_right</code> — <a href="../code/tools-score.py.html#L69">score.py L69</a></li>
+<li>リスト内包表記 — <a href="../code/tools-score.py.html#L92">score.py L92</a></li>
+<li>整数の割り算 <code>//</code> — <a href="../code/tools-score.py.html#L92">score.py L92</a></li>
+<li><code>is</code> — <a href="../code/tools-score.py.html#L104">score.py L104</a></li>
+<li>割り算の余り <code>%</code>（負の数のとき） — <a href="../code/tools-score.py.html#L104">score.py L104</a></li>
+<li><code>while</code> — <a href="../code/tools-score.py.html#L122">score.py L122</a></li>
+<li>刻み付きの <code>range</code> と <code>.extend</code> — <a href="../code/tools-score.py.html#L122">score.py L122</a></li>
+<li>使わない変数 <code>_</code> — <a href="../code/tools-score.py.html#L153">score.py L153</a></li>
+<li>引数の既定値 — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li>辞書の安全な取り出し <code>.setdefault</code> と <code>.get</code> — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li><code>.pop(0)</code> — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li>lambda（名前の無い小さな関数） — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li>集合とスライス — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li>ジェネレータ式 — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li><code>max(…, default=0)</code> — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li><code>elif</code> — <a href="../code/tools-score.py.html#L168">score.py L168</a></li>
+<li>長さを決めないタプルの型 <code>tuple[int, ...]</code> — <a href="../code/tools-chart.py.html#L47">chart.py L47</a></li>
+<li><code>@property</code> — <a href="../code/tools-chart.py.html#L47">chart.py L47</a></li>
+<li>dataclass の項目の既定値 — <a href="../code/tools-chart.py.html#L74">chart.py L74</a></li>
+<li>物の識別番号 <code>id(n)</code> — <a href="../code/tools-chart.py.html#L86">chart.py L86</a></li>
+<li>入れ子のタプルの分解 — <a href="../code/tools-chart.py.html#L86">chart.py L86</a></li>
+<li>基準を指定した最大・最小 — <a href="../code/tools-chart.py.html#L86">chart.py L86</a></li>
+<li><code>break</code> — <a href="../code/tools-chart.py.html#L115">chart.py L115</a></li>
+<li>リストの連結 — <a href="../code/tools-chart.py.html#L125">chart.py L125</a></li>
+<li>逆向きの range — <a href="../code/tools-chart.py.html#L137">chart.py L137</a></li>
+<li>添字を指定した書き換え — <a href="../code/tools-chart.py.html#L156">chart.py L156</a></li>
+<li>集合の内包表記 — <a href="../code/tools-chart.py.html#L172">chart.py L172</a></li>
+<li>無限大 <code>float("inf")</code> — <a href="../code/tools-chart.py.html#L172">chart.py L172</a></li>
+<li><code>all(…)</code> と <code>abs(…)</code> — <a href="../code/tools-chart.py.html#L205">chart.py L205</a></li>
+<li>リストのくり返し <code>[x] * n</code> — <a href="../code/tools-chart.py.html#L226">chart.py L226</a></li>
+<li>条件式の連鎖 — <a href="../code/tools-chart.py.html#L226">chart.py L226</a></li>
+<li>集合の書き方 <code>{lane}</code> — <a href="../code/tools-chart.py.html#L226">chart.py L226</a></li>
+<li>桁を指定した四捨五入 <code>round(x, 3)</code> — <a href="../code/tools-chart.py.html#L266">chart.py L266</a></li>
+<li><code>int(…)</code> で整数にする — <a href="../code/tools-chart.py.html#L276">chart.py L276</a></li>
+<li>かっこの中の改行 — <a href="../code/tools-chart.py.html#L310">chart.py L310</a></li>
+<li>比較の連鎖 — <a href="../code/tools-chart.py.html#L310">chart.py L310</a></li>
+<li>辞書の合体 <code>|</code> — <a href="../code/tools-build_songs.py.html#L72">build_songs.py L72</a></li>
+<li>f 文字列の書式指定 — <a href="../code/tools-build_songs.py.html#L72">build_songs.py L72</a></li>
+<li>文字列をつなぐ <code>join</code> — <a href="../code/tools-build_songs.py.html#L72">build_songs.py L72</a></li>
+<li>コマンドに付けた引数 <code>sys.argv</code> — <a href="../code/tools-build_songs.py.html#L97">build_songs.py L97</a></li>
+<li>文字列の分割と空白の除去 — <a href="../code/tools-build_samples.py.html#L43">build_samples.py L43</a></li>
+<li>正規表現で全部探す <code>findall</code> — <a href="../code/tools-build_samples.py.html#L43">build_samples.py L43</a></li>
+<li>辞書の書き換え <code>.update</code> — <a href="../code/tools-build_samples.py.html#L43">build_samples.py L43</a></li>
+<li>外のプログラムを動かす <code>subprocess.run</code> — <a href="../code/tools-build_samples.py.html#L72">build_samples.py L72</a></li>
+<li>エラーの出力先 <code>sys.stderr</code> — <a href="../code/tools-build_samples.py.html#L85">build_samples.py L85</a></li>
+<li>フォルダの中を探す <code>glob</code> とファイルの大きさ — <a href="../code/tools-build_samples.py.html#L85">build_samples.py L85</a></li>
+</ul>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#typescriptjavascript">TypeScript・JavaScript の書き方</a></li><li class="d2"><a href="#typescript">TypeScript の型</a></li><li class="d2"><a href="#react">React（画面の部品）</a></li><li class="d2"><a href="#_2">ブラウザの機能</a></li><li class="d2"><a href="#canvas-2d">Canvas 2D（絵を描く）</a></li><li class="d2"><a href="#python">Python</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

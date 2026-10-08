@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/audio/clock.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html" class="current">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 68 行</p>
+<h1><code>src/audio/clock.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>「いまスピーカーから聞こえているのは曲の何秒目か」を、ブラウザの 2 つの時計の対応から求めるファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<p>ブラウザには時計が 2 つあります。</p>
+<table>
+<thead>
+<tr>
+<th>時計</th>
+<th>単位</th>
+<th>何の時刻か</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AudioContext</code> の <code>currentTime</code></td>
+<td>秒</td>
+<td>音を作る仕組みが<strong>処理している</strong>時刻。音の予約（「この時刻に鳴らせ」）はこの時計で書く</td>
+</tr>
+<tr>
+<td><code>performance.now()</code></td>
+<td>ミリ秒</td>
+<td>ページを開いてからの経過時間。キーを押した時刻（<code>event.timeStamp</code>）や画面を描く時刻はこの時計で測られる</td>
+</tr>
+</tbody>
+</table>
+<p>キーを押した時刻は <code>performance.now()</code> の時計で届き、音は <code>AudioContext</code> の時計で鳴ります。判定するには、2 つを同じ物差しに載せなければなりません。しかも、音は処理されてからスピーカーで鳴るまでに遅れがあります（数 ms〜数十 ms、Bluetooth では 100 ms を超えることもあります）。</p>
+<p>このファイルは次のことをします。</p>
+<ul>
+<li><code>sampleOffset</code>（L15-28）: 「<strong>いま鳴っている</strong>音の <code>AudioContext</code> 時刻」と <code>performance.now()</code> の差（ずれ）を 1 回測る。</li>
+<li><code>SongClock.update</code>（L44-51）: そのずれを毎フレーム測り、細かい揺れをならして覚えておく。</li>
+<li><code>SongClock.songTimeAt</code>（L58-62）: <code>performance.now()</code> の時刻を、その瞬間に聞こえていた<strong>曲の位置（秒）</strong>に直す。判定と描画が使う。</li>
+<li><code>SongClock.contextTimeOf</code>（L65-67）: 逆に、曲の位置を「その音を鳴らす <code>AudioContext</code> 時刻」に直す。音の予約が使う。</li>
+</ul>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a></td>
+<td>L89 で曲の開始時に <code>SongClock</code> を作る。L181 で毎フレーム <code>update</code>。L124・L187・L200 で <code>songTimeAt</code>（判定・終了判定・描画）。L65 で <code>contextTimeOf</code>（音の予約）。L102 で一時停止から戻るときに <code>reset</code></td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a></td>
+<td>L46 で再生速度 1 の <code>SongClock</code> を作り、L65-66 でクリックに合わせて叩いた時刻を曲の位置に直す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/audio/audio.test.ts</code></td>
+<td><code>ClockSource</code> の形の偽物を渡して、<code>sampleOffset</code> と <code>SongClock</code> を試す</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>ブラウザの <code>AudioContext</code></td>
+<td><code>currentTime</code>・<code>baseLatency</code>・<code>outputLatency</code>・<code>getOutputTimestamp()</code> を読む</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L5 <code>baseLatency?: number</code> — 無くてもよい欄 <code>?:</code></li>
+<li>L7 <code>getOutputTimestamp?(): AudioTimestamp</code> — interface に書く関数の欄</li>
+<li>L16 <code>source.getOutputTimestamp?.()</code> — 関数が無ければ呼ばない <code>?.()</code>（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）</li>
+<li>L18-22 <code>&amp;&amp;</code> — 「かつ」でつないだ条件</li>
+<li>L37-41 中身が空のコンストラクタ <code>{}</code> と、引数の <code>readonly</code>（文法の索引の『private とコンストラクタ引数のプロパティ』）</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong>ずれ（offset）という考え方。</strong> 「聞こえている <code>AudioContext</code> 時刻 − <code>performance.now()</code> 秒」は、2 つの時計がどちらも同じ速さで進む限り一定です。だから 1 回測っておけば、任意の <code>performance.now()</code> の時刻に足すだけで、そのとき聞こえていた <code>AudioContext</code> 時刻が分かります（L60）。</li>
+<li><strong>測り方が 2 通りあること</strong>（L16-27）。正確な <code>getOutputTimestamp()</code> が使えればそれを、壊れていれば遅れの申告値で代わりにします。</li>
+<li><strong>ならし方</strong>（L46-50）。小さな揺れは少しずつ追い、25 ms を超える跳びにはすぐ合わせます。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>ブラウザが申告しない遅れは、ここでは取れません。</strong> OS の音の処理や Bluetooth の遅れの一部は <code>getOutputTimestamp()</code> にも <code>outputLatency</code> にも入らないことがあります（<code>docs/research/03-web-audio-timing.md</code> の 3 節）。残りは利用者が「入力の補正」「表示の補正」で埋めます（<code>engine.ts</code> の L124・L204）。</li>
+<li><strong>曲の位置は「聞こえている位置」で、<code>AudioContext</code> の現在時刻とは違います。</strong> 音の予約には遅れを含まない <code>ctx.currentTime</code> から先を見るので、<code>engine.ts</code> の L183 は <code>songTimeAt</code> を使わずに計算しています。</li>
+<li><code>songTimeAt</code> は、まだ一度もずれを測っていなければ、その場で測ります（L59）。読むだけに見えて中の状態を変えることがあります。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p>ファイル全体の説明のコメントです。「いま聞こえている曲の位置」を出すのが、このファイルの目的です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="cm">/** AudioContext の時刻と performance.now() の対応を取り、「いま聞こえている曲の位置」を出す。 */</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L9</p><blockquote>
+<p><strong>文法: 無くてもよい欄 <code>?:</code> と、関数の欄</strong></p>
+<p><code>readonly baseLatency?: number;</code> の <code>?</code> は、「この欄は無くてもよい」という印です。あれば数ですが、無ければ読んだときに <code>undefined</code> になります。</p>
+<p><code>getOutputTimestamp?(): AudioTimestamp;</code> は、「<code>getOutputTimestamp</code> という<strong>関数</strong>の欄があってもよく、呼ぶと <code>AudioTimestamp</code> を返す」という書き方です。<code>()</code> の中が空なので引数はありません。</p>
+</blockquote>
+<p><code>ClockSource</code> は、このファイルが時計から読みたいものだけを並べた形です。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>currentTime</code></td>
+<td>音を処理している時刻（秒）</td>
+</tr>
+<tr>
+<td><code>baseLatency</code></td>
+<td>音の仕組みの中で、音を作ってから OS に渡すまでの遅れ（秒）</td>
+</tr>
+<tr>
+<td><code>outputLatency</code></td>
+<td>OS に渡してから、出力の装置が鳴らし始めるまでの遅れの見積もり（秒）</td>
+</tr>
+<tr>
+<td><code>getOutputTimestamp()</code></td>
+<td>「いま出力の装置が鳴らしている音の <code>AudioContext</code> 時刻」（<code>contextTime</code>、秒）と、「それが鳴った <code>performance.now()</code> の時刻」（<code>performanceTime</code>、ミリ秒）の組を返す</td>
+</tr>
+</tbody>
+</table>
+<p>ブラウザの <code>AudioContext</code> はこの 4 つを全部持っているので、<code>ClockSource</code> を受け取る所にそのまま渡せます（<code>engine.ts</code> の L89 の <code>ctx</code>）。TypeScript は「欄が揃っていれば同じ形とみなす」ので、<code>AudioContext</code> の側で <code>ClockSource</code> を名乗る必要はありません。</p>
+<p><code>AudioContext</code> そのものではなくこの形を受け取るのは、試験のときに <code>{ currentTime: 10, getOutputTimestamp: () =&gt; (…) }</code> のような偽物を渡せるようにするためです（<code>src/audio/audio.test.ts</code>）。後ろの 3 つを <code>?</code> にしているのは、古いブラウザには無い場合があるからです（Safari の <code>outputLatency</code> は 18.4 から。<code>docs/research/03-web-audio-timing.md</code> の 3 節）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">ClockSource</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">currentTime</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">baseLatency?</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">outputLatency?</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="nx">getOutputTimestamp</span><span class="o">?</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">AudioTimestamp</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L13</p><p>3 つの定数です。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_TIMESTAMP_SKEW</code></td>
+<td>0.5 秒</td>
+<td><code>getOutputTimestamp()</code> の <code>contextTime</code> が <code>currentTime</code> からこれ以上離れていたら、値が壊れているとみなす</td>
+</tr>
+<tr>
+<td><code>JUMP_MS</code></td>
+<td>25 ms</td>
+<td>測ったずれが、覚えているずれからこれ以上変わったら、ならさずにすぐ合わせる</td>
+</tr>
+<tr>
+<td><code>SMOOTHING</code></td>
+<td>0.05</td>
+<td>ならすときに、新しく測った値をどれだけ取り入れるか（5%）</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_TIMESTAMP_SKEW</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span><span class="w"> </span><span class="c1">// 秒。これ以上 currentTime から離れた出力時刻は壊れているとみなす</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">JUMP_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">25</span><span class="p">;</span><span class="w"> </span><span class="c1">// これより大きく変わったら平滑化をやめて追従する</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">SMOOTHING</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.05</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L14–L28</p><p><code>sampleOffset(source, nowMs)</code> は、「聞こえている <code>AudioContext</code> 時刻（秒）− <code>performance.now()</code>（秒）」を 1 回測って返します。<code>nowMs</code> は今の <code>performance.now()</code> の値です。</p>
+<p><strong>1 つ目の測り方（L16-25）: <code>getOutputTimestamp()</code> を使う。</strong></p>
+<p>L16 の <code>source.getOutputTimestamp?.()</code> は、関数があれば呼び、無ければ呼ばずに <code>undefined</code> にします（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）。</p>
+<p>L17-23 の <code>if</code> は、次の 5 つの条件を <code>&amp;&amp;</code>（「かつ」。全部が真のときだけ真）でつないでいます。</p>
+<ol>
+<li>結果が返ってきた。</li>
+<li><code>contextTime</code> が数である。</li>
+<li><code>performanceTime</code> が数である。</li>
+<li><code>performanceTime</code> が 0 より大きい。鳴り始める前は 0 が返るブラウザがあります。</li>
+<li><code>contextTime</code> と <code>currentTime</code> の差が 0.5 秒以内である。</li>
+</ol>
+<p>5 つ目の検査は、実際にあったブラウザの不具合への備えです。Safari 17 までは値の単位を取り違える不具合（WebKit Bug 264247）があり、iOS 15.1 では <code>currentTime</code> が 28.865 秒のときに <code>contextTime</code> が 0.001 秒になったという報告があります（<code>docs/research/03-web-audio-timing.md</code> の 3 節）。本来 2 つの差は出力の遅れ程度（多くて数百 ms）なので、0.5 秒も離れていれば壊れていると判断できます。</p>
+<p>全部満たせば、L24 で <code>contextTime − performanceTime / 1000</code>（ミリ秒を秒に直して引く）を返します。</p>
+<p>例えば <code>contextTime</code> が 10 秒、<code>performanceTime</code> が 5000 ms なら、ずれは 10 − 5 = 5 秒です。これは「<code>performance.now()</code> の秒に 5 を足せば、そのとき聞こえている <code>AudioContext</code> 時刻になる」という意味です。</p>
+<p><strong>2 つ目の測り方（L26-27）: 遅れの申告値を使う。</strong> 1 つ目が使えないときは、</p>
+<div class="codehilite"><pre><span></span><code>ずれ = currentTime − (baseLatency + outputLatency) − nowMs / 1000
+</code></pre></div>
+
+<p>とします。「今処理している時刻から、スピーカーまでの遅れを引けば、今聞こえている時刻」という考え方です。<code>?? 0</code>（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）は、その欄が無いブラウザでは遅れを 0 とみなします。例えば <code>currentTime</code> が 10 秒、遅れの合計が 0.05 秒、<code>nowMs</code> が 5000 なら、ずれは 10 − 0.05 − 5 = 4.95 秒です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="cm">/** 聞こえている AudioContext 時刻（秒）− performance.now()/1000 の推定値を返す。 */</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">sampleOffset</span><span class="p">(</span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">ClockSource</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">stamp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">source</span><span class="p">.</span><span class="nx">getOutputTimestamp</span><span class="o">?</span><span class="p">.</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">    </span><span class="nx">stamp</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">    </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">stamp</span><span class="p">.</span><span class="nx">contextTime</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">    </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">stamp</span><span class="p">.</span><span class="nx">performanceTime</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">    </span><span class="nx">stamp</span><span class="p">.</span><span class="nx">performanceTime</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">    </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">stamp</span><span class="p">.</span><span class="nx">contextTime</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">source</span><span class="p">.</span><span class="nx">currentTime</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">MAX_TIMESTAMP_SKEW</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">stamp</span><span class="p">.</span><span class="nx">contextTime</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">stamp</span><span class="p">.</span><span class="nx">performanceTime</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">latency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">source</span><span class="p">.</span><span class="nx">baseLatency</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="nx">source</span><span class="p">.</span><span class="nx">outputLatency</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">source</span><span class="p">.</span><span class="nx">currentTime</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">latency</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">nowMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L42</p><p><code>SongClock</code> は、1 回のプレイの「曲の位置」を出す時計です（<code>class</code> は文法の索引の『class と constructor』）。</p>
+<ul>
+<li><code>offset</code>（L31）は、ならした後のずれ（秒）です。まだ測っていなければ <code>null</code>。</li>
+<li>コンストラクタ（L37-41）は 3 つの引数を受け取り、そのまま欄にします（文法の索引の『private とコンストラクタ引数のプロパティ』）。やることはそれだけなので、中身の <code>{}</code> は空です。<code>private</code> を付けていない <code>readonly startContextTime</code> は、外から読めるが書き換えられない欄になります。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>引数</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source</code></td>
+<td>時計（ふつうは <code>AudioContext</code>）</td>
+</tr>
+<tr>
+<td><code>startContextTime</code></td>
+<td>曲の 0 秒の音を鳴らす <code>AudioContext</code> の時刻</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td>再生速度（0.5〜1）。0.5 なら曲の 1 秒が実際には 2 秒かかる</td>
+</tr>
+</tbody>
+</table>
+<p><code>startContextTime</code> は <code>engine.ts</code> の L89 が決めます。</p>
+<div class="codehilite"><pre><span></span><code>startContextTime = 今の currentTime + 0.15 − startSong / rate
+</code></pre></div>
+
+<p><code>startSong</code> は 0 以下の曲の位置で、最初のノーツが奥から流れてくる時間と、さらに 0.8 秒（実時間）の間を足した分だけ曲の 0 秒より前から始めるためのものです（engine.ts の L88）。つまり曲の 0 秒は、開始の操作から少し先の時刻に置かれます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">SongClock</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">offset</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">  </span><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="cm">   * @param startContextTime 曲の 0 秒を鳴らす AudioContext の時刻</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="cm">   * @param rate 再生速度（0.5〜1）。曲の 1 秒が実時間で 1/rate 秒になる</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="cm">   */</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="kr">constructor</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">    </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">source</span><span class="o">:</span><span class="w"> </span><span class="kt">ClockSource</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">    </span><span class="k">readonly</span><span class="w"> </span><span class="nx">startContextTime</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">    </span><span class="k">readonly</span><span class="w"> </span><span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L43–L52</p><p><code>update(nowMs)</code> は毎フレーム呼ばれ（<code>engine.ts</code> の L181）、ずれを測り直して <code>offset</code> を更新します。</p>
+<ol>
+<li>L45 今のずれを測る。</li>
+<li>L46-47 まだ覚えていない（<code>null</code>）か、覚えている値から 25 ms より大きく変わっていれば、測った値をそのまま使う。</li>
+<li>L48-49 そうでなければ、差の 5% だけ近づける。</li>
+</ol>
+<p>3 のやり方を<strong>指数移動平均</strong>と呼びます。毎回「残りの差」が 95% に縮むので、測った値が一定なら、差は 20 フレームで 0.95 の 20 乗 ≒ 0.36 倍、60 フレーム（60 フレーム毎秒で約 1 秒）で 0.95 の 60 乗 ≒ 0.046 倍になり、約 1 秒で 95% ほど追いつきます。</p>
+<p>ならす理由は、測るたびにずれが少しずつ揺れるからです。<code>currentTime</code> は 128 サンプルごとにまとめて進むので（48,000 Hz なら 128 ÷ 48,000 ≒ 2.7 ms ごと）、測る瞬間によって数 ms の揺れが出ます。そのまま使うとノーツの位置が毎フレームがたつきます。</p>
+<p>一方、一時停止すると <code>currentTime</code> は止まりますが <code>performance.now()</code> は進み続けるので、再開するとずれが止めていた時間だけ一気に変わります。こうした 25 ms を超える跳びを 5% ずつ追うと、何秒も間違った位置を使うことになるので、すぐに合わせます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 毎フレーム呼ぶ。出力時刻の揺れをならしつつ、大きなずれ（中断・再開）にはすぐ追従する。 */</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="nx">update</span><span class="p">(</span><span class="nx">nowMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">sample</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">sampleOffset</span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">source</span><span class="p">,</span><span class="w"> </span><span class="nx">nowMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">sample</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1000</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nx">JUMP_MS</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">sample</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="p">(</span><span class="nx">sample</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">SMOOTHING</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L53–L56</p><p><code>reset()</code> は覚えているずれを捨てます。<code>engine.ts</code> の <code>resume</code>（L102）が、一時停止から戻るときに呼びます。次の <code>update</code> か <code>songTimeAt</code> で測り直されます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">  </span><span class="nx">reset</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L57–L63</p><p><code>songTimeAt(perfMs)</code> は、<code>performance.now()</code> の時刻 <code>perfMs</code> に聞こえていた曲の位置（秒）を返します。</p>
+<ol>
+<li>L59 ずれをまだ測っていなければ、ここで測る。</li>
+<li>L60 <code>heard = offset + perfMs / 1000</code>。そのとき聞こえていた <code>AudioContext</code> 時刻です。</li>
+<li>L61 <code>(heard − startContextTime) × rate</code>。曲の 0 秒の時刻から何秒経ったかを、曲の秒に直します。再生速度 0.5 なら、実際の 2 秒が曲の 1 秒です。</li>
+</ol>
+<p>例えば、ずれが 5 秒、<code>startContextTime</code> が 3 秒、<code>rate</code> が 1 のとき、<code>perfMs</code> が 5020 なら、聞こえている時刻は 5 + 5.02 = 10.02 秒、曲の位置は 10.02 − 3 = 7.02 秒です。</p>
+<p><code>perfMs</code> に、キーを押した時刻（<code>event.timeStamp</code>）を渡せば「押した瞬間に聞こえていた曲の位置」が、描画の時刻を渡せば「描く瞬間に聞こえている曲の位置」が求まります。<code>engine.ts</code> はこれを判定（L124）と描画（L200）に使います。</p>
+<p>L60 の <code>this.offset ?? 0</code> は、L59 で測った後なので実際には <code>null</code> になりませんが、TypeScript にそれが伝わらないので 0 を補っています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">  </span><span class="cm">/** performance.now() の時刻 perfMs に聞こえていた曲の位置（秒）。 */</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">  </span><span class="nx">songTimeAt</span><span class="p">(</span><span class="nx">perfMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">perfMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">heard</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">this</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">perfMs</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">heard</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">startContextTime</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L64–L68</p><p><code>contextTimeOf(songTime)</code> は <code>songTimeAt</code> の逆向きで、曲の位置 <code>songTime</code> の音を鳴らすべき <code>AudioContext</code> の時刻を返します。</p>
+<div class="codehilite"><pre><span></span><code>startContextTime + songTime / rate
+</code></pre></div>
+
+<p>再生速度 0.5 なら、曲の 1 秒目の音は曲の始まりから実際に 2 秒後に鳴らします。こちらは「鳴らす時刻」なので、出力の遅れは足しません。予約した時刻に処理された音は、遅れの分だけ後で聞こえ、それは <code>songTimeAt</code> 側で遅れを引いた「聞こえている位置」とちょうど合います。<code>engine.ts</code> の L65 が、伴奏の音を予約するときに使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 曲の位置 songTime を鳴らす AudioContext の時刻。 */</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">  </span><span class="nx">contextTimeOf</span><span class="p">(</span><span class="nx">songTime</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">startContextTime</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">songTime</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">rate</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

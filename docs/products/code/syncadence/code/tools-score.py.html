@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tools/score.py | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html" class="current">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">Python · 全 230 行</p>
+<h1><code>tools/score.py</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>MIDI ファイルを読み、「どの音が、何秒に、どちらの手で、拍のどれくらい強い位置で鳴るか」を引ける楽譜データ（<code>Score</code>）に変える、譜面づくりの土台のファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>MIDI の中の時刻は「tick」という整数の目盛りで書かれています。それを秒に直すテンポマップ（<code>TempoMap</code>、L46-76）。</li>
+<li>拍子・小節線・拍の位置を求め、各音が小節頭・拍頭・半拍…のどこにあるか（拍節の強さ、<code>metric_level</code>、L110-120）を返す。</li>
+<li>LilyPond が出す MIDI は、曲が小節の途中から始まる「弱起（アウフタクト）」を tick 0 から詰めて書きます。そこで <code>.ly</code> の <code>\partial</code> から弱起の長さを読み（<code>read_pickup</code>、L153-165）、小節の起点をその分ずらす。</li>
+<li>トラックごとの平均の音の高さで、右手と左手を分ける（L202-204）。</li>
+<li>ダンパーペダル（MIDI のコントロールチェンジ 64 番）の区間を読み、音が実際に鳴り続ける長さを求める（<code>sounding_end</code>、L145-150）。</li>
+</ul>
+<p>ここでは譜面を作りません。譜面は <a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> が、このファイルの <code>Score</code> を材料に作ります。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L82</td>
+<td><code>load_score</code> で曲ごとの <code>Score</code> を作る</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L41-64</td>
+<td>秒への変換・小節線・拍の線・ペダル込みの長さ</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L104-109、L125-133、L167-169</td>
+<td>秒への変換・拍節の強さ・小節線・1 拍の秒数</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>tools/tests/test_score.py</code>・<code>tools/tests/test_chart.py</code></td>
+<td>テンポマップ・弱起・拍節の強さの確認</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>mido</code>（外部のライブラリ）</td>
+<td>MIDI ファイルを読む</td>
+</tr>
+<tr>
+<td>読む</td>
+<td><code>sources/mutopia/&lt;id&gt;/*.mid</code> と <code>*.ly</code></td>
+<td><a class="xref" href="tools-fetch_sources.py.html"><code>tools/fetch_sources.py</code></a> が取ってきたもの</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L23 <code>(?:…)</code> — 取り出さないグループ（正規表現）</li>
+<li>L26 <code>@dataclass(frozen=True)</code> — @dataclass</li>
+<li>L28 <code># tick</code> — コメント</li>
+<li>L43 <code>x in (6, 9, 12)</code> — <code>in</code> による所属の判定</li>
+<li>L46 <code>class TempoMap:</code>、L49 <code>def __init__(self, …)</code> — Python の class と self</li>
+<li>L51 <code>500_000</code>、L61 <code>1e6</code> — 数の書き方</li>
+<li>L51 <code>sorted(changes) or [...]</code> — <code>or</code> で既定値を入れる</li>
+<li>L54 <code>self._ticks: list[int] = []</code> — 変数への型注釈と、名前の先頭の <code>_</code></li>
+<li>L58 <code>for i, (tick, tempo) in enumerate(points):</code> — enumerate とタプルの分解</li>
+<li>L64 <code>continue</code> — ループの次の回へ進む</li>
+<li>L70 <code>bisect.bisect_right(...)</code> — 二分探索</li>
+<li>L93 <code>[ts.tick for ts in …]</code> — リスト内包表記</li>
+<li>L98 <code>//</code> — 整数の割り算</li>
+<li>L106 <code>is</code> — 同じ物かどうかの判定</li>
+<li>L118 <code>%</code> — 割り算の余り（負の数のとき）</li>
+<li>L130 <code>while</code> — 条件が真の間くり返す</li>
+<li>L142 <code>range(start, stop, beat)</code> と <code>.extend(...)</code> — 刻み付きの range</li>
+<li>L160 <code>for _ in …</code> — 使わない変数 <code>_</code></li>
+<li>L168 <code>ly_path: Path | None = None</code> — 引数の既定値</li>
+<li>L190 <code>.setdefault(...)</code>、L192 <code>.get(...)</code> — 辞書の安全な取り出し</li>
+<li>L194 <code>.pop(0)</code> — リストの先頭を取り除く</li>
+<li>L200 <code>lambda ts: ts.tick</code> — lambda（名前の無い小さな関数）</li>
+<li>L204 <code>set(...)</code>、<code>ranked[: n]</code> — 集合とスライス</li>
+<li>L206-210 <code>( … for … for … )</code> — ジェネレータ式</li>
+<li>L229 <code>max(…, default=0)</code> — 空のときの値</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>TempoMap</code>（L46-76）。tick を秒に直す計算と、テンポが途中で変わる曲での区分ごとの足し合わせ。</li>
+<li><code>metric_level</code>（L110-120）。譜面の難易度を決める一番の材料で、<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> は「EASY は強い位置の音だけ」のように、この値で音を選びます。</li>
+<li><code>read_pickup</code>（L153-165）と <code>_origin</code>（L104-108）。弱起の扱いで、拍節の強さがずれないようにしている所です。</li>
+<li><code>load_score</code>（L168-230）。MIDI の「鍵盤を押した・離した」という出来事の列を、1 音ずつの <code>Note</code> に組み立て直す所です。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>弱起は最初の拍子の区間にしか効かない</strong>（L106-108）。途中で拍子が変わる曲（収録曲では <code>arabesque-1</code>）でも、後の区間は拍子が変わった tick を小節頭とみなします。</li>
+<li><strong>L128-129 と L131 の条件は、収録曲では結果を変えない。</strong> 理由は L122-144 の解説に書きます。</li>
+<li><strong>閉じられなかった音は黙って捨てられる</strong>（L189-195）。「押した」に対応する「離した」が無い音は <code>Note</code> になりません。</li>
+<li><strong>同じ tick にテンポが 2 つあるときは、値の大きい方（遅い方）が残る</strong>（L51 と L62-64）。ファイルの中での順番ではありません。</li>
+<li><strong>右手・左手はトラック単位で決める</strong>（L202-204）。1 つのトラックの中で手が入れ替わる楽譜は、そのまま片方の手として扱われます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L11</p><p>ファイルの docstring（文法の索引の『ドキュメント文字列』）です。扱うものが 5 つ挙がっていて、そのまま後のコードの順になっています。</p>
+<ul>
+<li><code>\\partial</code> と <code>\</code> が 2 つあるのは、この docstring が生文字列ではない（<code>r</code> が付いていない）ためです。ふつうの文字列の中では <code>\\</code> が <code>\</code> 1 文字を表すので、読むと <code>\partial</code> になります（L23 の正規表現は生文字列なので <code>\\</code> の意味が違います。L21-25 の解説）。</li>
+<li>最後の項目が大事です。ペダルで延びた長さは<strong>音を鳴らす長さにだけ</strong>使い、譜面の長押し（ロングノーツ）の判定には使いません。長押しは鍵盤を押している長さ（<code>Note.end</code>）で決めます（<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L105）。ペダルを踏んだまま短い音を弾くと音は長く残りますが、指はもう離れているので、長押しにするのは不自然だからです。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;MIDI（Mutopia の LilyPond 出力）を、譜面生成に使う楽譜データに変換する。</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="sd">扱うもの:</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="sd">- テンポマップ（tick → 秒）</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="sd">- 拍子と小節線。LilyPond の MIDI は弱起（\\partial）の分を詰めて出力するので、</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="sd">  .ly の先頭の \\partial から弱起の長さを読み、小節の起点をずらす。</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="sd">- 各音の拍節上の強さ（小節頭 / 拍頭 / 半拍 / 1/4 拍 / それ以外）</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="sd">- 右手・左手の区別（トラックごとの平均音高で決める）</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="sd">- ダンパーペダル（CC64）による音の延長。音響用の長さにだけ使い、譜面のロングノーツ判定には使わない。</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L12–L20</p><p><code>fetch_sources.py</code> と同じ形の取り込みです（文法の索引の『Python の基本（import・def・型注釈・字下げ）』『<code>from __future__ import annotations</code>』）。</p>
+<table>
+<thead>
+<tr>
+<th>モジュール</th>
+<th>使い道</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bisect</code></td>
+<td>並んだリストの中で、ある値が入る位置を素早く探す（L70・L75・L94）</td>
+</tr>
+<tr>
+<td><code>re</code></td>
+<td><code>\partial</code> を探す正規表現（L23）</td>
+</tr>
+<tr>
+<td><code>dataclasses.dataclass</code></td>
+<td><code>Note</code>・<code>TimeSignature</code>・<code>Score</code> を作る（L26・L35・L79）</td>
+</tr>
+<tr>
+<td><code>pathlib.Path</code></td>
+<td>ファイルの場所（L168）</td>
+</tr>
+<tr>
+<td><code>mido</code></td>
+<td>MIDI ファイルを読むライブラリ。標準ではないので <code>tools/requirements.txt</code> で入れる（版は 1.3.3）</td>
+</tr>
+</tbody>
+</table>
+<p>L19 だけ空行で区切られているのは、「標準のモジュール」と「外から入れたライブラリ」を分けて書く Python の慣習です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">bisect</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">re</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">mido</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L21–L25</p><blockquote>
+<p><strong>文法: 取り出さないグループ <code>(?:…)</code></strong></p>
+<p>正規表現の <code>( )</code> は、まとめる働きと、一致した部分を後で <code>group(番号)</code> で取り出す働きを兼ねます。<code>(?: )</code> は<strong>まとめるだけ</strong>で、番号を付けません。後ろに <code>?</code>（0 回か 1 回）を付けて「この塊ごと、あってもなくてもよい」とするときによく使います。</p>
+</blockquote>
+<p><strong>ペダルの定数（L21-22）</strong> — MIDI のコントロールチェンジ（つまみやペダルの値を送る出来事）の 64 番がダンパーペダルで、値は 0〜127 です。64 以上を「踏んでいる」とみなします（L188）。</p>
+<p><strong><code>PARTIAL</code>（L23）</strong> — LilyPond の楽譜で弱起の長さを書く <code>\partial 8</code> のような命令を探します。生文字列（文法の索引の『正規表現と生文字列 <code>r"…"</code>』）の中なので、<code>\\partial</code> は「<code>\</code> という文字そのもの」+ <code>partial</code> です。</p>
+<table>
+<thead>
+<tr>
+<th>部分</th>
+<th>意味</th>
+<th>取り出し</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>\\partial</code></td>
+<td><code>\partial</code> という文字</td>
+<td></td>
+</tr>
+<tr>
+<td><code>\s+</code></td>
+<td>空白 1 個以上</td>
+<td></td>
+</tr>
+<tr>
+<td><code>(\d+)</code></td>
+<td>数字 1 個以上。音符の種類（4 なら 4 分音符、8 なら 8 分音符）</td>
+<td><code>group(1)</code></td>
+</tr>
+<tr>
+<td><code>(\.*)</code></td>
+<td><code>.</code> が 0 個以上。付点の数</td>
+<td><code>group(2)</code></td>
+</tr>
+<tr>
+<td><code>(?:\s*\*\s*(\d+)(?:/(\d+))?)?</code></td>
+<td>省略できる「<code>*</code> 数」または「<code>*</code> 数<code>/</code>数」。長さの倍率</td>
+<td><code>group(3)</code>・<code>group(4)</code></td>
+</tr>
+</tbody>
+</table>
+<p>一致する例と、取り出される値:</p>
+<table>
+<thead>
+<tr>
+<th>書き方</th>
+<th>group(1)</th>
+<th>group(2)</th>
+<th>group(3)</th>
+<th>group(4)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>\partial 8</code></td>
+<td><code>"8"</code></td>
+<td><code>""</code></td>
+<td><code>None</code></td>
+<td><code>None</code></td>
+</tr>
+<tr>
+<td><code>\partial 4.</code></td>
+<td><code>"4"</code></td>
+<td><code>"."</code></td>
+<td><code>None</code></td>
+<td><code>None</code></td>
+</tr>
+<tr>
+<td><code>\partial 4*3</code></td>
+<td><code>"4"</code></td>
+<td><code>""</code></td>
+<td><code>"3"</code></td>
+<td><code>None</code></td>
+</tr>
+<tr>
+<td><code>\partial 8*3/2</code></td>
+<td><code>"8"</code></td>
+<td><code>""</code></td>
+<td><code>"3"</code></td>
+<td><code>"2"</code></td>
+</tr>
+</tbody>
+</table>
+<p>省略できる部分が一致しなかったときは、そのグループは <code>None</code> になります。この値を <code>read_pickup</code>（L153-165）が tick に直します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="n">PEDAL_CC</span> <span class="o">=</span> <span class="mi">64</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="n">PEDAL_DOWN</span> <span class="o">=</span> <span class="mi">64</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="n">PARTIAL</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;</span><span class="se">\\</span><span class="s2">partial</span><span class="s2">\</span><span class="s2">s+(</span><span class="s2">\</span><span class="s2">d+)(</span><span class="s2">\</span><span class="s2">.*)(?:</span><span class="s2">\</span><span class="s2">s*</span><span class="s2">\</span><span class="s2">*</span><span class="s2">\</span><span class="s2">s*(</span><span class="s2">\</span><span class="s2">d+)(?:/(</span><span class="s2">\</span><span class="s2">d+))?)?</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L26–L41</p><blockquote>
+<p><strong>文法: @dataclass</strong></p>
+<p><code>@</code> で始まる行は<strong>デコレータ</strong>で、すぐ下のクラスや関数を受け取って、手を加えたものに置き換える書き方です。<code>@dataclass</code> は「下のクラスを、データを入れておく箱として仕上げる」デコレータです。</p>
+<p><code>python
+@dataclass(frozen=True)
+class Note:
+    start: int
+    end: int</code></p>
+<p>のように、クラスの中に <code>名前: 型</code> を並べるだけで、Python が次のものを自動で作ります。</p>
+<ul>
+<li><strong>作るための関数</strong> — <code>Note(0, 96, 76, 62, "R")</code> と、並べた順に値を渡すと箱ができる。<code>Note(start=0, end=96, …)</code> と名前で渡すこともできる。</li>
+<li><strong>中身の取り出し</strong> — <code>n.start</code>、<code>n.pitch</code> のように <code>.名前</code> で読める。</li>
+<li><strong>比べる仕組み</strong> — 2 つの箱は、中身がすべて等しければ <code>==</code> で等しい。</li>
+<li><strong>表示</strong> — <code>print(n)</code> で <code>Note(start=0, end=96, pitch=76, velocity=62, hand='R')</code> と出る。</li>
+</ul>
+<p><code>frozen=True</code> を付けると、作った後に中身を書き換えられなくなります（<code>n.start = 5</code> はエラー）。値が変わらないことが保証されるので、安心してあちこちに渡せます。代わりに、変えたいときは新しい箱を作ります。</p>
+<p>ここでの型注釈（<code>start: int</code>）は、dataclass にとっては「どんな項目があるか」の宣言そのものです。ただし型の検査はしないので、<code>int</code> の所に小数を入れても動いてしまいます。</p>
+<p><strong>文法: コメント <code>#</code></strong></p>
+<p><code>#</code> から行末までは説明書きで、Python は読み飛ばします。L28 の <code># tick</code> は「この数は tick 単位」という注記です。</p>
+</blockquote>
+<p><strong><code>Note</code>（L26-32）</strong> は 1 つの音です。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>中身</th>
+<th>例（<code>fur-elise</code> の最初の音）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>start</code></td>
+<td>鍵盤を押す tick</td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>end</code></td>
+<td>鍵盤を離す tick</td>
+<td><code>96</code></td>
+</tr>
+<tr>
+<td><code>pitch</code></td>
+<td>音の高さ（MIDI のノート番号。60 が真ん中のド、1 増えるごとに半音上）</td>
+<td><code>76</code>（ミ）</td>
+</tr>
+<tr>
+<td><code>velocity</code></td>
+<td>強さ（1〜127）</td>
+<td><code>62</code></td>
+</tr>
+<tr>
+<td><code>hand</code></td>
+<td><code>"R"</code>（右手）か <code>"L"</code>（左手）</td>
+<td><code>"R"</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>tick について。</strong> MIDI では時刻を「4 分音符 1 つを何等分するか」で決めた整数の目盛りで書きます。この等分の数が <code>ticks_per_beat</code>（このファイルでは <code>tpb</code>）で、収録 12 曲はすべて 384 です。つまり 4 分音符 = 384 tick、8 分音符 = 192 tick、16 分音符 = 96 tick です。tick を秒に直すにはテンポが要ります（L46-76）。</p>
+<p><strong><code>TimeSignature</code>（L35-39）</strong> は「<code>tick</code> から先は <code>numerator</code>/<code>denominator</code> 拍子」という 1 件の拍子です。<code>fur-elise</code> は <code>TimeSignature(tick=0, numerator=3, denominator=8)</code>、つまり最初から 8 分の 3 拍子です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="k">class</span><span class="w"> </span><span class="nc">Note</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl">    <span class="n">start</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># tick</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl">    <span class="n">end</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># tick（鍵盤を離す位置）</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl">    <span class="n">pitch</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl">    <span class="n">velocity</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl">    <span class="n">hand</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># &quot;R&quot; or &quot;L&quot;</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="k">class</span><span class="w"> </span><span class="nc">TimeSignature</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl">    <span class="n">tick</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">    <span class="n">numerator</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl">    <span class="n">denominator</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L42–L45</p><blockquote>
+<p><strong>文法: <code>in</code> による所属の判定</strong></p>
+<p><code>x in (6, 9, 12)</code> は「<code>x</code> がこの並びのどれかと等しければ <code>True</code>」です。リスト・タプル・文字列・辞書（キーを見る）・集合に使えます。L43 では <code>==</code> と <code>and</code> で「分母が 8、かつ分子が 6・9・12 のどれか」をつないでいます。</p>
+</blockquote>
+<p><strong>複合拍子</strong>かどうかを判定します。8 分の 6・9・12 拍子は、8 分音符 3 つ（付点 4 分音符 1 つ）を 1 拍として数えます。6/8 なら 2 拍、9/8 なら 3 拍、12/8 なら 4 拍です。収録曲では <code>clair-de-lune</code> が 9/8 です。</p>
+<p>8 分の 3 拍子（<code>fur-elise</code>）は複合拍子に<strong>入れていません</strong>。8 分の 3 を付点 4 分 1 拍とすると 1 小節 1 拍になってしまうので、8 分音符を 1 拍としています（L96-99 の結果、1 拍 = 192 tick）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">is_compound</span><span class="p">(</span><span class="n">ts</span><span class="p">:</span> <span class="n">TimeSignature</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">bool</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl">    <span class="k">return</span> <span class="n">ts</span><span class="o">.</span><span class="n">denominator</span> <span class="o">==</span> <span class="mi">8</span> <span class="ow">and</span> <span class="n">ts</span><span class="o">.</span><span class="n">numerator</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L46–L68</p><blockquote>
+<p><strong>文法: Python の class と self</strong></p>
+<p><code>class 名前:</code> は、データ（属性）とそれを扱う関数（メソッド）をひとまとめにした「型」を作ります。中の <code>def</code> がメソッドです。</p>
+<ul>
+<li><code>def __init__(self, …):</code> は、<code>TempoMap(384, [...])</code> のように<strong>作るときに自動で呼ばれる</strong>準備の関数です。名前の前後の <code>__</code> は Python が特別な意味を与えた名前の印です。</li>
+<li>メソッドの最初の引数 <code>self</code> は「いま扱っているその 1 個」を指します。呼ぶ側は <code>tm.seconds(960)</code> と書き、<code>self</code> は渡しません（Python が <code>tm</code> を <code>self</code> に入れる）。</li>
+<li><code>self.tpb = …</code> のように <code>self.名前</code> に値を入れると、その 1 個が持つ属性になり、ほかのメソッドから <code>self.tpb</code> で読めます。</li>
+</ul>
+<p><code>@dataclass</code>（L26）と違い、ここでは属性を <code>__init__</code> の中で自分で作っています。作る前に並べ替えや計算をしたいからです。</p>
+<p><strong>文法: 数の書き方 <code>500_000</code> と <code>1e6</code></strong></p>
+<p>数字の間の <code>_</code> は読みやすくするための区切りで、<code>500_000</code> は <code>500000</code> と同じ整数です。<code>1e6</code> は「1 × 10 の 6 乗」= <code>1000000.0</code> という小数です。</p>
+<p><strong>文法: <code>or</code> で既定値を入れる</strong></p>
+<p><code>A or B</code> は、A が真ならば <strong>A そのもの</strong>を、偽ならば <strong>B そのもの</strong>を返します（<code>True</code>/<code>False</code> に変わるわけではありません。文法の索引の『<code>or</code>』）。空のリストは偽なので、<code>sorted(changes) or [(0, 500_000)]</code> は「テンポの変更が 1 つも無ければ、<code>[(0, 500000)]</code> を使う」です。</p>
+<p><strong>文法: 変数への型注釈と、名前の先頭の <code>_</code></strong></p>
+<p><code>self._ticks: list[int] = []</code> は、変数を作るときにも型注釈が書けることを示しています（「整数のリスト。最初は空」）。</p>
+<p>名前が <code>_</code> で始まるのは「このクラスの中だけで使うもの。外から触らないで」という慣習の印です。Python が禁止するわけではありません。</p>
+<p><strong>文法: enumerate とタプルの分解</strong></p>
+<p><code>enumerate(並び)</code> は、要素に 0 から始まる番号を付けて <code>(番号, 要素)</code> の組にして順に出します。</p>
+<p><code>for i, (tick, tempo) in enumerate(points):</code> は、出てきた <code>(番号, (tick, tempo))</code> を、形どおりに <code>i</code>・<code>tick</code>・<code>tempo</code> の 3 つの変数へ分けて受け取ります。この「組を、同じ形の変数の並びに分けて入れる」書き方をタプルの分解（アンパック）と呼び、L60 の <code>prev_tick, prev_tempo = points[i - 1]</code> のように <code>=</code> でも使えます。</p>
+<p><strong>文法: <code>continue</code></strong></p>
+<p>ループの中で <code>continue</code> に来ると、その回の残り（L65-67）を飛ばして次の回へ進みます。</p>
+</blockquote>
+<p><strong>MIDI のテンポ。</strong> MIDI の <code>set_tempo</code> は「4 分音符 1 つが何マイクロ秒（100 万分の 1 秒）か」を表します。<code>500_000</code> は 0.5 秒 = 1 分に 120 拍で、MIDI の決まりではテンポの指定が無いときはこの値です。よって 1 tick の秒数は</p>
+<div class="codehilite"><pre><span></span><code>テンポ（マイクロ秒/4 分音符） ÷ 1,000,000 ÷ tpb
+</code></pre></div>
+
+<p>です。<code>fur-elise</code> はテンポ 833333 なので、1 tick = 833333 / 1e6 / 384 ≈ 0.00217 秒、4 分音符 = 0.833 秒（1 分に 72 拍）です。</p>
+<p><strong><code>__init__</code> が作るもの。</strong> テンポが途中で変わる曲のために、変わり目ごとに 3 つのリストを並べて持ちます。</p>
+<table>
+<thead>
+<tr>
+<th>リスト</th>
+<th>i 番目の中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_ticks</code></td>
+<td>i 番目のテンポが始まる tick</td>
+</tr>
+<tr>
+<td><code>_tempos</code></td>
+<td>そのテンポ</td>
+</tr>
+<tr>
+<td><code>_seconds</code></td>
+<td>その tick が曲の頭から何秒か</td>
+</tr>
+</tbody>
+</table>
+<p>手順:</p>
+<ol>
+<li>L51: 変わり目の組 <code>(tick, テンポ)</code> を tick の順に並べる（タプルは 1 つ目の値で比べ、同じなら 2 つ目で比べる）。1 つも無ければ 120 BPM の 1 件にする。</li>
+<li>L52-53: 最初の変わり目が tick 0 でなければ、頭に <code>(0, 500000)</code> を足す。<code>points[0][0]</code> は「先頭の組の、1 つ目の値（tick）」。</li>
+<li>L58-61: 2 件目からは、ひとつ前の変わり目からここまでの tick 数 × 前のテンポの 1 tick の秒数を <code>elapsed</code> に足していく。これで各変わり目の「頭からの秒数」が出る。</li>
+<li>L62-64: 直前に入れた変わり目と同じ tick なら、テンポだけ上書きして次へ。</li>
+<li>L65-67: 3 つのリストに足す。</li>
+</ol>
+<p>例（<code>tools/tests/test_score.py</code> と同じ値）: tpb 480、変わり目 <code>[(0, 500000), (960, 1000000)]</code> なら、</p>
+<ul>
+<li>1 件目は <code>elapsed = 0.0</code>。</li>
+<li>2 件目は <code>(960 - 0) × 500000 / 1e6 / 480 = 1.0</code> 秒。</li>
+</ul>
+<p>で、<code>_seconds</code> は <code>[0.0, 1.0]</code> になります。</p>
+<p>同じ tick にテンポが 2 つあると（手順 4）、L51 で <code>(tick, テンポ)</code> の順に並べ替えた後なので、<strong>値の大きい方</strong>が後に来て残ります。収録曲では <code>traumerei</code> に tick 0 の同じ値（1000000）が 2 つあり、39 件の <code>set_tempo</code> が 38 件の変わり目になります。同じ値どうしなので結果は変わりません。</p>
+<p>テンポの変わり目の数は、<code>fur-elise</code> など 9 曲が 1 件（ずっと同じテンポ）、<code>mountain-king</code> が 2 件（tick 75264 = 85.22 秒から 1 分 138 拍 → 154 拍）、<code>fantaisie-impromptu</code> が 5 件、<code>traumerei</code> が 38 件（細かく遅くなったり戻ったりする）です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="k">class</span><span class="w"> </span><span class="nc">TempoMap</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">    </span><span class="sd">&quot;&quot;&quot;tick と秒の相互変換。テンポ変更は区分線形で扱う。&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ticks_per_beat</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">changes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span> <span class="o">=</span> <span class="n">ticks_per_beat</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">        <span class="n">points</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">changes</span><span class="p">)</span> <span class="ow">or</span> <span class="p">[</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">500_000</span><span class="p">)</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl">        <span class="k">if</span> <span class="n">points</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl">            <span class="n">points</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">500_000</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_tempos</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl">        <span class="bp">self</span><span class="o">.</span><span class="n">_seconds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">        <span class="n">elapsed</span> <span class="o">=</span> <span class="mf">0.0</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl">        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">tick</span><span class="p">,</span> <span class="n">tempo</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">points</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl">            <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl">                <span class="n">prev_tick</span><span class="p">,</span> <span class="n">prev_tempo</span> <span class="o">=</span> <span class="n">points</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl">                <span class="n">elapsed</span> <span class="o">+</span><span class="o">=</span> <span class="p">(</span><span class="n">tick</span> <span class="o">-</span> <span class="n">prev_tick</span><span class="p">)</span> <span class="o">*</span> <span class="n">prev_tempo</span> <span class="o">/</span> <span class="mf">1e6</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl">            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">tick</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl">                <span class="bp">self</span><span class="o">.</span><span class="n">_tempos</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">tempo</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl">                <span class="k">continue</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_tempos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tempo</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl">            <span class="bp">self</span><span class="o">.</span><span class="n">_seconds</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L69–L78</p><blockquote>
+<p><strong>文法: 二分探索 <code>bisect.bisect_right</code></strong></p>
+<p><code>bisect.bisect_right(並んだリスト, x)</code> は、昇順に並んだリストに <code>x</code> を入れるとしたら何番目に入るか（同じ値があればその<strong>右</strong>）を返します。リストを半分ずつ絞って探すので、長いリストでも速く見つかります。</p>
+<p><code>[0, 960]</code> に対して: <code>bisect_right(…, 500)</code> は 1、<code>bisect_right(…, 960)</code> は 2、<code>bisect_right(…, 0)</code> は 1。</p>
+</blockquote>
+<p><strong><code>seconds</code></strong> — tick を秒に直します。</p>
+<ol>
+<li>L70: <code>bisect_right(...) - 1</code> で「<code>tick</code> 以下で最後の変わり目」の番号 <code>i</code> を出す。</li>
+<li>L71: <code>tick</code> が負のときは <code>-1</code> になるので、0 に寄せる（<code>max(i, 0)</code>）。</li>
+<li>L72: その変わり目の秒数 + そこからの tick 数 × そのテンポの 1 tick の秒数。</li>
+</ol>
+<p>さっきの例で <code>seconds(1440)</code> は、<code>i = 2 - 1 = 1</code>、<code>1.0 + (1440 - 960) × 1000000 / 1e6 / 480 = 1.0 + 1.0 = 2.0</code> 秒です。テンポが倍の長さ（半分の速さ）になったので、同じ 480 tick でも前半の 2 倍の 1 秒かかっています。</p>
+<p>引数の型が <code>float</code> なのは、<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> などから小数の tick が渡ることもあるためです（<code>int</code> も受け取れます）。</p>
+<p><strong><code>seconds_per_tick</code></strong> — その tick での 1 tick の秒数です。<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L41 は <code>seconds_per_tick(0) × tpb</code> で「曲の頭の 4 分音符 1 つの秒数」を出し、60 をそれで割って BPM にしています。<a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L169 は 1 拍の秒数を出すのに使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">seconds</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tick</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">float</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl">        <span class="n">i</span> <span class="o">=</span> <span class="n">bisect</span><span class="o">.</span><span class="n">bisect_right</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="p">,</span> <span class="n">tick</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl">        <span class="n">i</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_seconds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">tick</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tempos</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1e6</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">seconds_per_tick</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tick</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">float</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl">        <span class="n">i</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">bisect</span><span class="o">.</span><span class="n">bisect_right</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ticks</span><span class="p">,</span> <span class="n">tick</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tempos</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1e6</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L79–L91</p><p><code>Score</code> は 1 曲ぶんの楽譜データです。L26 と同じ <code>@dataclass</code> ですが、<code>frozen</code> を付けていないので、作った後に項目を書き換えることもできます（このコードでは書き換えていません）。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>中身</th>
+<th><code>fur-elise</code> の値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tpb</code></td>
+<td>4 分音符の tick 数</td>
+<td>384</td>
+</tr>
+<tr>
+<td><code>notes</code></td>
+<td>全部の音（L205-212 で押す順に並べたもの）</td>
+<td>905 個（右手 517・左手 388）</td>
+</tr>
+<tr>
+<td><code>tempo</code></td>
+<td>L46 のテンポマップ</td>
+<td>変わり目 1 件</td>
+</tr>
+<tr>
+<td><code>time_signatures</code></td>
+<td>拍子の一覧（tick 順）</td>
+<td>3/8 の 1 件</td>
+</tr>
+<tr>
+<td><code>pedal</code></td>
+<td>ペダルを踏んでいる区間 <code>(踏んだ tick, 上げた tick)</code> の一覧</td>
+<td>なし</td>
+</tr>
+<tr>
+<td><code>pickup</code></td>
+<td>弱起の長さ（tick）</td>
+<td>192（8 分音符 1 つ）</td>
+</tr>
+<tr>
+<td><code>end_tick</code></td>
+<td>曲の終わり</td>
+<td>60096（130.4 秒）</td>
+</tr>
+</tbody>
+</table>
+<p><code>list[tuple[int, int]]</code> は「整数 2 つの組のリスト」です。</p>
+<p><code>seconds</code> は <code>self.tempo.seconds</code> をそのまま呼ぶだけの近道です。<code>score.seconds(t)</code> と書けるようにしています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="nd">@dataclass</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="k">class</span><span class="w"> </span><span class="nc">Score</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl">    <span class="n">tpb</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl">    <span class="n">notes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Note</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl">    <span class="n">tempo</span><span class="p">:</span> <span class="n">TempoMap</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl">    <span class="n">time_signatures</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TimeSignature</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl">    <span class="n">pedal</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span>  <span class="c1"># (down, up) の tick 区間</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl">    <span class="n">pickup</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># 弱起の長さ（tick）</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl">    <span class="n">end_tick</span><span class="p">:</span> <span class="nb">int</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">seconds</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tick</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">float</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tempo</span><span class="o">.</span><span class="n">seconds</span><span class="p">(</span><span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L92–L103</p><blockquote>
+<p><strong>文法: リスト内包表記</strong></p>
+<p><code>[式 for 変数 in 並び]</code> は、並びから 1 つずつ取り出して式を計算し、その結果を並べた新しいリストを作ります（文法の索引の『辞書内包表記』のリスト版）。<code>[ts.tick for ts in self.time_signatures]</code> は「各拍子の開始 tick のリスト」です。</p>
+<p><strong>文法: 整数の割り算 <code>//</code></strong></p>
+<p><code>/</code> は割り算の結果を常に小数にします（<code>7 / 2</code> は <code>3.5</code>）。<code>//</code> は小数点以下を切り捨てた整数を返します（<code>7 // 2</code> は <code>3</code>。負の数では小さい方へ切り捨てるので <code>-7 // 2</code> は <code>-4</code>）。tick は整数で扱いたいので、ここでは <code>//</code> を使っています。</p>
+</blockquote>
+<p><strong><code>signature_at</code></strong> — その tick で効いている拍子を返します。L70 と同じ二分探索で「<code>tick</code> 以下で最後に始まった拍子」を探します。曲の頭より前（負の tick）なら最初の拍子です。呼ばれるたびに <code>ticks</code> のリストを作り直していますが、拍子の数は多くて 3 件なので手間は小さいです。</p>
+<p><strong><code>beat_ticks</code></strong> — 1 拍の tick 数です。</p>
+<ol>
+<li>L98: <code>tpb × 4 // 分母</code> で、分母の音符 1 つの tick 数を出す。4 分音符 = <code>384 × 4 // 4 = 384</code>、8 分音符 = <code>384 × 4 // 8 = 192</code>、2 分音符 = <code>384 × 4 // 2 = 768</code>。</li>
+<li>L99: 複合拍子（L42-43）ならその 3 倍（付点 4 分音符 = 576）、そうでなければそのまま。</li>
+</ol>
+<p><strong><code>bar_ticks</code></strong> — 1 小節の tick 数 <code>tpb × 4 × 分子 // 分母</code> です。</p>
+<p>収録曲の拍子での値:</p>
+<table>
+<thead>
+<tr>
+<th>拍子</th>
+<th>曲</th>
+<th>1 拍</th>
+<th>1 小節</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3/8</td>
+<td>fur-elise</td>
+<td>192（8 分）</td>
+<td>576</td>
+</tr>
+<tr>
+<td>3/4</td>
+<td>gymnopedie-1</td>
+<td>384（4 分）</td>
+<td>1152</td>
+</tr>
+<tr>
+<td>4/4</td>
+<td>traumerei ほか</td>
+<td>384</td>
+<td>1536</td>
+</tr>
+<tr>
+<td>2/2</td>
+<td>prelude-op28-4</td>
+<td>768（2 分）</td>
+<td>1536</td>
+</tr>
+<tr>
+<td>2/4</td>
+<td>entertainer・maple-leaf-rag</td>
+<td>384</td>
+<td>768</td>
+</tr>
+<tr>
+<td>9/8</td>
+<td>clair-de-lune</td>
+<td>576（付点 4 分）</td>
+<td>1728</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">signature_at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tick</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="n">TimeSignature</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl">        <span class="n">ticks</span> <span class="o">=</span> <span class="p">[</span><span class="n">ts</span><span class="o">.</span><span class="n">tick</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">[</span><span class="nb">max</span><span class="p">(</span><span class="n">bisect</span><span class="o">.</span><span class="n">bisect_right</span><span class="p">(</span><span class="n">ticks</span><span class="p">,</span> <span class="n">tick</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">beat_ticks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="n">TimeSignature</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl"><span class="w">        </span><span class="sd">&quot;&quot;&quot;1拍の長さ。8分の6・9・12拍子は付点4分を1拍とする。&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl">        <span class="n">unit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">/</span><span class="o">/</span> <span class="n">ts</span><span class="o">.</span><span class="n">denominator</span></td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl">        <span class="k">return</span> <span class="n">unit</span> <span class="o">*</span> <span class="mi">3</span> <span class="k">if</span> <span class="n">is_compound</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span> <span class="k">else</span> <span class="n">unit</span></td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">bar_ticks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="n">TimeSignature</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl">        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tpb</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">ts</span><span class="o">.</span><span class="n">numerator</span> <span class="o">/</span><span class="o">/</span> <span class="n">ts</span><span class="o">.</span><span class="n">denominator</span></td></tr><tr><td class="ln"><a id="L103" href="#L103">103</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L104–L121</p><blockquote>
+<p><strong>文法: <code>is</code></strong></p>
+<p><code>a is b</code> は「<code>a</code> と <code>b</code> が<strong>同じ 1 個の物</strong>か」を調べます。<code>==</code> は「中身が等しいか」です。dataclass は中身が同じなら <code>==</code> で等しくなる（L26 の囲み）ので、「最初の拍子そのものか」を確かめるには <code>is</code> を使う必要があります。</p>
+<p><strong>文法: 割り算の余り <code>%</code>（負の数のとき）</strong></p>
+<p><code>a % b</code> は <code>a</code> を <code>b</code> で割った余りです。Python では、<code>b</code> が正なら、<code>a</code> が負でも<strong>余りは 0 以上 <code>b</code> 未満</strong>になります。たとえば <code>-192 % 576</code> は <code>384</code>、<code>-192 % 192</code> は <code>0</code> です（<code>-192 = 576 × (-1) + 384</code>）。言語によっては負の余りを返すものもあるので、ここは Python の決まりに頼っている所です。</p>
+</blockquote>
+<p><strong><code>_origin</code></strong> — 拍子の区間ごとに、小節頭の基準にする tick を返します。最初の拍子の区間だけ、弱起の長さ <code>pickup</code> だけ後ろにずらします。</p>
+<p>弱起のある曲では、楽譜の最初の音は小節の途中にあります。ところが LilyPond の MIDI はその音を tick 0 に置くので、tick 0 を小節頭とみなすと、拍の強弱がすべて弱起の分ずれてしまいます。<code>fur-elise</code> は <code>\partial 8</code>（8 分音符 1 つの弱起）なので、本当の 1 小節目の頭は tick 192 です。</p>
+<p><strong><code>metric_level</code></strong> — その tick が、拍のどれくらい強い位置にあるかを 0〜4 で返します。</p>
+<ol>
+<li>L112-113: その tick の拍子と、1 拍の tick 数を出す。</li>
+<li>L114: 半拍の tick 数 <code>sub</code>。複合拍子では 1 拍を 3 つに分け（8 分音符）、それ以外は 2 つに分ける。</li>
+<li>L115: 調べる目盛りを、粗い順に 4 つ並べる。小節・拍・<code>sub</code>・<code>sub</code> の半分。</li>
+<li>L116: 基準からの位置 <code>pos</code>。</li>
+<li>L117-119: 粗い目盛りから順に、<code>pos</code> がその目盛りで割り切れれば、その番号を返す。<code>grid &gt; 0</code> は、0 で割るのを避けるための確認。</li>
+<li>L120: どれでも割り切れなければ 4（<code>len(grids)</code>）。</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>返す値</th>
+<th>4/4 拍子で</th>
+<th>3/8 拍子（<code>fur-elise</code>）で</th>
+<th>9/8 拍子（<code>clair-de-lune</code>）で</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>小節頭</td>
+<td>小節頭</td>
+<td>小節頭</td>
+</tr>
+<tr>
+<td>1</td>
+<td>4 分音符の頭</td>
+<td>8 分音符の頭</td>
+<td>付点 4 分音符の頭</td>
+</tr>
+<tr>
+<td>2</td>
+<td>8 分音符</td>
+<td>16 分音符</td>
+<td>8 分音符</td>
+</tr>
+<tr>
+<td>3</td>
+<td>16 分音符</td>
+<td>32 分音符</td>
+<td>16 分音符</td>
+</tr>
+<tr>
+<td>4</td>
+<td>それ以外（3 連符・32 分音符など）</td>
+<td>それ以外</td>
+<td>それ以外</td>
+</tr>
+</tbody>
+</table>
+<p>2/2 拍子（<code>prelude-op28-4</code>）は 1 拍が 2 分音符なので、2 が 4 分音符、3 が 8 分音符になります。拍子によって、同じ番号が表す音符の細かさが違う点に注意が要ります。</p>
+<p><code>fur-elise</code> の最初の数音で計算すると、</p>
+<table>
+<thead>
+<tr>
+<th>音</th>
+<th>tick</th>
+<th><code>pos = tick - 192</code></th>
+<th>判定</th>
+<th>値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ミ（76）</td>
+<td>0</td>
+<td>-192</td>
+<td><code>-192 % 576 = 384</code>、<code>-192 % 192 = 0</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td>レ#（75）</td>
+<td>96</td>
+<td>-96</td>
+<td><code>-96 % 192 = 96</code>、<code>-96 % 96 = 0</code></td>
+<td>2</td>
+</tr>
+<tr>
+<td>ミ（76）</td>
+<td>192</td>
+<td>0</td>
+<td><code>0 % 576 = 0</code></td>
+<td>0</td>
+</tr>
+<tr>
+<td>レ#（75）</td>
+<td>288</td>
+<td>96</td>
+<td>576・192 で割り切れず、96 で割り切れる</td>
+<td>2</td>
+</tr>
+<tr>
+<td>ミ（76）</td>
+<td>384</td>
+<td>192</td>
+<td><code>192 % 192 = 0</code></td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>弱起の音（tick 0）は「前の小節の 3 拍目の頭」として 1 になり、tick 192 の音が小節頭（0）になります。<code>pos</code> が負になる弱起の音でも正しく出るのは、上の囲みの「余りは 0 以上」のおかげです。</p>
+<p><code>tools/tests/test_score.py</code> も、3/4 拍子で弱起 192 のとき tick 192 が 0、tick 576 が 1、tick 0 が 2 になることを確かめています（tick 0 は 4 分音符の頭から 8 分音符 1 つ前なので 2）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L104" href="#L104">104</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">_origin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="n">TimeSignature</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L105" href="#L105">105</a></td><td class="cl"><span class="w">        </span><span class="sd">&quot;&quot;&quot;その拍子区間で小節頭とみなす基準 tick。最初の区間だけ弱起の分ずらす。&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L106" href="#L106">106</a></td><td class="cl">        <span class="k">if</span> <span class="n">ts</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L107" href="#L107">107</a></td><td class="cl">            <span class="k">return</span> <span class="n">ts</span><span class="o">.</span><span class="n">tick</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">pickup</span></td></tr><tr><td class="ln"><a id="L108" href="#L108">108</a></td><td class="cl">        <span class="k">return</span> <span class="n">ts</span><span class="o">.</span><span class="n">tick</span></td></tr><tr><td class="ln"><a id="L109" href="#L109">109</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L110" href="#L110">110</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">metric_level</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tick</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L111" href="#L111">111</a></td><td class="cl"><span class="w">        </span><span class="sd">&quot;&quot;&quot;0=小節頭, 1=拍頭, 2=半拍（複合拍子は 1/3 拍）, 3=さらに半分, 4=それ以外。&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L112" href="#L112">112</a></td><td class="cl">        <span class="n">ts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">signature_at</span><span class="p">(</span><span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L113" href="#L113">113</a></td><td class="cl">        <span class="n">beat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">beat_ticks</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L114" href="#L114">114</a></td><td class="cl">        <span class="n">sub</span> <span class="o">=</span> <span class="n">beat</span> <span class="o">/</span><span class="o">/</span> <span class="mi">3</span> <span class="k">if</span> <span class="n">is_compound</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span> <span class="k">else</span> <span class="n">beat</span> <span class="o">/</span><span class="o">/</span> <span class="mi">2</span></td></tr><tr><td class="ln"><a id="L115" href="#L115">115</a></td><td class="cl">        <span class="n">grids</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bar_ticks</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span><span class="p">,</span> <span class="n">beat</span><span class="p">,</span> <span class="n">sub</span><span class="p">,</span> <span class="n">sub</span> <span class="o">/</span><span class="o">/</span> <span class="mi">2</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L116" href="#L116">116</a></td><td class="cl">        <span class="n">pos</span> <span class="o">=</span> <span class="n">tick</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_origin</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L117" href="#L117">117</a></td><td class="cl">        <span class="k">for</span> <span class="n">level</span><span class="p">,</span> <span class="n">grid</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">grids</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L118" href="#L118">118</a></td><td class="cl">            <span class="k">if</span> <span class="n">grid</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">pos</span> <span class="o">%</span> <span class="n">grid</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L119" href="#L119">119</a></td><td class="cl">                <span class="k">return</span> <span class="n">level</span></td></tr><tr><td class="ln"><a id="L120" href="#L120">120</a></td><td class="cl">        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">grids</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L121" href="#L121">121</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L122–L144</p><blockquote>
+<p><strong>文法: <code>while</code></strong></p>
+<p><code>while 条件:</code> は、条件が真である間、下の字下げの中身をくり返します。中身で条件に関わる値（ここでは <code>tick</code>）を変えないと終わりません。</p>
+<p><strong>文法: 刻み付きの <code>range</code> と <code>.extend</code></strong></p>
+<p><code>range(start, stop, step)</code> は、<code>start</code> から <code>step</code> ずつ増やし、<code>stop</code> の<strong>手前</strong>まで続く整数の並びです。<code>range(192, 768, 192)</code> は 192・384・576 です。</p>
+<p><code>リスト.extend(並び)</code> は、並びの要素をすべてリストの後ろに足します（<code>append</code> は 1 個だけ足す）。</p>
+</blockquote>
+<p><strong><code>bar_lines</code></strong> — 小節線の tick を全部返します。拍子の区間ごとに:</p>
+<ol>
+<li>L125: 区間の終わり <code>stop</code> を決める。次の拍子があればその開始 tick、なければ曲の終わり。1 行の条件式（文法の索引の『<code>None</code> と条件式 <code>A if 条件 else B</code>』）です。</li>
+<li>L126-127: 1 小節の長さと、最初の小節頭（<code>_origin</code>）。</li>
+<li>L128-129: 基準から 1 小節さかのぼっても区間の中なら、さかのぼる。</li>
+<li>L130-133: <code>stop</code> に届くまで 1 小節ずつ進め、区間の開始以降なら小節線に加える。</li>
+</ol>
+<p><code>fur-elise</code> では 192・768・1344・1920… になり、秒にすると 0.417・1.667・2.917 秒…（1 小節 576 tick = 1.25 秒）です。弱起の部分（tick 0〜192）は小節として数えません。</p>
+<p><strong>L128-129 と L131 について。</strong> 2 番目以降の区間では <code>_origin</code> が区間の開始 tick そのものなので、L128 の <code>tick - bar &gt;= ts.tick</code> は <code>bar &lt;= 0</code> のときしか成り立たず、<code>bar</code> は正なので実行されません。最初の区間は <code>i &gt; 0</code> で外れます。L131 も、<code>tick</code> が区間の開始以上から始まって増えるだけなので、常に真です。※ 推測: 弱起を後ろの区間にも効かせる形や、基準が区間より前に来る形に変えたときの備えとして書かれたものと考えられます。</p>
+<p><strong><code>beat_lines</code></strong> — 拍の線の tick を全部返します。小節線を求めてから、各小節の頭から次の小節線（最後は曲の終わり）の手前まで、1 拍ずつ並べます。<code>fur-elise</code> では 192・384・576・768… です。小節線から数え始めるので、弱起の拍（tick 0）は入りません。</p>
+<p>この 2 つは <a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L61-62 で秒に直されて曲データの <code>bars</code>・<code>beats</code> になり、プレイ画面で小節線を描くのに使われます。<code>bar_lines</code> は <a class="xref" href="tools-chart.py.html"><code>tools/chart.py</code></a> の L126 でも、小節ごとに音の数を数えるのに使われます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L122" href="#L122">122</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">bar_lines</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L123" href="#L123">123</a></td><td class="cl">        <span class="n">bars</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L124" href="#L124">124</a></td><td class="cl">        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ts</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L125" href="#L125">125</a></td><td class="cl">            <span class="n">stop</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span> <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">time_signatures</span><span class="p">)</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">end_tick</span></td></tr><tr><td class="ln"><a id="L126" href="#L126">126</a></td><td class="cl">            <span class="n">bar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bar_ticks</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L127" href="#L127">127</a></td><td class="cl">            <span class="n">tick</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_origin</span><span class="p">(</span><span class="n">ts</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L128" href="#L128">128</a></td><td class="cl">            <span class="k">if</span> <span class="n">tick</span> <span class="o">-</span> <span class="n">bar</span> <span class="o">&gt;</span><span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">tick</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L129" href="#L129">129</a></td><td class="cl">                <span class="n">tick</span> <span class="o">-</span><span class="o">=</span> <span class="n">bar</span></td></tr><tr><td class="ln"><a id="L130" href="#L130">130</a></td><td class="cl">            <span class="k">while</span> <span class="n">tick</span> <span class="o">&lt;</span> <span class="n">stop</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L131" href="#L131">131</a></td><td class="cl">                <span class="k">if</span> <span class="n">tick</span> <span class="o">&gt;</span><span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">tick</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L132" href="#L132">132</a></td><td class="cl">                    <span class="n">bars</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L133" href="#L133">133</a></td><td class="cl">                <span class="n">tick</span> <span class="o">+</span><span class="o">=</span> <span class="n">bar</span></td></tr><tr><td class="ln"><a id="L134" href="#L134">134</a></td><td class="cl">        <span class="k">return</span> <span class="n">bars</span></td></tr><tr><td class="ln"><a id="L135" href="#L135">135</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L136" href="#L136">136</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">beat_lines</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L137" href="#L137">137</a></td><td class="cl">        <span class="n">beats</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L138" href="#L138">138</a></td><td class="cl">        <span class="n">bars</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bar_lines</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L139" href="#L139">139</a></td><td class="cl">        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">bars</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L140" href="#L140">140</a></td><td class="cl">            <span class="n">stop</span> <span class="o">=</span> <span class="n">bars</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">bars</span><span class="p">)</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">end_tick</span></td></tr><tr><td class="ln"><a id="L141" href="#L141">141</a></td><td class="cl">            <span class="n">beat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">beat_ticks</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">signature_at</span><span class="p">(</span><span class="n">start</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L142" href="#L142">142</a></td><td class="cl">            <span class="n">beats</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">stop</span><span class="p">,</span> <span class="n">beat</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L143" href="#L143">143</a></td><td class="cl">        <span class="k">return</span> <span class="n">beats</span></td></tr><tr><td class="ln"><a id="L144" href="#L144">144</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L145–L152</p><p><strong><code>sounding_end</code></strong> — 音が実際に鳴り終わる tick を返します。鍵盤を離した tick がペダルを踏んでいる区間の中（踏んだ tick 以上、上げた tick 未満）にあれば、ペダルを上げる tick まで鳴り続けます。どの区間にも入らなければ、鍵盤を離した tick のままです。</p>
+<p><code>prelude-op28-4</code> の例: 音（シ、71）は tick 288 で押して 384 で離しますが、ペダルが 384〜1536 で踏まれているので、1536 まで鳴ります。秒にすると 1.071 秒で離して 4.286 秒まで鳴る計算です。</p>
+<p><code>max(note.end, up)</code> は、区間の条件から <code>note.end &lt; up</code> が成り立っているので、常に <code>up</code> になります。</p>
+<p>ペダルの区間があるのは、収録曲では <code>prelude-op28-4</code>（24 区間）、<code>mountain-king</code>（107 区間）、<code>fantaisie-impromptu</code>（216 区間）の 3 曲です。この値は <a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L42 と L64 で、曲データの <code>events</code>（鳴らす音）の長さと曲の長さに使われます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L145" href="#L145">145</a></td><td class="cl">    <span class="k">def</span><span class="w"> </span><span class="nf">sounding_end</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">note</span><span class="p">:</span> <span class="n">Note</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L146" href="#L146">146</a></td><td class="cl"><span class="w">        </span><span class="sd">&quot;&quot;&quot;ペダルを踏んでいる間に離した音は、ペダルを上げるまで鳴らす。&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L147" href="#L147">147</a></td><td class="cl">        <span class="k">for</span> <span class="n">down</span><span class="p">,</span> <span class="n">up</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">pedal</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L148" href="#L148">148</a></td><td class="cl">            <span class="k">if</span> <span class="n">down</span> <span class="o">&lt;</span><span class="o">=</span> <span class="n">note</span><span class="o">.</span><span class="n">end</span> <span class="o">&lt;</span> <span class="n">up</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L149" href="#L149">149</a></td><td class="cl">                <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">note</span><span class="o">.</span><span class="n">end</span><span class="p">,</span> <span class="n">up</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L150" href="#L150">150</a></td><td class="cl">        <span class="k">return</span> <span class="n">note</span><span class="o">.</span><span class="n">end</span></td></tr><tr><td class="ln"><a id="L151" href="#L151">151</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L152" href="#L152">152</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L153–L167</p><blockquote>
+<p><strong>文法: 使わない変数 <code>_</code></strong></p>
+<p><code>for _ in match.group(2):</code> の <code>_</code> は「取り出した値は使わない」という印の名前です。ここでは文字列 <code>"."</code>・<code>".."</code> の文字の数だけくり返したいだけなので、取り出した <code>.</code> そのものは使いません。</p>
+</blockquote>
+<p><strong><code>read_pickup</code></strong> — <code>.ly</code> の文章から弱起の長さを tick で返します。</p>
+<ol>
+<li>L154-156: L23 の <code>PARTIAL</code> で最初の <code>\partial</code> を探す。無ければ弱起なしで 0。</li>
+<li>L157-158: 音符の種類 <code>N</code> から、その音符 1 つの tick 数 <code>tpb × 4 / N</code> を出す。<code>/</code> なので小数。</li>
+<li>L159-162: 付点 1 つごとに、直前に足した長さの半分を足す。付点 1 つで 1.5 倍、2 つで 1.75 倍。</li>
+<li>L163-164: <code>*a/b</code> があれば <code>a / b</code> 倍する。<code>/b</code> が無いときは <code>match.group(4)</code> が <code>None</code> なので、<code>or 1</code> で 1 にする。</li>
+<li>L165: 四捨五入して整数にする。</li>
+</ol>
+<p>tpb 384 での計算:</p>
+<table>
+<thead>
+<tr>
+<th>書き方</th>
+<th>計算</th>
+<th>tick</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>\partial 8</code></td>
+<td>384 × 4 / 8</td>
+<td>192</td>
+</tr>
+<tr>
+<td><code>\partial 4</code></td>
+<td>384 × 4 / 4</td>
+<td>384</td>
+</tr>
+<tr>
+<td><code>\partial 4.</code></td>
+<td>384 + 192</td>
+<td>576</td>
+</tr>
+<tr>
+<td><code>\partial 2..</code></td>
+<td>768 + 384 + 192</td>
+<td>1344</td>
+</tr>
+<tr>
+<td><code>\partial 4*3</code></td>
+<td>384 × 3</td>
+<td>1152</td>
+</tr>
+<tr>
+<td><code>\partial 8*3/2</code></td>
+<td>192 × 3 / 2</td>
+<td>288</td>
+</tr>
+</tbody>
+</table>
+<p>収録曲で弱起があるのは <code>fur-elise</code>（<code>\partial 8</code> → 192）、<code>traumerei</code>（<code>\partial 4</code> → 384）、<code>prelude-op28-4</code>（<code>\partial 4</code> → 384）、<code>maple-leaf-rag</code>（<code>\partial 8</code> → 192）の 4 曲です。<code>fur-elise</code> の <code>.ly</code> には <code>\partial 8</code> が 3 か所ありますが、使うのは最初の 1 つです。</p>
+<p><code>.ly</code> の文章を読むだけなので、<code>\partial</code> が楽譜の途中（曲の頭ではない所）に書かれた場合も、最初に出てくればそれを使ってしまいます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L153" href="#L153">153</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">read_pickup</span><span class="p">(</span><span class="n">ly_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">tpb</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L154" href="#L154">154</a></td><td class="cl">    <span class="n">match</span> <span class="o">=</span> <span class="n">PARTIAL</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">ly_text</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L155" href="#L155">155</a></td><td class="cl">    <span class="k">if</span> <span class="ow">not</span> <span class="n">match</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L156" href="#L156">156</a></td><td class="cl">        <span class="k">return</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L157" href="#L157">157</a></td><td class="cl">    <span class="n">denominator</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L158" href="#L158">158</a></td><td class="cl">    <span class="n">ticks</span> <span class="o">=</span> <span class="n">tpb</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">/</span> <span class="n">denominator</span></td></tr><tr><td class="ln"><a id="L159" href="#L159">159</a></td><td class="cl">    <span class="n">dot</span> <span class="o">=</span> <span class="n">ticks</span> <span class="o">/</span> <span class="mi">2</span></td></tr><tr><td class="ln"><a id="L160" href="#L160">160</a></td><td class="cl">    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L161" href="#L161">161</a></td><td class="cl">        <span class="n">ticks</span> <span class="o">+</span><span class="o">=</span> <span class="n">dot</span></td></tr><tr><td class="ln"><a id="L162" href="#L162">162</a></td><td class="cl">        <span class="n">dot</span> <span class="o">/</span><span class="o">=</span> <span class="mi">2</span></td></tr><tr><td class="ln"><a id="L163" href="#L163">163</a></td><td class="cl">    <span class="k">if</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L164" href="#L164">164</a></td><td class="cl">        <span class="n">ticks</span> <span class="o">*</span><span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="p">)</span> <span class="o">/</span> <span class="nb">int</span><span class="p">(</span><span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">1</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L165" href="#L165">165</a></td><td class="cl">    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">ticks</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L166" href="#L166">166</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L167" href="#L167">167</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L168–L230</p><blockquote>
+<p><strong>文法: 引数の既定値</strong></p>
+<p><code>ly_path: Path | None = None</code> の <code>= None</code> は、呼ぶ側がこの引数を省いたときに使う値です。<code>load_score(midi_path)</code> と 1 つだけ渡せば、<code>ly_path</code> は <code>None</code> になります。</p>
+<p><strong>文法: 辞書の安全な取り出し <code>.setdefault</code> と <code>.get</code></strong></p>
+<ul>
+<li><code>d.get(キー)</code> は、キーがあればその値、無ければ <code>None</code> を返します（<code>d[キー]</code> のように例外にはなりません）。</li>
+<li><code>d.setdefault(キー, 既定値)</code> は、キーが無ければ既定値を入れてから、そのキーの値を返します。<code>open_notes.setdefault(k, []).append(x)</code> は「<code>k</code> の所にリストが無ければ空のリストを作り、そこに <code>x</code> を足す」を 1 行で書いたものです。</li>
+</ul>
+<p><strong>文法: <code>.pop(0)</code></strong></p>
+<p><code>リスト.pop(0)</code> は、先頭の要素を取り除いて、その要素を返します。最初に入れたものから順に取り出す使い方（先入れ先出し）です。</p>
+<p><strong>文法: lambda（名前の無い小さな関数）</strong></p>
+<p><code>lambda ts: ts.tick</code> は「<code>ts</code> を受け取って <code>ts.tick</code> を返す関数」を、名前を付けずにその場で作る書き方です。<code>def</code> で書くと</p>
+<p><code>python
+def key(ts):
+    return ts.tick</code></p>
+<p>と同じです。<code>sort</code> や <code>sorted</code> の <code>key=</code> に渡すと、「この関数が返す値の順に並べる」という意味になります。<code>key=lambda n: (n.start, -n.pitch)</code> なら「押す tick の早い順、同じなら音の高い順（<code>-</code> を付けて大小を逆にする）」です。</p>
+<p><strong>文法: 集合とスライス</strong></p>
+<ul>
+<li><code>set(並び)</code> は<strong>集合</strong>を作ります。同じ値は 1 つにまとめられ、順番を持ちません。<code>x in 集合</code> が速く調べられるので、「含まれるかどうか」だけを知りたいときに使います。</li>
+<li><code>ranked[: n]</code> は<strong>スライス</strong>で、リストの先頭から <code>n</code> 個（0 番目から <code>n - 1</code> 番目）を取り出した新しいリストです。<code>[a:b]</code> で a 番目から b 番目の手前まで、<code>a</code> を省くと先頭から、<code>b</code> を省くと最後までです。</li>
+</ul>
+<p><strong>文法: ジェネレータ式</strong></p>
+<p><code>( 式 for … in … )</code> を丸かっこで書くと、リストを作らずに値を 1 つずつ順に生み出す「ジェネレータ」になります。<code>sorted(…)</code> や <code>sum(…)</code>・<code>max(…)</code> に渡すと、受け取った側が順に取り出して使います。</p>
+<p><code>for</code> を 2 つ続けた <code>for index, ns in track_notes.items() for start, end, pitch, velocity in ns</code> は、入れ子のループと同じで、左の <code>for</code> が外側です。「トラックごとに、その中の音ごとに」と読みます。</p>
+<p><strong>文法: <code>max(…, default=0)</code></strong></p>
+<p><code>max</code> に空の並びを渡すと例外になります。<code>default=0</code> を付けると、空のときは 0 を返します。</p>
+<p><strong>文法: <code>elif</code></strong></p>
+<p><code>if A: … elif B: … elif C: …</code> は、上から順に条件を見て、最初に真になった所だけを実行します。<code>elif</code> は「else if」の略です。</p>
+</blockquote>
+<p><code>load_score</code> は MIDI と <code>.ly</code> を読んで <code>Score</code> を作ります。長い関数なので、5 つの段に分けて読みます。</p>
+<p><strong>段 1: 入れ物の用意（L169-175）。</strong> <code>mido.MidiFile(...)</code> で MIDI を開き、<code>ticks_per_beat</code>（収録曲はすべて 384）を取ります。その後に、集めた値を入れる空のリストと辞書を用意します。<code>track_notes</code> は「トラックの番号 → <code>(押した tick, 離した tick, 音の高さ, 強さ)</code> のリスト」です。</p>
+<p><strong>段 2: 出来事を読む（L177-196）。</strong> MIDI の中身はトラックの並びで、各トラックは出来事（メッセージ）の並びです。収録曲の MIDI はすべて 3 トラックで、0 番が拍子とテンポだけの制御用、1 番と 2 番が音です（<code>fur-elise</code> なら 1 番の名前が <code>up:</code>、2 番が <code>down:</code>）。</p>
+<ol>
+<li>L178・L181: 各メッセージの <code>time</code> は「前のメッセージからの tick 数」（差分）なので、足していって曲の頭からの tick にする。トラックごとに 0 から数え直す。</li>
+<li>L182-183: <code>set_tempo</code> ならテンポの変わり目として集める。全トラックのものを 1 つのリストに集め、並べ替えは L46 の <code>TempoMap</code> に任せる。</li>
+<li>L184-186: <code>time_signature</code> なら拍子として集める。直前に集めた拍子と同じ tick なら足さない。<code>traumerei</code> では 1 番と 2 番のトラックにどちらも tick 0 の 4/4 があり、ここで 1 つになります。直前としか比べないので、同じ tick の拍子が離れた順番で出てくると 2 つ残ります。</li>
+<li>L187-188: コントロールチェンジ 64 番なら、<code>(tick, 踏んだかどうか)</code> としてペダルの出来事を集める。</li>
+<li>L189-190: 強さが 0 より大きい <code>note_on</code> は「鍵盤を押した」。<code>(チャンネル, 音の高さ)</code> をキーにした場所に <code>(tick, 強さ)</code> を積む。</li>
+<li>L191-195: <code>note_off</code>、または強さ 0 の <code>note_on</code> は「鍵盤を離した」（MIDI では強さ 0 の <code>note_on</code> を離した意味で使う習慣があり、LilyPond の MIDI もこの形です）。同じ <code>(チャンネル, 音の高さ)</code> で押されたままの音のうち、<strong>最初に押されたもの</strong>を取り出し、1 つの音として <code>track_notes</code> に記録する。</li>
+<li>L196: トラックの最後の tick の最大を、曲の終わりの候補にする。</li>
+</ol>
+<p>L192 で押した記録が無い（<code>stack</code> が <code>None</code> か空）ときは、何もしません。逆に、押したまま離されなかった音は <code>open_notes</code> に残り、トラックの終わりで捨てられます。</p>
+<p><strong>段 3: 拍子の後始末（L198-200）。</strong> 拍子が 1 つも無ければ 4/4 拍子とみなし、tick の順に並べます。</p>
+<p><strong>段 4: 右手と左手（L202-212）。</strong></p>
+<ol>
+<li>L202: トラックごとに音の高さの平均を出す（辞書内包表記。文法の索引の『辞書内包表記』）。<code>sum(n[2] for n in ns)</code> の <code>n[2]</code> は組の 3 つ目、つまり音の高さ。<code>if ns</code> は空のトラックを除くための条件ですが、<code>track_notes</code> には音のあるトラックしか入らないので常に真です。</li>
+<li>L203: 平均の高い順にトラックの番号を並べる。<code>key=means.get</code> は「番号を渡すとその平均を返す関数」として辞書の <code>get</code> を渡しています。<code>reverse=True</code> で大きい順。</li>
+<li>L204: 上位半分（少なくとも 1 つ）のトラックを右手にする。収録曲は音のあるトラックが 2 つなので、<code>2 // 2 = 1</code> で高い方の 1 トラックが右手です。</li>
+<li>L205-212: すべての音を <code>Note</code> にして、押す tick の早い順、同じ tick なら高い順に並べる。離す tick が押す tick と同じ（長さ 0）の音は、<code>max(end, start + 1)</code> で長さを 1 tick にする。</li>
+</ol>
+<p><code>fur-elise</code> では 1 番のトラック（平均 72.6）が右手で 517 音、2 番（平均 52.3）が左手で 388 音です。トラックの番号と手は必ずしも一致せず、<code>wtk1-prelude1</code> では 2 番のトラック（415 音）の方が平均が高く、右手になります。</p>
+<p><strong>段 5: ペダル・弱起・終わり（L214-230）。</strong></p>
+<ol>
+<li>L216-221: ペダルの出来事を tick の順に見て、「踏んだ → 上げた」の組を区間にする。踏んだまま 2 回目の「踏んだ」が来ても無視し（<code>down_at is None</code> のときだけ記録）、踏んでいないときの「上げた」も無視する。<code>down_at: int | None = None</code> は「整数か、まだ無いか」の変数です。</li>
+<li>L222-223: 最後まで上げなかったら、曲の終わりまで踏んでいたことにする。</li>
+<li>L225-227: <code>.ly</code> が渡されて実在すれば、<code>read_pickup</code> で弱起を読む。</li>
+<li>L229-230: 一番遅く離す音の tick を出し、トラックの終わりと比べた大きい方を曲の終わりにして、<code>Score</code> を作って返す。</li>
+</ol>
+<p><code>fur-elise</code> では、<code>Score(tpb=384, notes=905 音, テンポ 1 件, 拍子 3/8, ペダルなし, pickup=192, end_tick=60096)</code> になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L168" href="#L168">168</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">load_score</span><span class="p">(</span><span class="n">midi_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">ly_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="n">Score</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L169" href="#L169">169</a></td><td class="cl">    <span class="n">midi</span> <span class="o">=</span> <span class="n">mido</span><span class="o">.</span><span class="n">MidiFile</span><span class="p">(</span><span class="n">midi_path</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L170" href="#L170">170</a></td><td class="cl">    <span class="n">tpb</span> <span class="o">=</span> <span class="n">midi</span><span class="o">.</span><span class="n">ticks_per_beat</span></td></tr><tr><td class="ln"><a id="L171" href="#L171">171</a></td><td class="cl">    <span class="n">tempos</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L172" href="#L172">172</a></td><td class="cl">    <span class="n">signatures</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">TimeSignature</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L173" href="#L173">173</a></td><td class="cl">    <span class="n">pedal_events</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">bool</span><span class="p">]</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L174" href="#L174">174</a></td><td class="cl">    <span class="n">track_notes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L175" href="#L175">175</a></td><td class="cl">    <span class="n">end_tick</span> <span class="o">=</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L176" href="#L176">176</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L177" href="#L177">177</a></td><td class="cl">    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">track</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">midi</span><span class="o">.</span><span class="n">tracks</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L178" href="#L178">178</a></td><td class="cl">        <span class="n">tick</span> <span class="o">=</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L179" href="#L179">179</a></td><td class="cl">        <span class="n">open_notes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L180" href="#L180">180</a></td><td class="cl">        <span class="k">for</span> <span class="n">msg</span> <span class="ow">in</span> <span class="n">track</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L181" href="#L181">181</a></td><td class="cl">            <span class="n">tick</span> <span class="o">+</span><span class="o">=</span> <span class="n">msg</span><span class="o">.</span><span class="n">time</span></td></tr><tr><td class="ln"><a id="L182" href="#L182">182</a></td><td class="cl">            <span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">set_tempo</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L183" href="#L183">183</a></td><td class="cl">                <span class="n">tempos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">tick</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">tempo</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L184" href="#L184">184</a></td><td class="cl">            <span class="k">elif</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">time_signature</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L185" href="#L185">185</a></td><td class="cl">                <span class="k">if</span> <span class="ow">not</span> <span class="n">signatures</span> <span class="ow">or</span> <span class="n">signatures</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span> <span class="o">!=</span> <span class="n">tick</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L186" href="#L186">186</a></td><td class="cl">                    <span class="n">signatures</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">TimeSignature</span><span class="p">(</span><span class="n">tick</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">numerator</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">denominator</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L187" href="#L187">187</a></td><td class="cl">            <span class="k">elif</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">control_change</span><span class="s2">&quot;</span> <span class="ow">and</span> <span class="n">msg</span><span class="o">.</span><span class="n">control</span> <span class="o">==</span> <span class="n">PEDAL_CC</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L188" href="#L188">188</a></td><td class="cl">                <span class="n">pedal_events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">tick</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">value</span> <span class="o">&gt;</span><span class="o">=</span> <span class="n">PEDAL_DOWN</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L189" href="#L189">189</a></td><td class="cl">            <span class="k">elif</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">note_on</span><span class="s2">&quot;</span> <span class="ow">and</span> <span class="n">msg</span><span class="o">.</span><span class="n">velocity</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L190" href="#L190">190</a></td><td class="cl">                <span class="n">open_notes</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">channel</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">note</span><span class="p">)</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">tick</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">velocity</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L191" href="#L191">191</a></td><td class="cl">            <span class="k">elif</span> <span class="n">msg</span><span class="o">.</span><span class="n">type</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;</span><span class="s2">note_off</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">note_on</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L192" href="#L192">192</a></td><td class="cl">                <span class="n">stack</span> <span class="o">=</span> <span class="n">open_notes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">channel</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">note</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L193" href="#L193">193</a></td><td class="cl">                <span class="k">if</span> <span class="n">stack</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L194" href="#L194">194</a></td><td class="cl">                    <span class="n">start</span><span class="p">,</span> <span class="n">velocity</span> <span class="o">=</span> <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L195" href="#L195">195</a></td><td class="cl">                    <span class="n">track_notes</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">tick</span><span class="p">,</span> <span class="n">msg</span><span class="o">.</span><span class="n">note</span><span class="p">,</span> <span class="n">velocity</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L196" href="#L196">196</a></td><td class="cl">        <span class="n">end_tick</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">end_tick</span><span class="p">,</span> <span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L197" href="#L197">197</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L198" href="#L198">198</a></td><td class="cl">    <span class="k">if</span> <span class="ow">not</span> <span class="n">signatures</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L199" href="#L199">199</a></td><td class="cl">        <span class="n">signatures</span> <span class="o">=</span> <span class="p">[</span><span class="n">TimeSignature</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L200" href="#L200">200</a></td><td class="cl">    <span class="n">signatures</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">ts</span><span class="p">:</span> <span class="n">ts</span><span class="o">.</span><span class="n">tick</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L201" href="#L201">201</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L202" href="#L202">202</a></td><td class="cl">    <span class="n">means</span> <span class="o">=</span> <span class="p">{</span><span class="n">i</span><span class="p">:</span> <span class="nb">sum</span><span class="p">(</span><span class="n">n</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ns</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">ns</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ns</span> <span class="ow">in</span> <span class="n">track_notes</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="p">)</span> <span class="k">if</span> <span class="n">ns</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L203" href="#L203">203</a></td><td class="cl">    <span class="n">ranked</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">means</span><span class="o">.</span><span class="n">get</span><span class="p">,</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L204" href="#L204">204</a></td><td class="cl">    <span class="n">right</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">ranked</span><span class="p">[</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ranked</span><span class="p">)</span> <span class="o">/</span><span class="o">/</span> <span class="mi">2</span><span class="p">)</span><span class="p">]</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L205" href="#L205">205</a></td><td class="cl">    <span class="n">notes</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L206" href="#L206">206</a></td><td class="cl">        <span class="p">(</span></td></tr><tr><td class="ln"><a id="L207" href="#L207">207</a></td><td class="cl">            <span class="n">Note</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">end</span><span class="p">,</span> <span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="p">,</span> <span class="n">pitch</span><span class="p">,</span> <span class="n">velocity</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">R</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">right</span> <span class="k">else</span> <span class="s2">&quot;</span><span class="s2">L</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L208" href="#L208">208</a></td><td class="cl">            <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">ns</span> <span class="ow">in</span> <span class="n">track_notes</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L209" href="#L209">209</a></td><td class="cl">            <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">pitch</span><span class="p">,</span> <span class="n">velocity</span> <span class="ow">in</span> <span class="n">ns</span></td></tr><tr><td class="ln"><a id="L210" href="#L210">210</a></td><td class="cl">        <span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L211" href="#L211">211</a></td><td class="cl">        <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">n</span><span class="p">:</span> <span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="o">-</span><span class="n">n</span><span class="o">.</span><span class="n">pitch</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L212" href="#L212">212</a></td><td class="cl">    <span class="p">)</span></td></tr><tr><td class="ln"><a id="L213" href="#L213">213</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L214" href="#L214">214</a></td><td class="cl">    <span class="n">pedal</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L215" href="#L215">215</a></td><td class="cl">    <span class="n">down_at</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L216" href="#L216">216</a></td><td class="cl">    <span class="k">for</span> <span class="n">tick</span><span class="p">,</span> <span class="n">is_down</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">pedal_events</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L217" href="#L217">217</a></td><td class="cl">        <span class="k">if</span> <span class="n">is_down</span> <span class="ow">and</span> <span class="n">down_at</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L218" href="#L218">218</a></td><td class="cl">            <span class="n">down_at</span> <span class="o">=</span> <span class="n">tick</span></td></tr><tr><td class="ln"><a id="L219" href="#L219">219</a></td><td class="cl">        <span class="k">elif</span> <span class="ow">not</span> <span class="n">is_down</span> <span class="ow">and</span> <span class="n">down_at</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L220" href="#L220">220</a></td><td class="cl">            <span class="n">pedal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">down_at</span><span class="p">,</span> <span class="n">tick</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L221" href="#L221">221</a></td><td class="cl">            <span class="n">down_at</span> <span class="o">=</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L222" href="#L222">222</a></td><td class="cl">    <span class="k">if</span> <span class="n">down_at</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L223" href="#L223">223</a></td><td class="cl">        <span class="n">pedal</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="p">(</span><span class="n">down_at</span><span class="p">,</span> <span class="n">end_tick</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L224" href="#L224">224</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L225" href="#L225">225</a></td><td class="cl">    <span class="n">pickup</span> <span class="o">=</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L226" href="#L226">226</a></td><td class="cl">    <span class="k">if</span> <span class="n">ly_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">ly_path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L227" href="#L227">227</a></td><td class="cl">        <span class="n">pickup</span> <span class="o">=</span> <span class="n">read_pickup</span><span class="p">(</span><span class="n">ly_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">replace</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">,</span> <span class="n">tpb</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L228" href="#L228">228</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L229" href="#L229">229</a></td><td class="cl">    <span class="n">last_note</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">end</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">notes</span><span class="p">)</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L230" href="#L230">230</a></td><td class="cl">    <span class="k">return</span> <span class="n">Score</span><span class="p">(</span><span class="n">tpb</span><span class="p">,</span> <span class="n">notes</span><span class="p">,</span> <span class="n">TempoMap</span><span class="p">(</span><span class="n">tpb</span><span class="p">,</span> <span class="n">tempos</span><span class="p">)</span><span class="p">,</span> <span class="n">signatures</span><span class="p">,</span> <span class="n">pedal</span><span class="p">,</span> <span class="n">pickup</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">end_tick</span><span class="p">,</span> <span class="n">last_note</span><span class="p">)</span><span class="p">)</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

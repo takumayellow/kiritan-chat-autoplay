@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/audio/sampler.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html" class="current">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 64 行</p>
+<h1><code>src/audio/sampler.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>本物のピアノを 1 音ずつ録音した音（サンプル）を読み込んでおき、指定された高さ・強さ・時刻・長さでその音を鳴らす、ゲームの「ピアノ」にあたるファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li><strong>読み込み</strong>（<code>load</code>、L18-42）: 音源の目録 <code>manifest.json</code> を読み、曲で使う音の高さと強さに必要なサンプルの mp3 だけを、並行して取ってきて音のデータに直す。</li>
+<li><strong>鳴らす</strong>（<code>play</code>、L45-63）: 音の高さと強さから使うサンプルを選び、<strong>再生速度を変えて</strong>音の高さを合わせ、強さに応じた音量で指定の時刻に鳴らし、指定の長さの後に音を消していく。</li>
+</ul>
+<p>音源は FreePats の Upright Piano KW（CC0、権利の放棄されたもの）です。88 鍵の全部を録音してあるわけではなく、66 個の mp3（弱い音用 30 個、強い音用 36 個）しかありません。録音の無い高さの音は、近い高さのサンプルを少し速く・遅く再生して作ります。</p>
+<p>どのサンプルを選ぶか、音量をどうするかの計算は <a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> にあり、このファイルはそれを使って、Web Audio の部品を組み立てて鳴らします。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-audio-context.ts.html"><code>src/audio/context.ts</code></a>（L14）</td>
+<td><code>AudioContext</code> と組で 1 つだけ作られる</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L52-55）</td>
+<td>プレイ画面を開いたときに、曲の全部の音の <code>[高さ, 強さ]</code> を渡して <code>load</code>。読み込みの進み具合を画面に出す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a>（L77）</td>
+<td>伴奏の音とキー音を <code>play</code> で鳴らす</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a></td>
+<td>目録の検査、サンプルの選択、音量、mp3 の先頭の無音の長さ</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>ブラウザの <code>fetch</code> と Web Audio</td>
+<td>ファイルを取ってきて、音のデータに直し、鳴らす</td>
+</tr>
+<tr>
+<td>読む</td>
+<td><code>public/samples/kw/manifest.json</code> と mp3</td>
+<td><a class="xref" href="tools-build_samples.py.html"><code>tools/build_samples.py</code></a> が作ったもの</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L14 <code>new Map&lt;string, LoadedSample&gt;()</code>（文法の索引の『Map と Set』）</li>
+<li>L18 <code>Iterable&lt;readonly [number, number]&gt;</code> — 1 つずつ取り出せるもの</li>
+<li>L18 <code>onProgress?: (done, total) =&gt; void</code> — 省いてよい、関数の引数（<code>?:</code> は <a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L3-9、関数の型は <a class="xref" href="src-audio-scheduler.ts.html"><code>src/audio/scheduler.ts</code></a> の L3-4 の解説）</li>
+<li>L32 <code>Promise.all</code> — 約束をまとめて待つ</li>
+<li>L33 <code>async (file) =&gt; { … }</code> — 非同期のアロー関数（文法の索引の『async / await と Promise』）</li>
+<li>L49 <code>region &amp;&amp; this.samples.get(…)</code> — <code>&amp;&amp;</code> で値を選ぶ</li>
+<li>L53 <code>2 ** x</code> — べき乗</li>
+<li>L60 <code>source.connect(gain).connect(destination)</code> — メソッドの連鎖</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong>必要な分だけ読む</strong>（L25-29）。曲の音を全部見て、使うサンプルの mp3 の名前を <code>Map</code> に集めます。同じファイルは 1 回しか取ってきません。</li>
+<li><strong>音の高さを再生速度で合わせる</strong>（L53）。1 半音上げるには、約 1.0595 倍の速さで再生します。</li>
+<li><strong>音量の形</strong>（L56-62）。指定の時刻に鳴らし始め、長さの分だけ同じ音量を保ち、その後なめらかに消していきます。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong><code>load</code> を終える前に <code>play</code> を呼ぶと、黙って何も鳴りません</strong>（L47・L50）。エラーにならないので、読み込み忘れに気付きにくい作りです。プレイ画面は、読み込みが終わるまで開始できないようにしています（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L52-59）。</li>
+<li><strong>mp3 が 1 つでも取ってこられないと、<code>load</code> 全体が失敗します</strong>（L35 と <code>Promise.all</code>）。そのときプレイ画面はエラーの文を出します。</li>
+<li>再生速度を変えると音の高さだけでなく<strong>長さも縮み・伸びます</strong>。高さを 3 半音上げたサンプルは、約 0.84 倍の時間で終わります。音の長さは L62 で止めているので、ふつうは目立ちません。</li>
+<li>曲のテンポを落としても音の高さは変わりません。テンポは鳴らす時刻と長さ（<code>engine.ts</code> の L77 で <code>duration / rate</code>）だけに効き、L53 の再生速度は音の高さだけで決まるからです（<code>docs/design.md</code> の 5.1 節）。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><a class="xref" href="src-audio-regions.ts.html"><code>src/audio/regions.ts</code></a> から、5 つの関数と 2 つの型を取り込みます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">detectAttack</span><span class="p">,</span><span class="w"> </span><span class="nx">findRegion</span><span class="p">,</span><span class="w"> </span><span class="nx">layerFor</span><span class="p">,</span><span class="w"> </span><span class="nx">parseManifest</span><span class="p">,</span><span class="w"> </span><span class="nx">velocityGain</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">SampleManifest</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./regions&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L5</p><ul>
+<li><code>BASE</code> はサンプルの置き場所 <code>./samples/kw/</code> です（<code>import.meta.env.BASE_URL</code> は <a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L3-4 の解説）。</li>
+<li><code>RELEASE_SECONDS</code> は、鍵盤を離してから音が消えるまでの目安の時間 0.12 秒です。L59 と L62 で使います。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">BASE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="k">import</span><span class="p">.</span><span class="nx">meta</span><span class="p">.</span><span class="nx">env</span><span class="p">.</span><span class="nx">BASE_URL</span><span class="si">}</span><span class="sb">samples/kw/</span><span class="sb">`</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">RELEASE_SECONDS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.12</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L6–L10</p><p><code>LoadedSample</code> は、読み込んだサンプル 1 つです。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>buffer</code></td>
+<td>音のデータ（<code>AudioBuffer</code>）。mp3 を音の波の数の列に直したもの</td>
+</tr>
+<tr>
+<td><code>attack</code></td>
+<td>mp3 の先頭の無音の長さ（秒）。鳴らすときにここから再生を始める</td>
+</tr>
+</tbody>
+</table>
+<p>mp3 という形式は、仕組みの都合でファイルの先頭にわずかな無音が入ります。さらに録音にも打鍵前の静かな部分があります。そのまま頭から鳴らすと、どの音も少しずつ遅れて聞こえ、リズムゲームでは困ります。そこで、音が立ち上がる位置（<code>regions.ts</code> の <code>detectAttack</code>）を読み込み時に 1 回だけ求めておきます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="kd">interface</span><span class="w"> </span><span class="nx">LoadedSample</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">buffer</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioBuffer</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">attack</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L11–L17</p><p><code>Sampler</code> クラスの欄とコンストラクタです（<code>class</code> は文法の索引の『class と constructor』）。</p>
+<ul>
+<li><code>manifest</code>（L13）は音源の目録です。まだ読んでいなければ <code>null</code>。</li>
+<li><code>samples</code>（L14）は、読み込んだサンプルを mp3 のファイル名で引ける <code>Map</code>（文法の索引の『Map と Set』）です。一度読んだサンプルはここに残り、別の曲を遊ぶときも読み直しません。</li>
+<li>コンストラクタ（L16）は、音を作る土台 <code>ctx</code> を受け取って欄にするだけです（文法の索引の『private とコンストラクタ引数のプロパティ』）。型の <code>BaseAudioContext</code> は、<code>AudioContext</code> と、音を画面に出さずに作る <code>OfflineAudioContext</code> の共通の型です。</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="cm">/** ピアノの多重サンプル音源。曲に必要な音域だけを読み込み、音高はサンプルの再生速度で合わせる。 */</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">Sampler</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="nx">manifest</span><span class="o">:</span><span class="w"> </span><span class="kt">SampleManifest</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">samples</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Map</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">LoadedSample</span><span class="o">&gt;</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="kr">constructor</span><span class="p">(</span><span class="k">private</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">ctx</span><span class="o">:</span><span class="w"> </span><span class="kt">BaseAudioContext</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L18–L43</p><blockquote>
+<p><strong>文法: Iterable（1 つずつ取り出せるもの）</strong></p>
+<p><code>Iterable&lt;T&gt;</code> は、「<code>for … of</code> で中身を 1 つずつ取り出せるもの」の型です。配列のほか、<code>Map</code> や <code>Set</code> などもこれに当てはまります。引数を配列に限らずこの型にしておくと、呼ぶ側は配列でも別のものでも渡せます。</p>
+<p>中身の型 <code>readonly [number, number]</code> は、書き換えない 2 つ組（文法の索引の『タプル型』）です。ここでは <code>[音の高さ, 強さ]</code> を表します。</p>
+<p><strong>文法: Promise.all（約束をまとめて待つ）</strong></p>
+<p><code>Promise.all([約束1, 約束2, …])</code> は、渡した約束が<strong>全部</strong>果たされたときに果たされる、1 つの約束を作ります（約束は文法の索引の『async / await と Promise』）。<code>await Promise.all(…)</code> と書けば、全部が終わるまで待てます。</p>
+<p>1 つずつ <code>await</code> して順番に待つのと違い、全部の処理が<strong>同時に</strong>進みます。ファイルを 20 個取ってくるなら、1 個ずつ待つより、20 個を同時に頼んでまとめて待つほうがずっと早く終わります。</p>
+<p>どれか 1 つでも失敗すると、その時点で全体が失敗になります。</p>
+</blockquote>
+<p><code>load(notes, onProgress)</code> は、曲で使う音のサンプルを読み込みます。<code>notes</code> は <code>[音の高さ, 強さ]</code> の組の並び、<code>onProgress</code> は読み込みの進み具合を知らせる関数で、省いてもかまいません。</p>
+<ol>
+<li><strong>目録を読む（L19-23）。</strong> まだ読んでいなければ、<code>manifest.json</code> を取ってきて、<code>parseManifest</code>（<code>regions.ts</code> の L21-34）で形を確かめてから覚えておく。取ってこられなければエラーを投げる（<code>fetch</code> の確かめ方は <a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L5-10 と同じ）。</li>
+<li><strong>必要な mp3 を決める（L24-29）。</strong> 全部の音について、<code>layerFor</code> で強さから「弱い音用（L）か強い音用（H）か」を決め、<code>findRegion</code> でその高さを受け持つサンプルを探す。見つかって、まだ読み込んでいなければ、ファイル名をキーにして <code>needed</code> に入れる。<code>Map</code> は同じキーに入れ直しても 1 つのままなので、同じファイルが何度出ても 1 回分になります。</li>
+<li><strong>進み具合を 0 で知らせる（L30-31）。</strong> <code>onProgress?.(…)</code> は、関数が渡されていれば呼び、無ければ何もしません（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）。</li>
+<li><strong>並行して読み込む（L32-41）。</strong> <code>needed.keys()</code> はファイル名を 1 つずつ取り出せるもので、<code>[...needed.keys()]</code>（文法の索引の『スプレッド構文 <code>...</code>』）でそれを配列にします。その各ファイル名について、<code>map</code> で「取ってきて読み込む」非同期の処理を作り、その約束の配列を <code>Promise.all</code> でまとめて待ちます。各ファイルの処理は次のとおりです。
+   - L34-35 mp3 を取ってくる。失敗ならエラーを投げる。
+   - L36 <code>response.arrayBuffer()</code> で中身をそのままのバイト列として受け取り、<code>decodeAudioData</code> で mp3 を音の波の数の列（<code>AudioBuffer</code>）に直す。どちらも時間がかかるので <code>await</code> で待ちます。
+   - L37 1 つ目の音の通り道（左のチャンネル）の波から立ち上がりの位置を求め、<code>samples</code> に入れる。
+   - L38-39 読み終えた数を 1 増やし、進み具合を知らせる。</li>
+</ol>
+<p>L30 の <code>done</code> は 1 つの変数を全部のファイルの処理が共有しています。終わる順番はばらばらですが、どれかが終わるたびに 1 ずつ増えるので、<code>done / needed.size</code> が「何個中何個読んだか」になります。</p>
+<p>例えば「エリーゼのために」の音は全部強さ 62 なので、弱い音用（L）のサンプルだけを読みます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="k">async</span><span class="w"> </span><span class="nx">load</span><span class="p">(</span><span class="nx">notes</span><span class="o">:</span><span class="w"> </span><span class="kt">Iterable</span><span class="o">&lt;</span><span class="k">readonly</span><span class="w"> </span><span class="p">[</span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">]</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="nx">onProgress</span><span class="o">?</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">done</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">total</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="k">this</span><span class="p">.</span><span class="nx">manifest</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">BASE</span><span class="si">}</span><span class="sb">manifest.json</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">response</span><span class="p">.</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="sb">音源の目録を読み込めませんでした（HTTP </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">）</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="nx">manifest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">parseManifest</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">(</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">manifest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">manifest</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">needed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Map</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">SampleRegion</span><span class="o">&gt;</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">pitch</span><span class="p">,</span><span class="w"> </span><span class="nx">velocity</span><span class="p">]</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">notes</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">      </span><span class="kd">const</span><span class="w"> </span><span class="nx">region</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">findRegion</span><span class="p">(</span><span class="nx">manifest</span><span class="p">.</span><span class="nx">regions</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="p">,</span><span class="w"> </span><span class="nx">layerFor</span><span class="p">(</span><span class="nx">velocity</span><span class="p">,</span><span class="w"> </span><span class="nx">manifest</span><span class="p">.</span><span class="nx">velocitySplit</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">region</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="k">this</span><span class="p">.</span><span class="nx">samples</span><span class="p">.</span><span class="nx">has</span><span class="p">(</span><span class="nx">region</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="nx">needed</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="nx">region</span><span class="p">.</span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="nx">region</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">    </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">done</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">    </span><span class="nx">onProgress</span><span class="o">?</span><span class="p">.</span><span class="p">(</span><span class="nx">done</span><span class="p">,</span><span class="w"> </span><span class="nx">needed</span><span class="p">.</span><span class="nx">size</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="nb">Promise</span><span class="p">.</span><span class="nx">all</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">      </span><span class="p">[</span><span class="p">...</span><span class="nx">needed</span><span class="p">.</span><span class="nx">keys</span><span class="p">(</span><span class="p">)</span><span class="p">]</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">file</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">response</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">fetch</span><span class="p">(</span><span class="sb">`</span><span class="si">${</span><span class="nx">BASE</span><span class="si">}</span><span class="si">${</span><span class="nx">file</span><span class="si">}</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">response</span><span class="p">.</span><span class="nx">ok</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="sb">`</span><span class="sb">音源 </span><span class="si">${</span><span class="nx">file</span><span class="si">}</span><span class="sb"> を読み込めませんでした（HTTP </span><span class="si">${</span><span class="nx">response</span><span class="p">.</span><span class="nx">status</span><span class="si">}</span><span class="sb">）</span><span class="sb">`</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">buffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">decodeAudioData</span><span class="p">(</span><span class="k">await</span><span class="w"> </span><span class="nx">response</span><span class="p">.</span><span class="nx">arrayBuffer</span><span class="p">(</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">        </span><span class="k">this</span><span class="p">.</span><span class="nx">samples</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="nx">file</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">buffer</span><span class="p">,</span><span class="w"> </span><span class="nx">attack</span><span class="o">:</span><span class="w"> </span><span class="kt">detectAttack</span><span class="p">(</span><span class="nx">buffer</span><span class="p">.</span><span class="nx">getChannelData</span><span class="p">(</span><span class="mf">0</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">buffer</span><span class="p">.</span><span class="nx">sampleRate</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">        </span><span class="nx">done</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mf">1</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">        </span><span class="nx">onProgress</span><span class="o">?</span><span class="p">.</span><span class="p">(</span><span class="nx">done</span><span class="p">,</span><span class="w"> </span><span class="nx">needed</span><span class="p">.</span><span class="nx">size</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">      </span><span class="p">}</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">    </span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L44–L64</p><blockquote>
+<p><strong>文法: <code>&amp;&amp;</code> で値を選ぶ</strong></p>
+<p><code>A &amp;&amp; B</code> は、<code>if</code> の条件の中では「A かつ B」ですが、値としては「<strong>A が偽とみなされる値なら A、そうでなければ B</strong>」になります。</p>
+<p>L49 の <code>region &amp;&amp; this.samples.get(region.file)</code> は、<code>region</code> が <code>undefined</code>（見つからなかった）なら <code>undefined</code>、見つかっていれば <code>samples</code> から取り出したサンプル、になります。<code>region</code> が無いのに <code>region.file</code> を読んでエラーになるのを防ぐ書き方です。</p>
+<p><strong>文法: べき乗 <code>**</code></strong></p>
+<p><code>a ** b</code> は「a の b 乗」です。<code>2 ** 3</code> は 8、<code>2 ** 0.5</code> は 2 の平方根（約 1.414）です。指数は小数や負の数でもかまいません。</p>
+<p><strong>文法: メソッドの連鎖</strong></p>
+<p><code>source.connect(gain)</code> は、つないだ先の <code>gain</code> をそのまま返します。だから続けて <code>.connect(destination)</code> と書けば、「<code>source</code> → <code>gain</code> → <code>destination</code>」と順につなげます。メソッドの戻り値に、さらにメソッドを続けて呼ぶ書き方です。</p>
+</blockquote>
+<p><code>play(destination, pitch, velocity, when, duration)</code> は音を 1 つ鳴らします。</p>
+<table>
+<thead>
+<tr>
+<th>引数</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>destination</code></td>
+<td>音をつなぐ先。<code>engine.ts</code> では全体の音量を決める部品（L56-58 の <code>bus</code>）</td>
+</tr>
+<tr>
+<td><code>pitch</code></td>
+<td>音の高さ（MIDI の番号。60 が真ん中のド）</td>
+</tr>
+<tr>
+<td><code>velocity</code></td>
+<td>強さ（1〜127）</td>
+</tr>
+<tr>
+<td><code>when</code></td>
+<td>鳴らし始める <code>AudioContext</code> の時刻（秒）</td>
+</tr>
+<tr>
+<td><code>duration</code></td>
+<td>鍵盤を押している長さ（秒）。テンポを落としたときは <code>engine.ts</code> が伸ばして渡す</td>
+</tr>
+</tbody>
+</table>
+<p>Web Audio では、音を作る<strong>部品（ノード）</strong>を線でつないで、最後にスピーカー（<code>destination</code>）につなぎます。ここでは</p>
+<div class="codehilite"><pre><span></span><code>サンプルを再生する部品（source）→ 音量を変える部品（gain）→ destination
+</code></pre></div>
+
+<p>とつなぎます。</p>
+<ol>
+<li><strong>サンプルを選ぶ（L46-50）。</strong> <code>load</code> と同じ選び方で区間を探し、読み込み済みのサンプルを取り出す。目録もサンプルも無ければ何もしない。</li>
+<li><strong>再生の部品を作る（L51-53）。</strong> <code>createBufferSource()</code> で、音のデータを 1 回再生する部品を作る。L53 で再生速度を
+   <code>2 ** ((pitch − region.key) / 12)</code>
+   にする。<code>region.key</code> はサンプルを録音した高さです。</li>
+</ol>
+<p>音の高さは、1 オクターブ（12 半音）上がると振動の速さがちょうど 2 倍になります。だから 1 半音上げるには 2 の 12 乗根 ≒ 1.0595 倍の速さで再生すればよい、というのがこの式です。例えば高さ 63（レ♯）で録音したサンプルで高さ 64（ミ）を鳴らすと 1.0595 倍、62（レ）なら 2 の −1/12 乗 ≒ 0.9439 倍です。弱い音用のサンプルは録音の高さから最大 1 半音、強い音用は最大 3 半音（高さ 42 で録音し 41〜45 を受け持つサンプル。約 1.1892 倍）までずらします。ずらす幅が小さいほど、音色の変化が目立ちません。
+3. <strong>音量の部品を作る（L54-59）。</strong> 強さから音量 <code>level</code> を決め（<code>regions.ts</code> の <code>velocityGain</code>）、時間に沿った音量の変化を予約する。
+   - L56 離す時刻 <code>release</code> を <code>when + duration</code> にする。ただし短すぎる音でも 0.05 秒は鳴らす。
+   - L57-58 <code>when</code> から <code>release</code> までは <code>level</code> のまま保つ。
+   - L59 <code>release</code> から 0 に向けてなめらかに下げる。<code>setTargetAtTime(目標, 開始時刻, 時定数)</code> は、時定数 0.04 秒（0.12 ÷ 3）ごとに残りが約 37% に縮むように近づける曲線です。
+4. <strong>つなぐ（L60）。</strong>
+5. <strong>鳴らす予約と止める予約（L61-62）。</strong> <code>start(when, sample.attack)</code> は「時刻 <code>when</code> に、サンプルの <code>attack</code> 秒の位置から再生を始める」という予約で、先頭の無音を飛ばします。<code>stop</code> で <code>release</code> の 0.24 秒後に止めます。0.24 秒は時定数の 6 倍で、そのころ音量は元の約 0.25%（e の −6 乗）まで下がっているので、止めても音がぶつっと切れたようには聞こえません。</p>
+<p><code>when</code> がすでに過ぎた時刻なら、Web Audio はすぐに鳴らします。キー音（叩いたときに鳴らす音）は、<code>engine.ts</code> の L130 で <code>ctx.currentTime</code>（今）を <code>when</code> にして、この性質を使っています。</p>
+<p>音量の部品を音ごとに作るのは、音ごとに強さも離す時刻も違うからです。再生の部品は 1 回しか再生できない使い捨ての部品なので、これも音ごとに作ります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">  </span><span class="cm">/** when（AudioContext の時刻）に音を鳴らし、duration 秒後に離す。 */</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">  </span><span class="nx">play</span><span class="p">(</span><span class="nx">destination</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioNode</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">velocity</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">duration</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">manifest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">manifest</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">manifest</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">region</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">findRegion</span><span class="p">(</span><span class="nx">manifest</span><span class="p">.</span><span class="nx">regions</span><span class="p">,</span><span class="w"> </span><span class="nx">pitch</span><span class="p">,</span><span class="w"> </span><span class="nx">layerFor</span><span class="p">(</span><span class="nx">velocity</span><span class="p">,</span><span class="w"> </span><span class="nx">manifest</span><span class="p">.</span><span class="nx">velocitySplit</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">sample</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">region</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">samples</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="nx">region</span><span class="p">.</span><span class="nx">file</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">region</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">sample</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">source</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">createBufferSource</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">    </span><span class="nx">source</span><span class="p">.</span><span class="nx">buffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">sample</span><span class="p">.</span><span class="nx">buffer</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">    </span><span class="nx">source</span><span class="p">.</span><span class="nx">playbackRate</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">2</span><span class="w"> </span><span class="o">**</span><span class="w"> </span><span class="p">(</span><span class="p">(</span><span class="nx">pitch</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">region</span><span class="p">.</span><span class="nx">key</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">12</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">createGain</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">level</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">velocityGain</span><span class="p">(</span><span class="nx">velocity</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">release</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">when</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">duration</span><span class="p">,</span><span class="w"> </span><span class="mf">0.05</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">    </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">setValueAtTime</span><span class="p">(</span><span class="nx">level</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">    </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">setValueAtTime</span><span class="p">(</span><span class="nx">level</span><span class="p">,</span><span class="w"> </span><span class="nx">release</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">    </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">setTargetAtTime</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">release</span><span class="p">,</span><span class="w"> </span><span class="nx">RELEASE_SECONDS</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">3</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">    </span><span class="nx">source</span><span class="p">.</span><span class="nx">connect</span><span class="p">(</span><span class="nx">gain</span><span class="p">)</span><span class="p">.</span><span class="nx">connect</span><span class="p">(</span><span class="nx">destination</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">    </span><span class="nx">source</span><span class="p">.</span><span class="nx">start</span><span class="p">(</span><span class="nx">when</span><span class="p">,</span><span class="w"> </span><span class="nx">sample</span><span class="p">.</span><span class="nx">attack</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">    </span><span class="nx">source</span><span class="p">.</span><span class="nx">stop</span><span class="p">(</span><span class="nx">release</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">RELEASE_SECONDS</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">2</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

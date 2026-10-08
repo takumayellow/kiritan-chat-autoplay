@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/ui/select.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html" class="current">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 26 行</p>
+<h1><code>src/ui/select.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>選曲画面（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a>）が使う 4 つの小さな計算、つまりジャケットの色と文字、↑↓←→ での移動先を、画面の部品から切り離して置いたファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<table>
+<thead>
+<tr>
+<th>関数</th>
+<th>受け取るもの</th>
+<th>返すもの</th>
+<th>使う所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jacketHue</code></td>
+<td>曲 ID</td>
+<td>0〜359 の色相</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L28</td>
+</tr>
+<tr>
+<td><code>composerMark</code></td>
+<td>作曲者の英語名</td>
+<td>姓の頭文字 1 文字</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L31</td>
+</tr>
+<tr>
+<td><code>stepIndex</code></td>
+<td>今の位置・動かす量・全体の数</td>
+<td>動かした後の位置</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L50</td>
+</tr>
+<tr>
+<td><code>stepDifficulty</code></td>
+<td>今の難易度・動かす量</td>
+<td>動かした後の難易度</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L54</td>
+</tr>
+</tbody>
+</table>
+<p>どれも、受け取った値だけから答えを決め、画面にもブラウザにも触りません。そのため React を動かさずに試験でき、<code>src/ui/select.test.ts</code> が 4 つすべてを確かめています（たとえば <code>stepIndex(4, 1, 5)</code> が <code>4</code>、<code>stepDifficulty("expert", 1)</code> が <code>"expert"</code>）。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a></td>
+<td>ジャケットの色と文字、キー操作</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/ui/select.test.ts</code>（解説キット外）</td>
+<td>試験</td>
+</tr>
+<tr>
+<td>借りる</td>
+<td><a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の <code>DIFFICULTIES</code> と型 <code>Difficulty</code></td>
+<td>難易度の並び <code>easy</code>・<code>normal</code>・<code>hard</code>・<code>expert</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L6 <code>for (const ch of id)</code> — 文字列や配列の要素を順に取り出す繰り返し</li>
+<li>L6 <code>&gt;&gt;&gt; 0</code> — 符号なし右シフト（ここでは「32 ビットの正の整数に収める」）</li>
+<li>L12 <code>split(/\s+/)</code> — 文法の索引の『正規表現』</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L4-8 の <code>jacketHue</code>。曲 ID の文字を順に混ぜて 1 つの数にし、360 で割った余りを色相にする、という短い「ハッシュ（要約の数）」の計算です。</li>
+<li>L17-20 の <code>stepIndex</code> の「端で止める」。<code>Math.max</code> と <code>Math.min</code> を重ねて、範囲の外に出た値を端に寄せます。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>色はたまたま重なることがあります。</strong> 12 曲の色相を計算すると、<code>entertainer</code>（ジ・エンターテイナー）と <code>mountain-king</code>（山の魔王の宮殿にて）がどちらも 151 です。ジャケットの文字はそれぞれ <code>J</code> と <code>G</code> なので見分けられますが、色だけでは区別できません。</li>
+<li><strong><code>stepIndex</code> は、今の位置が −1（どれも選んでいない）でも動きます。</strong> <code>stepIndex(-1, 1, 12)</code> も <code>stepIndex(-1, -1, 12)</code> も 0 になるので、選んだ曲が一覧に無いときに ↑ か ↓ を押すと、先頭の曲が選ばれます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><code>DIFFICULTIES</code> は値（配列）として、<code>Difficulty</code> は型としてだけ取り込みます（<code>type</code> の付いた取り込みは <a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『import と export』の囲みを参照）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Difficulty</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../song/types&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L9</p><blockquote>
+<p><strong>文法: for...of による繰り返し</strong></p>
+<p><code>for (const ch of id) 文;</code> は、<code>id</code> の中身を先頭から 1 つずつ <code>ch</code> に入れて、<code>文</code> を繰り返します。<code>id</code> が文字列なら 1 文字ずつ、配列なら 1 要素ずつです。</p>
+<p>番号で回す <code>for (let i = 0; i &lt; id.length; i++)</code> と違い、何番目かを気にしなくてよいのが利点です。繰り返す文が 1 つだけなら <code>{ }</code> を省けます（L6）。</p>
+<p><strong>文法: 符号なし右シフト <code>&gt;&gt;&gt;</code></strong></p>
+<p><code>a &gt;&gt;&gt; n</code> は、<code>a</code> を 2 進数の 32 ビットの整数とみなして、右へ <code>n</code> ビットずらす演算です。<code>n</code> が 0 のときはずらさないので、「32 ビットの整数に直す」働きだけが残ります。直し方は次のとおりです。</p>
+<ul>
+<li>小数部分を捨てる</li>
+<li>2^32（4294967296）で割った余りにする</li>
+<li>負の数にならない（0〜4294967295 のどれかになる）。たとえば <code>-5 &gt;&gt;&gt; 0</code> は 4294967291</li>
+</ul>
+<p>計算の途中で数がどこまでも大きくならないよう、毎回この範囲に戻すために使われます。</p>
+</blockquote>
+<p><code>jacketHue(id)</code> は、曲 ID から 0〜359 の数を 1 つ決めます。この数は色相環の角度（0 が赤、120 が緑、240 が青）として使われ、曲ごとに違う色のジャケットになります（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L28）。同じ ID からは毎回同じ色が出るので、曲の色は開くたびに変わりません。</p>
+<p>L5 の <code>let</code> は、値を入れ直す変数です（<a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『const と let』の囲み）。</p>
+<p>L6 では、ID の 1 文字ずつに次の計算をします。</p>
+<ol>
+<li><code>ch.charCodeAt(0)</code> — その文字の番号（文字コード）。<code>f</code> は 102、<code>-</code> は 45</li>
+<li><code>hash * 31 + 文字の番号</code> — それまでの値を 31 倍して、文字の番号を足す</li>
+<li><code>&gt;&gt;&gt; 0</code> — 0〜4294967295 の範囲に戻す</li>
+</ol>
+<p>31 倍してから足すので、同じ文字でも位置が違えば結果に違う重みで効き、<code>ab</code> と <code>ba</code> が別の数になります。</p>
+<p><code>fur-elise</code> で途中を追うと次のとおりです。</p>
+<table>
+<thead>
+<tr>
+<th>文字</th>
+<th>番号</th>
+<th><code>hash * 31 + 番号</code></th>
+<th><code>&gt;&gt;&gt; 0</code> の後</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>f</td>
+<td>102</td>
+<td>102</td>
+<td>102</td>
+</tr>
+<tr>
+<td>u</td>
+<td>117</td>
+<td>3279</td>
+<td>3279</td>
+</tr>
+<tr>
+<td>r</td>
+<td>114</td>
+<td>101763</td>
+<td>101763</td>
+</tr>
+<tr>
+<td>-</td>
+<td>45</td>
+<td>3154698</td>
+<td>3154698</td>
+</tr>
+<tr>
+<td>e</td>
+<td>101</td>
+<td>97795739</td>
+<td>97795739</td>
+</tr>
+<tr>
+<td>l</td>
+<td>108</td>
+<td>3031668017</td>
+<td>3031668017</td>
+</tr>
+<tr>
+<td>i</td>
+<td>105</td>
+<td>93981708632</td>
+<td>3787395416</td>
+</tr>
+<tr>
+<td>s</td>
+<td>115</td>
+<td>117409258011</td>
+<td>1445141019</td>
+</tr>
+<tr>
+<td>e</td>
+<td>101</td>
+<td>44799371690</td>
+<td>1849698730</td>
+</tr>
+</tbody>
+</table>
+<p>7 文字目の <code>i</code> で初めて 2^32 を超え、<code>&gt;&gt;&gt; 0</code> で範囲に戻ります。L7 で最後の 1849698730 を 360 で割った余りを取ると 10 になり、「エリーゼのために」のジャケットは赤みの強いオレンジになります。</p>
+<p>12 曲の色相は次のとおりです。</p>
+<table>
+<thead>
+<tr>
+<th>曲 ID</th>
+<th>色相</th>
+<th>曲 ID</th>
+<th>色相</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fur-elise</td>
+<td>10</td>
+<td>entertainer</td>
+<td>151</td>
+</tr>
+<tr>
+<td>gymnopedie-1</td>
+<td>211</td>
+<td>maple-leaf-rag</td>
+<td>201</td>
+</tr>
+<tr>
+<td>traumerei</td>
+<td>108</td>
+<td>mountain-king</td>
+<td>151</td>
+</tr>
+<tr>
+<td>prelude-op28-4</td>
+<td>30</td>
+<td>arabesque-1</td>
+<td>53</td>
+</tr>
+<tr>
+<td>wtk1-prelude1</td>
+<td>134</td>
+<td>clair-de-lune</td>
+<td>184</td>
+</tr>
+<tr>
+<td>revolutionary</td>
+<td>167</td>
+<td>fantaisie-impromptu</td>
+<td>246</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="cm">/** 曲 ID から決まる色相（0〜359）。ジャケットの代わりのグラデーションに使う。 */</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">jacketHue</span><span class="p">(</span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="kd">let</span><span class="w"> </span><span class="nx">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">const</span><span class="w"> </span><span class="nx">ch</span><span class="w"> </span><span class="k">of</span><span class="w"> </span><span class="nx">id</span><span class="p">)</span><span class="w"> </span><span class="nx">hash</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">hash</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">31</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">ch</span><span class="p">.</span><span class="nx">charCodeAt</span><span class="p">(</span><span class="mf">0</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;&gt;&gt;</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">hash</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mf">360</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L15</p><p><code>composerMark(composerEn)</code> は、作曲者の英語名から姓の頭文字を 1 文字返します。ジャケットの真ん中に出す文字です。</p>
+<p>L12 は 2 段です。</p>
+<ol>
+<li><code>composerEn.trim()</code> — 前後の空白を取り除く</li>
+<li><code>.split(/\s+/)</code> — 1 つ以上続く空白（<code>/\s+/</code> は「空白文字が 1 個以上」を表す正規表現、文法の索引の『正規表現』）で区切り、単語の配列にする。<code>"Ludwig van Beethoven"</code> なら <code>["Ludwig", "van", "Beethoven"]</code></li>
+</ol>
+<p>L13 は 3 段です。</p>
+<ol>
+<li><code>words[words.length - 1]</code> — 最後の単語。<code>"Beethoven"</code></li>
+<li><code>?? ""</code> — 無ければ空の文字列にする（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）</li>
+<li><code>.charAt(0).toUpperCase()</code> — 先頭の 1 文字を取り、大文字にする。<code>"B"</code></li>
+</ol>
+<p>英語名は姓が最後に来るので、最後の単語の頭文字が姓の頭文字です。「Johann Sebastian Bach」は <code>B</code>、「Frédéric Chopin」は <code>C</code> になります。</p>
+<p>L13 の <code>?? ""</code> は、実際には働きません。<code>split</code> は空の文字列からでも <code>[""]</code> という要素 1 つの配列を返すので、最後の要素は必ずあります。それでも書いてあるのは、このプロジェクトの TypeScript の設定（<code>noUncheckedIndexedAccess</code>）が「配列を番号で読んだ値は <code>undefined</code> かもしれない」として扱うからです。<code>?? ""</code> で、型の上でも必ず文字列になります。空の名前を渡すと <code>""</code> が返ることは、<code>src/ui/select.test.ts</code> で確かめています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="cm">/** 作曲者の姓の頭文字（&quot;Ludwig van Beethoven&quot; → &quot;B&quot;）。 */</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">composerMark</span><span class="p">(</span><span class="nx">composerEn</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">words</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">composerEn</span><span class="p">.</span><span class="nx">trim</span><span class="p">(</span><span class="p">)</span><span class="p">.</span><span class="nx">split</span><span class="p">(</span><span class="sr">/\s+/</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">words</span><span class="p">[</span><span class="nx">words</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">1</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="p">.</span><span class="nx">charAt</span><span class="p">(</span><span class="mf">0</span><span class="p">)</span><span class="p">.</span><span class="nx">toUpperCase</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L16–L21</p><p><code>stepIndex(index, delta, length)</code> は、長さ <code>length</code> の一覧で、位置 <code>index</code> から <code>delta</code> だけ動かした位置を返します。<code>delta</code> は上や左へなら −1、下や右へなら 1 です。</p>
+<ul>
+<li>L18 — 一覧が空なら、行き先が無いので −1 を返す</li>
+<li>L19 — <code>index + delta</code> を、0 から <code>length - 1</code> の範囲に収める</li>
+</ul>
+<p>L19 は内側から読みます。</p>
+<ol>
+<li><code>Math.max(0, index + delta)</code> — 2 つのうち大きいほう。0 より小さければ 0 にする</li>
+<li><code>Math.min(length - 1, 1 の結果)</code> — 2 つのうち小さいほう。最後の位置より大きければ最後の位置にする</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th><code>index</code></th>
+<th><code>delta</code></th>
+<th><code>length</code></th>
+<th>答え</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>−1</td>
+<td>5</td>
+<td>0（先頭で止まる）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1</td>
+<td>5</td>
+<td>3</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1</td>
+<td>5</td>
+<td>4（最後で止まる）</td>
+</tr>
+<tr>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+<td>−1（一覧が空）</td>
+</tr>
+</tbody>
+</table>
+<p>一覧の端で止まり、反対の端へは回り込みません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="cm">/** 一覧の中で delta だけ動かした位置。端では止める。 */</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">stepIndex</span><span class="p">(</span><span class="nx">index</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">delta</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">length</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">length</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nx">length</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">delta</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L22–L26</p><p><code>stepDifficulty(difficulty, delta)</code> は、難易度を <code>easy</code>・<code>normal</code>・<code>hard</code>・<code>expert</code> の並びで <code>delta</code> だけ動かします。</p>
+<ol>
+<li><code>DIFFICULTIES.indexOf(difficulty)</code> — 今の難易度が並びの何番目か。<code>"normal"</code> なら 1</li>
+<li><code>stepIndex(1 の結果, delta, 4)</code> — 動かした位置。端では止まる</li>
+<li><code>DIFFICULTIES[2 の結果]</code> — その位置の難易度</li>
+<li><code>?? difficulty</code> — 無ければ今の難易度のまま</li>
+</ol>
+<p><code>stepIndex</code> を一覧と難易度の両方に使い回しているので、「端で止める」決まりが 1 か所にまとまっています。4 段目の <code>??</code> は L13 と同じく、番号で読んだ値を型の上で必ず <code>Difficulty</code> にするためのものです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="cm">/** 難易度を delta だけ動かす。端では止める。 */</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">stepDifficulty</span><span class="p">(</span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="kt">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="nx">delta</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Difficulty</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">stepIndex</span><span class="p">(</span><span class="nx">DIFFICULTIES</span><span class="p">.</span><span class="nx">indexOf</span><span class="p">(</span><span class="nx">difficulty</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="nx">delta</span><span class="p">,</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">.</span><span class="nx">length</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">difficulty</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

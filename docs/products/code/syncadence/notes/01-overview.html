@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全体像 — 何をするプログラムで、どのファイルがどこを担うか | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html" class="current">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="_1">全体像 — 何をするプログラムで、どのファイルがどこを担うか</h1>
+<h2 id="_2">何をするプログラムか</h2>
+<p>ピアノの名曲を、楽譜から自動で作った譜面で叩くリズムゲームです。ブラウザで動き、パソコンではキーボード、スマホでは画面のタッチで遊べます。</p>
+<figure><img alt="選曲画面。左に曲の一覧、右に選んだ曲の 4 つの難易度と PLAY ボタンが並ぶ" src="../assets/shots/select.webp" /><figcaption>選曲画面。左に曲の一覧、右に選んだ曲の 4 つの難易度と PLAY ボタンが並ぶ</figcaption></figure>
+<figure><img alt="プレイ中の画面。奥から手前へノーツが流れ、手前の判定線で叩く。左上にスコア、右にコンボ、判定線の上に判定の文字" src="../assets/shots/play.webp" /><figcaption>プレイ中の画面。奥から手前へノーツが流れ、手前の判定線で叩く。左上にスコア、右にコンボ、判定線の上に判定の文字</figcaption></figure>
+<p>作りは大きく 2 つに分かれます。</p>
+<ol>
+<li><strong>譜面を作る（Python・事前に 1 回）</strong> — Mutopia Project で公開されているパブリックドメインの楽譜（MIDI と LilyPond）を読み、難易度ごとの譜面と、鳴らす音の一覧を JSON に書き出します（<code>tools/</code>）。</li>
+<li><strong>遊ぶ（TypeScript・ブラウザの中）</strong> — JSON を読み込み、ピアノの音を鳴らしながらノーツを流し、押した時刻を判定します（<code>src/</code>）。</li>
+</ol>
+<p>譜面と音は<strong>同じ楽譜から同じ時間軸で</strong>作られます。ノーツ 1 つ 1 つが「この音を鳴らす」という対応（<code>links</code>）を持っているので、叩いたノーツと鳴っている音が作りの上でずれません。</p>
+<h2 id="_3">データの流れ</h2>
+<pre class="mermaid">flowchart LR
+  M[&quot;Mutopia Project&lt;br/&gt;MIDI + LilyPond&quot;] -- &quot;fetch_sources.py&lt;br/&gt;取得・PD の確認&quot; --&gt; S[&quot;sources/mutopia/&amp;lt;曲&amp;gt;/&quot;]
+  S -- &quot;score.py&lt;br/&gt;テンポ・小節・強拍・右手左手&quot; --&gt; SC[&quot;Score&quot;]
+  SC -- &quot;chart.py&lt;br/&gt;旋律を選ぶ・レーンを決める&quot; --&gt; C[&quot;難易度別の譜面&quot;]
+  SC -- &quot;build_songs.py&quot; --&gt; J[&quot;public/songs/&amp;lt;曲&amp;gt;.json&lt;br/&gt;events（音）+ charts（譜面）&quot;]
+  C --&gt; J
+  P[&quot;FreePats のピアノ音源&quot;] -- &quot;build_samples.py&quot; --&gt; SM[&quot;public/samples/kw/*.mp3&quot;]
+  J -- &quot;load.ts / validate.ts&quot; --&gt; E[&quot;PlayEngine（engine.ts）&quot;]
+  SM -- &quot;sampler.ts&quot; --&gt; E
+  E -- &quot;highway.ts&quot; --&gt; CV[&quot;Canvas の画面&quot;]
+  E -- &quot;Web Audio&quot; --&gt; SP[&quot;スピーカー&quot;]
+  K[&quot;キー・タッチ&quot;] -- &quot;Play.tsx&quot; --&gt; E
+</pre>
+
+<h2 id="_4">どのファイルが何を担うか</h2>
+<h3 id="srcui">画面（<code>src/ui</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../code/src-main.tsx.html">main.tsx</a></td>
+<td>入口。React に <code>App</code> を描かせる</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-App.tsx.html">App.tsx</a></td>
+<td>いまどの画面か（選曲・プレイ・結果・タイミング調整）を持ち、切り替える</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a> / <a href="../code/src-ui-select.ts.html">select.ts</a></td>
+<td>選曲画面。矢印キーで曲と難易度を動かす</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></td>
+<td>プレイ画面。曲を読み込み、毎フレームの進行と描画を回し、キーとタッチを <code>PlayEngine</code> に渡す</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></td>
+<td>結果画面。スコア・ランク・判定の内訳・押した時刻のずれ</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></td>
+<td>タイミング調整。クリック音に合わせて叩いてもらい、端末の遅れを測る</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></td>
+<td>設定の項目（流れる速さ・補正・音量・再生速度など）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srcgame">進行と判定（<code>src/game</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../code/src-game-engine.ts.html">engine.ts</a></td>
+<td>1 回のプレイの司令塔 <code>PlayEngine</code>。開始・一時停止・押下・毎フレームの進行をまとめる</td>
+</tr>
+<tr>
+<td><a href="../code/src-game-session.ts.html">session.ts</a></td>
+<td>どのノーツが判定済みか、コンボ、スコアを持つ <code>GameSession</code></td>
+</tr>
+<tr>
+<td><a href="../code/src-game-judge.ts.html">judge.ts</a></td>
+<td>判定の幅（PERFECT ±42 ms など）とスコアの重み</td>
+</tr>
+<tr>
+<td><a href="../code/src-game-keys.ts.html">keys.ts</a></td>
+<td>キーとレーンの対応（4 レーンは D F J K）</td>
+</tr>
+<tr>
+<td><a href="../code/src-game-rank.ts.html">rank.ts</a> / <a href="../code/src-game-stats.ts.html">stats.ts</a></td>
+<td>ランクの境目、ずれの平均や中央値</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srcaudio">音と時計（<code>src/audio</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../code/src-audio-context.ts.html">context.ts</a></td>
+<td>音を鳴らす土台 <code>AudioContext</code> を 1 つだけ作る</td>
+</tr>
+<tr>
+<td><a href="../code/src-audio-clock.ts.html">clock.ts</a></td>
+<td>「いまスピーカーから聞こえている曲の位置」を出す <code>SongClock</code></td>
+</tr>
+<tr>
+<td><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></td>
+<td>曲の音を 0.4 秒先まで少しずつ予約していく</td>
+</tr>
+<tr>
+<td><a href="../code/src-audio-sampler.ts.html">sampler.ts</a> / <a href="../code/src-audio-regions.ts.html">regions.ts</a></td>
+<td>ピアノの録音を読み込み、音の高さと強さに合わせて鳴らす</td>
+</tr>
+</tbody>
+</table>
+<h3 id="srcrendersrcsong">描画（<code>src/render</code>）と曲データ（<code>src/song</code>）</h3>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../code/src-render-perspective.ts.html">perspective.ts</a></td>
+<td>奥へ細くなるレーンの座標。時刻を「奥行き」に写す</td>
+</tr>
+<tr>
+<td><a href="../code/src-render-highway.ts.html">highway.ts</a></td>
+<td>1 フレーム分の絵（レーン・ノーツ・判定の文字・スコア）を Canvas に描く</td>
+</tr>
+<tr>
+<td><a href="../code/src-song-types.ts.html">types.ts</a> / <a href="../code/src-song-load.ts.html">load.ts</a> / <a href="../code/src-song-validate.ts.html">validate.ts</a></td>
+<td>曲データの形、読み込み、壊れていないかの確認</td>
+</tr>
+<tr>
+<td><a href="../code/src-storage.ts.html">storage.ts</a></td>
+<td>設定と自己ベストをブラウザに保存する</td>
+</tr>
+</tbody>
+</table>
+<h3 id="toolspython">譜面を作る（<code>tools</code>・Python）</h3>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></td>
+<td>楽譜を取得し、ヘッダに「Public Domain」と書かれていない曲は止める</td>
+</tr>
+<tr>
+<td><a href="../code/tools-score.py.html">score.py</a></td>
+<td>MIDI を読み、テンポ・小節線・拍の強さ・右手左手を出す</td>
+</tr>
+<tr>
+<td><a href="../code/tools-chart.py.html">chart.py</a></td>
+<td>楽譜から難易度別の譜面を作る。このゲームのいちばんの工夫</td>
+</tr>
+<tr>
+<td><a href="../code/tools-build_songs.py.html">build_songs.py</a></td>
+<td>曲ごとの JSON と一覧 <code>index.json</code> を書き出す</td>
+</tr>
+<tr>
+<td><a href="../code/tools-build_samples.py.html">build_samples.py</a></td>
+<td>ピアノ音源をブラウザ向けの mp3 に変換する</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">読む順序</h2>
+<ol>
+<li>まず <code>notes/02-from-score</code> と <code>notes/03-one-note</code> で、譜面ができるまでと、ノーツ 1 つが判定されるまでの筋をつかみます。</li>
+<li>次にコードを、プレイの流れに沿って読みます。
+   - 画面の入口: <code>main.tsx</code> → <code>App.tsx</code> → <code>storage.ts</code>
+   - 曲を読む: <code>song/types.ts</code> → <code>song/load.ts</code> → <code>song/validate.ts</code> → <code>SongSelect.tsx</code> → <code>select.ts</code>
+   - プレイ: <code>Play.tsx</code> → <code>engine.ts</code> → <code>keys.ts</code> → <code>session.ts</code> → <code>judge.ts</code>
+   - 音と時計: <code>context.ts</code> → <code>clock.ts</code> → <code>scheduler.ts</code> → <code>sampler.ts</code> → <code>regions.ts</code>
+   - 描画: <code>perspective.ts</code> → <code>highway.ts</code>
+   - 終わったあと: <code>Result.tsx</code> → <code>rank.ts</code> → <code>stats.ts</code> → <code>Calibrate.tsx</code> → <code>SettingsPanel.tsx</code>
+   - 譜面作り: <code>fetch_sources.py</code> → <code>score.py</code> → <code>chart.py</code> → <code>build_songs.py</code> → <code>build_samples.py</code></li>
+<li>知らない書き方が出てきたら <code>notes/05-syntax</code> で引きます。最初に説明したファイルへ飛べます。</li>
+<li>「この数字を変えるとどうなるか」は <code>notes/06-knobs</code> にまとめてあります。</li>
+</ol>
+<h2 id="_6">写したファイルと、写していないもの</h2>
+<p>このキットはコミット <code>eb9c698</code> の 30 ファイルを丸ごと写しています。プレイの筋に関わらないものは外しました。</p>
+<ul>
+<li><code>src/ui/format.ts</code>（秒を「2:10」の形にするなどの小さな整形）と <code>src/ui/SettingsDrawer.tsx</code>（選曲画面の右から出す枠。中に <code>SettingsPanel.tsx</code> と遊び方の説明を入れる）。</li>
+<li><code>tools/inspect_chart.py</code>（作った譜面を確かめるための道具）。</li>
+<li>テスト（<code>src/**/*.test.ts</code>、<code>tools/tests/</code>）、見た目の CSS（<code>src/styles/</code>）、曲データの JSON そのもの。</li>
+</ul>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#_2">何をするプログラムか</a></li><li class="d2"><a href="#_3">データの流れ</a></li><li class="d2"><a href="#_4">どのファイルが何を担うか</a></li><li class="d3"><a href="#srcui">画面（src/ui）</a></li><li class="d3"><a href="#srcgame">進行と判定（src/game）</a></li><li class="d3"><a href="#srcaudio">音と時計（src/audio）</a></li><li class="d3"><a href="#srcrendersrcsong">描画（src/render）と曲データ（src/song）</a></li><li class="d3"><a href="#toolspython">譜面を作る（tools・Python）</a></li><li class="d2"><a href="#_5">読む順序</a></li><li class="d2"><a href="#_6">写したファイルと、写していないもの</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad: true, theme: "neutral"});</script>
+
+</body>
+</html>

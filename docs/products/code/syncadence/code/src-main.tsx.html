@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/main.tsx | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html" class="current">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TSX · 全 12 行</p>
+<h1><code>src/main.tsx</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ブラウザがページを開いたときに最初に動き、画面全体を描く部品 <code>App</code> を HTML の空の箱 <code>&lt;div id="root"&gt;</code> の中に描き始めるだけの、12 行の入口です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>ゲームのすべての画面（選曲・プレイ・結果・タイミング調整）は React という部品の仕組みで描かれます。その一番外側の部品 <code>App</code>（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a>）を、ページの中の決まった場所に取り付けるのが、このファイルの仕事のすべてです。</li>
+<li>見た目の決まりごと（CSS）をまとめて読み込むのもここです（L4）。</li>
+<li>取り付ける場所が見つからなければ、何も描かずにエラーで止めます（L7）。</li>
+<li>拡張子の <code>.tsx</code> は「TypeScript で書かれ、中に JSX（L9-11 の <code>&lt;…&gt;</code> のような HTML に似た書き方）を含むファイル」という意味です。ブラウザは TypeScript も JSX もそのままでは読めないので、開発用の道具 Vite が普通の JavaScript に変換してからブラウザへ渡します。</li>
+</ul>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><code>index.html</code> の <code>&lt;script type="module" src="/src/main.tsx"&gt;</code></td>
+<td>ページを開くと、ブラウザがこのファイルを実行する</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>react</code> の <code>StrictMode</code></td>
+<td>開発中だけ、部品の書き方の誤りを見つけやすくする囲い</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>react-dom/client</code> の <code>createRoot</code></td>
+<td>React の部品を、ページの本物の HTML 要素に描く係を作る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の <code>App</code></td>
+<td>画面全体の部品。どの画面を出すかはここが決める</td>
+</tr>
+<tr>
+<td>読み込む</td>
+<td><code>src/styles/index.css</code>（解説キットには含めていない）</td>
+<td>色・大きさ・配置などの見た目</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L1-3 <code>import { 名前 } from "場所";</code> と、L4 の <code>import "…css";</code> — 別のファイルの部品の取り込み（<code>export</code> との対）</li>
+<li>L6 <code>const root = …;</code> — 変数の宣言</li>
+<li>L7 <code>if (!root) throw new Error("…");</code> — 否定の <code>!</code> と、例外を投げる <code>throw</code>。後ろに付く <code>!</code>（非 null 表明）との違い</li>
+<li>L8-12 <code>&lt;StrictMode&gt; &lt;App /&gt; &lt;/StrictMode&gt;</code> — JSX（JavaScript の中に HTML のような部品の木を書く書き方）</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L6-7: 「描く場所が無ければ止める」。<code>index.html</code> の <code>&lt;div id="root"&gt;&lt;/div&gt;</code> とこの <code>"root"</code> の文字列が対になっています。</li>
+<li>L8: <code>createRoot(場所).render(部品)</code> が、React の世界とブラウザのページをつなぐ唯一の点です。これ以降、画面の書き換えはすべて React が行います。</li>
+<li>L9: <code>StrictMode</code> は開発中だけ部品の初期化を 2 回走らせます。<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L36-40 で曲一覧の読み込みが開発中に 2 回飛ぶのはこのためです。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L4</p><blockquote>
+<p><strong>文法: import と export</strong></p>
+<p>JavaScript や TypeScript では、1 つのファイルが 1 つの「モジュール（部品の入れ物）」です。ほかのファイルから使ってほしいものには、定義の前に <code>export</code> を付けておきます（例: <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L28 <code>export function App() { … }</code>）。使う側は <code>import</code> で取り込みます。</p>
+<p><code>ts
+import { StrictMode } from "react";   // react という入れ物から StrictMode だけを取り出す
+import { App } from "./ui/App";        // このファイルから見て ./ui/App.tsx にある App を取り出す
+import "./styles/index.css";           // 中身を名前で受け取らず、読み込むことだけをする</code></p>
+<ul>
+<li><code>{ }</code> の中には、相手が <code>export</code> した名前を書きます。名前が違えば変換の時点でエラーになります。<code>{ a, b, c }</code> のようにカンマで並べて複数取り出せます。</li>
+<li><code>from</code> の後ろの文字列は「どこから」です。<code>"react"</code> のように <code>.</code> で始まらないものは、<code>npm install</code> で入れたライブラリ（<code>node_modules/</code> の中）を指します。<code>"./ui/App"</code> のように <code>./</code>（同じフォルダ）や <code>../</code>（1 つ上のフォルダ）で始まるものは、このファイルからの相対的な位置です。拡張子 <code>.tsx</code> / <code>.ts</code> は省略できます。</li>
+<li><code>import type { 名前 }</code> や <code>{ type 名前 }</code> と書くと、「型（値の形の決まりごと）だけを取り込み、実行するプログラムには何も残さない」という意味になります（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L2・L4 で出てきます）。</li>
+<li><code>export</code> の前に <code>default</code> が付く書き方もありますが、このゲームのコードでは使っていません。すべて名前付きで <code>export</code> し、名前付きで <code>import</code> しています。</li>
+</ul>
+</blockquote>
+<p>L1-3 は 3 つの部品を取り込みます。</p>
+<ul>
+<li><code>StrictMode</code>（L1）: React 本体に入っている「点検用の囲い」。L9 で使います。</li>
+<li><code>createRoot</code>（L2）: <code>react-dom</code> は React の部品をブラウザのページ（DOM）に描くための別のライブラリです。<code>/client</code> は「ブラウザの中で動かす用」の入口を指します。</li>
+<li><code>App</code>（L3）: このゲームの画面全体。<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L28 で <code>export</code> されています。</li>
+</ul>
+<p>L4 は CSS ファイルを読み込むだけの <code>import</code> です。JavaScript の普通の機能としては CSS を取り込めませんが、Vite がこの書き方を「このページに CSS を足す」と解釈して処理します。名前を受け取らないので <code>{ }</code> も <code>from</code> もありません。CSS はページ全体に効くので、最初に 1 回読み込めば、どの画面の部品にも効きます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">StrictMode</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">createRoot</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react-dom/client&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">App</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./ui/App&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="s2">&quot;./styles/index.css&quot;</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L5–L7</p><blockquote>
+<p><strong>文法: const と let</strong></p>
+<p><code>const 名前 = 値;</code> は変数を作る書き方で、<strong>あとから別の値を入れ直せない</strong>変数になります。入れ直したい変数は <code>let</code> で作ります（<a class="xref" href="src-ui-select.ts.html"><code>src/ui/select.ts</code></a> の L5 <code>let hash = 0;</code>）。このゲームのコードは、ほとんどの変数を <code>const</code> で作っています。値が途中で変わらないと分かっていれば、読むときに「この名前はずっと同じものを指す」と安心して追えるからです。</p>
+<p>文の終わりの <code>;</code> は省略しても動くことが多いのですが、このコードでは必ず付けています。</p>
+<p><strong>文法: 非 null 表明 <code>!</code></strong></p>
+<p><code>!</code> は置く場所で意味がまったく違います。</p>
+<ul>
+<li><strong>前に置く <code>!x</code></strong> は「否定」です。<code>x</code> が「無い」とみなされる値（<code>null</code>、<code>undefined</code>、<code>false</code>、<code>0</code>、空文字 <code>""</code>）なら真になります。L7 の <code>!root</code> はこちらで、「<code>root</code> が見つからなかったら」と読みます。</li>
+<li><strong>後ろに置く <code>x!</code></strong> は TypeScript だけの書き方で、<strong>非 null 表明</strong>と呼びます。「この値は <code>null</code> や <code>undefined</code> ではないと私が保証する」と型の検査に伝え、検査を黙らせます。実行時には何もしません。たとえば <a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a> の L5 <code>sorted[mid]!</code> は「配列のこの位置には必ず数が入っている」と書き手が請け合っています。</li>
+</ul>
+<p>後ろの <code>!</code> は保証が外れていても止まらずに進んでしまうので、L6-7 のように本当に確かめて止めるほうが安全です。L6 を <code>document.getElementById("root")!</code> と書けば L7 は要らなくなりますが、<code>index.html</code> から <code>&lt;div id="root"&gt;</code> が消えたときに、原因の分かりにくいエラーが別の場所で出ることになります。</p>
+<p><strong>文法: 例外を投げる throw</strong></p>
+<p><code>throw new Error("説明");</code> は、その場で処理を打ち切って「失敗した」と知らせる書き方です。<code>new Error(…)</code> で失敗の説明を持った物（エラーオブジェクト）を作り、<code>throw</code> で投げます。投げられたエラーは、受け止める仕組み（<code>try</code> / <code>catch</code>、<a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> で説明）が無ければ、そこで実行が止まり、ブラウザの開発者ツールにメッセージが出ます。</p>
+</blockquote>
+<p>L6 の <code>document</code> は、ブラウザが用意している「いま開いているページそのもの」を表す物です。ページの HTML はブラウザの中で要素の木（DOM と呼びます）になっていて、<code>document.getElementById("root")</code> はその木から <code>id="root"</code> の要素を 1 つ探して返します。見つからなければ <code>null</code>（「何も無い」を表す値）が返ります。</p>
+<p>探している要素は <code>index.html</code> の <code>&lt;div id="root"&gt;&lt;/div&gt;</code> です。中身が空の箱で、L8 以降で React がこの中に画面を描きます。</p>
+<p>TypeScript は、<code>getElementById</code> の結果が「HTML の要素か <code>null</code> のどちらか」だと知っています。L7 の <code>if</code> で <code>null</code> の場合を <code>throw</code> で抜けさせると、L8 の時点では <code>root</code> が <code>null</code> ではないと TypeScript が理解し、<code>createRoot(root)</code> を許します。このように、<code>if</code> で場合を絞ると型も絞られる仕組みを<strong>型の絞り込み</strong>と呼びます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">root</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s2">&quot;root&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">root</span><span class="p">)</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="ne">Error</span><span class="p">(</span><span class="s2">&quot;#root がありません&quot;</span><span class="p">)</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L8–L12</p><blockquote>
+<p><strong>文法: JSX</strong></p>
+<p><code>&lt;StrictMode&gt;</code> や <code>&lt;App /&gt;</code> のように、JavaScript の式の中に HTML に似たタグを書く書き方を JSX と呼びます。ファイルの拡張子が <code>.tsx</code>（JavaScript なら <code>.jsx</code>）のときだけ書けます。見た目は HTML ですが文字列ではなく、変換すると関数呼び出しになります。</p>
+<p><code>tsx
+&lt;StrictMode&gt;
+  &lt;App /&gt;
+&lt;/StrictMode&gt;</code></p>
+<p>は、おおよそ次のように変換されます。</p>
+<p><code>ts
+jsx(StrictMode, { children: jsx(App, {}) })</code></p>
+<p>読み方の決まり:</p>
+<ul>
+<li><strong>先頭が小文字のタグ</strong>（<code>&lt;div&gt;</code>、<code>&lt;button&gt;</code>、<code>&lt;p&gt;</code>）は HTML の本物の要素になります。<strong>先頭が大文字のタグ</strong>（<code>&lt;App&gt;</code>、<code>&lt;StrictMode&gt;</code>）は、自分たちや React が作った「部品（コンポーネント）」を使う、という意味です。</li>
+<li><code>&lt;App /&gt;</code> のように <code>/&gt;</code> で閉じるのは「中身の無いタグ」です。中身があるときは <code>&lt;StrictMode&gt; … &lt;/StrictMode&gt;</code> と開きと閉じで挟みます。挟んだ中身は、部品の側からは <code>children</code> という名前で受け取れます。</li>
+<li>タグには <code>名前={値}</code> の形で値を渡せます（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L80 <code>songId={screen.songId}</code>）。<code>{ }</code> の中には JavaScript の式を何でも書けます。文字列なら <code>className="song-row"</code> のように <code>" "</code> だけでも書けます。</li>
+<li>HTML の <code>class</code> は、JavaScript の予約語と重なるので JSX では <code>className</code> と書きます。<code>onclick</code> は <code>onClick</code> のように単語の区切りを大文字にします。</li>
+<li>全体を <code>( )</code> で囲むのは、複数行にまたがる JSX を 1 つの式として扱わせるためです（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L77-87）。</li>
+</ul>
+<p>部品の作り方と値の受け取り方は <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の「関数コンポーネントと props」で説明します。</p>
+</blockquote>
+<p>L8 は 2 段で読みます。</p>
+<ol>
+<li><code>createRoot(root)</code> — L6 で見つけた <code>&lt;div id="root"&gt;</code> を受け持つ「描画係」を作る</li>
+<li><code>.render( … )</code> — その描画係に「この部品の木を描いて」と頼む</li>
+</ol>
+<p><code>.</code> でつないで、作ったものにすぐ次の命令を出しています。</p>
+<p>描く木は L9-11 の「<code>StrictMode</code> の中に <code>App</code>」です。<code>App</code> が画面全体を作り、どの画面を出すかの切り替えも <code>App</code> の中で行います（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L75-120）。この <code>render</code> は 1 回呼ぶだけです。あとは <code>App</code> の中の状態が変わるたびに、React が必要な部分だけページを書き換えます。</p>
+<p><code>StrictMode</code> は開発中（<code>npm run dev</code> で動かしているとき）だけ働く点検用の囲いで、画面には何も出しません。部品を作るときの処理や、<code>useEffect</code>（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> で説明）の処理をわざと 2 回走らせ、「2 回走ると壊れる書き方」を早く見つけられるようにします。公開した版（<code>npm run build</code> で作ったもの）では 2 回走りません。</p>
+<p>L11 の <code>&lt;/StrictMode&gt;,</code> の後ろのカンマは、<code>render(</code> に渡す引数の最後に付けた「余分なカンマ」です。付けても付けなくても意味は同じで、引数を足したときに差分が 1 行で済むよう、整形の道具が付けています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="nx">createRoot</span><span class="p">(</span><span class="nx">root</span><span class="p">)</span><span class="p">.</span><span class="nx">render</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="w">  </span><span class="p">&lt;</span><span class="nt">StrictMode</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;</span><span class="nt">App</span><span class="w"> </span><span class="p">/</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="p">&lt;/</span><span class="nt">StrictMode</span><span class="p">&gt;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="p">)</span><span class="p">;</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

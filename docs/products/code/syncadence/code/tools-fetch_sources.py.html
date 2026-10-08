@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tools/fetch_sources.py | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html" class="current">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">Python · 全 102 行</p>
+<h1><code>tools/fetch_sources.py</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>Mutopia Project から曲ごとの楽譜（LilyPond の <code>.ly</code>）と MIDI を取ってきて、楽譜のヘッダに「Public Domain」と書かれていない曲を止める、取り込みの入口のファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>曲の目録 <code>tools/songs.json</code> を読み、曲 ID と Mutopia 上のパスが安全な文字だけでできているかを確かめる（<code>load_catalog</code>、L32-39）。</li>
+<li>Mutopia の配布サーバ（<code>https://www.mutopiaproject.org/ftp/</code>）からだけ <code>.ly</code> と <code>.mid</code> を取る（<code>download</code>、L42-47 と <code>fetch_song</code> の L60-64）。</li>
+<li><code>.ly</code> のヘッダに <code>license = "Public Domain"</code> か <code>copyright = "Public Domain"</code> があるかを確かめ、無ければ例外で止める（L66-68）。</li>
+<li>出どころの URL、浄書者、底本、ファイルの SHA-256、確認日を <code>sources/mutopia/&lt;曲ID&gt;/meta.json</code> に書く（L70-87）。</li>
+</ul>
+<p>ここで取ったファイルを、<a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> が譜面と音のデータに変えます。手で 1 回動かす道具で、ゲームの実行中には動きません。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td>人がコマンドで <code>python tools/fetch_sources.py [--force]</code></td>
+<td>曲を増やしたとき、取り直したいとき（docs/design.md の 9 節）</td>
+</tr>
+<tr>
+<td>読む</td>
+<td><code>tools/songs.json</code></td>
+<td>曲 ID・Mutopia の ID・パス</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>Mutopia の配布サーバ（<code>urllib.request</code>）</td>
+<td><code>.ly</code> と <code>.mid</code> の取得</td>
+</tr>
+<tr>
+<td>書く</td>
+<td><code>sources/mutopia/&lt;id&gt;/</code> の <code>.ly</code>・<code>.mid</code>・<code>meta.json</code></td>
+<td>後段の材料と、出どころの記録</td>
+</tr>
+<tr>
+<td>読まれる</td>
+<td><a class="xref" href="tools-build_songs.py.html"><code>tools/build_songs.py</code></a> の L30・L79、<code>tools/tests/test_chart.py</code></td>
+<td><code>meta.json</code> からファイル名と、画面に出すクレジット（浄書者・ライセンス）を取る</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mutopia-public-domain">なぜ Mutopia の Public Domain の楽譜だけを使うのか</h2>
+<p>曲の権利は層に分かれています（docs/research/04-assets-and-licenses.md の 1 節）。</p>
+<table>
+<thead>
+<tr>
+<th>層</th>
+<th>このゲームでの扱い</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>作曲</td>
+<td>作曲者の死後 70 年で切れる。収録曲の作曲者で最も遅いサティ（1925 年没）でも切れている</td>
+</tr>
+<tr>
+<td>楽譜データ（浄書・入力した人の仕事）</td>
+<td><strong>ここを確かめる必要がある。</strong> このファイルの検査はこの層のためのもの</td>
+</tr>
+<tr>
+<td>録音・演奏</td>
+<td>使わない。音は楽譜から合成する</td>
+</tr>
+<tr>
+<td>ピアノの音源</td>
+<td>CC0 の FreePats を使う（<a class="xref" href="tools-build_samples.py.html"><code>tools/build_samples.py</code></a>）</td>
+</tr>
+</tbody>
+</table>
+<p>Mutopia の楽譜は曲ごとにライセンスが違い、Public Domain のほかに CC 系（表示や継承の条件が付くもの）もあります。Public Domain だけに絞れば、楽譜から作った譜面や曲データに条件が付かず、「権利の確認が楽譜の版だけで済む」（docs/design.md の 1 節）。※ 推測: CC 系を受け入れると、条件の確認と表示を曲ごとに管理する手間が増えるので、最初から入口で断る形にしたと考えられます。</p>
+<p>この検査は<strong>通らなければ止まる</strong>側に倒してあります。ヘッダが見つからない、綴りが違う（<code>Public domain</code> など）、といった場合はすべて失敗になり、曲は取り込まれません。</p>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L1-8 <code>"""…"""</code> — ドキュメント文字列</li>
+<li>L10 <code>from __future__ import annotations</code> — 型注釈を実行時に評価しない指定</li>
+<li>L12-19 <code>import …</code> / <code>from … import …</code>、L32 <code>def …</code>、L32 <code>-&gt; list[dict]</code>、字下げ — Python の基本</li>
+<li>L21 <code>Path(__file__).resolve().parent.parent</code>、L22 <code>ROOT / "tools"</code> — パスの組み立て</li>
+<li>L26 <code>re.compile(r"…")</code> — 正規表現と生文字列</li>
+<li>L33 <code>json.loads(...)</code>、L35 <code>song["id"]</code> — 辞書とリスト</li>
+<li>L36 <code>raise ValueError(...)</code> — 例外を投げる</li>
+<li>L36 <code>f"… {song['id']!r}"</code> — f 文字列</li>
+<li>L45 <code>headers={...}</code> — キーワード引数</li>
+<li>L46 <code>with … as response:</code> — with 文</li>
+<li>L50 <code>-&gt; str | None</code>、L52 <code>A if 条件 else B</code> — <code>None</code> と条件式</li>
+<li>L56 <code>.rsplit("/", 1)[-1]</code> — 負の添字</li>
+<li>L60 <code>("ly", "mid")</code> — タプル</li>
+<li>L62 <code>force or not target.exists()</code> — <code>or</code> と <code>not</code></li>
+<li>L77-84 <code>{ext: {...} for ext, path in files.items()}</code> — 辞書内包表記</li>
+<li>L101 <code>if __name__ == "__main__":</code> — 直接実行されたときだけ動く部分</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>PD_HEADER</code>（L28）と、それを使う L67-68。この 2 か所が「Public Domain でない曲は入れない」という方針の実体です。</li>
+<li><code>SAFE_ID</code>・<code>SAFE_PATH</code>（L26-27）と <code>download</code> の L43-44。外から来る文字列（目録の中身）を、ファイルの置き場所と URL に使う前に絞っています。</li>
+<li><code>meta</code>（L70-86）。何をどこから、いつ、どの中身（ハッシュ）で取ったかの記録です。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>検査に落ちてもファイルは残る。</strong> <code>.ly</code> と <code>.mid</code> は L63 で先に保存され、検査（L67）はその後です。落ちた曲のフォルダには <code>.ly</code> と <code>.mid</code> があって <code>meta.json</code> が無い状態になり、<code>build_songs.py</code> はその曲の <code>meta.json</code> を読もうとして（L79）止まります。</li>
+<li><strong>1 曲が落ちると、後の曲は取られない。</strong> L68 の例外をどこも受け止めないので、<code>main</code> のループ（L95）がそこで終わります。</li>
+<li><strong>既にあるファイルは中身を確かめ直さない。</strong> <code>--force</code> を付けない限り、ローカルにあるファイルをそのまま使い（L62）、そのハッシュを記録します。前回の取得と同じ中身かどうかは比べていません。</li>
+<li><strong><code>verifiedOn</code> は実行した日になる。</strong> ファイルを取り直さなかったときも L85 で今日の日付が書かれるので、実行するたびに <code>meta.json</code> に差分が出ます。</li>
+<li><strong>ヘッダの検査はファイル全体が対象。</strong> L28 の <code>re.MULTILINE</code> によって「どこかの行頭に <code>license = "Public Domain"</code> がある」で通るので、<code>\header { … }</code> の中かどうかまでは見ていません。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L9</p><blockquote>
+<p><strong>文法: ドキュメント文字列</strong></p>
+<p><code>"""</code> から <code>"""</code> までは、改行を含められる文字列です。ファイルや関数の先頭に置くと、Python はそれを説明書き（docstring）として扱い、実行しても何も起きません。このファイルでは L92 の <code>__doc__</code> がこの文字列を指していて、<code>--help</code> を付けて動かしたときの説明文になります。</p>
+</blockquote>
+<p>ファイルの仕様が 3 点に要約されています。</p>
+<ol>
+<li>取得先は Mutopia の配布サーバに固定する（L5）。L24 の <code>BASE_URL</code> と L43 の検査で守る。</li>
+<li>ヘッダに Public Domain の宣言が無い曲は失敗させる（L6）。L28 と L67。</li>
+<li>保存先と、出どころ・ハッシュの記録（L7）。L57 と L70-87。</li>
+</ol></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;Mutopia Project から MIDI と LilyPond ソースを取得し、パブリックドメインであることを確かめる。</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="sd">使い方: python tools/fetch_sources.py [--force]</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="sd">- 取得先は https://www.mutopiaproject.org/ftp/ に固定する。</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="sd">- .ly のヘッダに `license = &quot;Public Domain&quot;` か `copyright = &quot;Public Domain&quot;` が無い曲は失敗させる。</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="sd">- 取得物は sources/mutopia/&lt;id&gt;/ に保存し、meta.json に出どころとハッシュを書く。</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="sd">&quot;&quot;&quot;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L20</p><blockquote>
+<p><strong>文法: Python の基本（import・def・型注釈・字下げ）</strong></p>
+<p>Python のファイルを読むのに最低限要る 4 つです。このキットの Python のファイル（<code>tools/*.py</code>）はすべてこれを前提にしています。</p>
+<p><strong>import</strong> — ほかのファイルや標準の部品集（モジュール）を取り込みます。</p>
+<ul>
+<li><code>import json</code> は「<code>json</code> というモジュールを取り込み、<code>json.loads(...)</code> のように <code>json.名前</code> で中身を使えるようにする」。</li>
+<li><code>from pathlib import Path</code> は「<code>pathlib</code> の中から <code>Path</code> だけを取り出し、<code>Path</code> と直接書けるようにする」。</li>
+<li><code>import urllib.request</code> のように <code>.</code> でつないだ名前は、<code>urllib</code> の中の <code>request</code> という下位のモジュールです。使うときも <code>urllib.request.urlopen(...)</code> と全部書きます。</li>
+</ul>
+<p><strong>def</strong> — 関数を作ります。</p>
+<p><code>python
+def header_field(ly_text: str, name: str) -&gt; str | None:
+    match = ...
+    return ...</code></p>
+<p><code>def 名前(引数, …):</code> の行で始まり、<code>return 値</code> で呼び出し元に値を返します。<code>return</code> に来ずに最後まで進むと <code>None</code>（値が無いことを表す特別な値）を返します。</p>
+<p><strong>型注釈</strong> — <code>ly_text: str</code> の <code>: str</code> は「この引数には文字列が来る」、<code>-&gt; str | None</code> は「戻り値は文字列か <code>None</code>」という<strong>注記</strong>です。Python は実行時にこれを確かめません（違う型を渡しても動いてしまう）。読む人と、型を検査する道具のための目印です。よく出る型の名前:</p>
+<table>
+<thead>
+<tr>
+<th>書き方</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code> / <code>float</code></td>
+<td>整数 / 小数</td>
+</tr>
+<tr>
+<td><code>str</code> / <code>bytes</code></td>
+<td>文字列 / バイト列（ファイルの生の中身）</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td><code>True</code> か <code>False</code></td>
+</tr>
+<tr>
+<td><code>list[dict]</code></td>
+<td>辞書（後述）を並べたリスト</td>
+</tr>
+<tr>
+<td><code>A \| B</code></td>
+<td>A か B のどちらか</td>
+</tr>
+</tbody>
+</table>
+<p><strong>字下げ</strong> — Python は <code>{ }</code> を使わず、<strong>行頭の空白の深さ</strong>で「どこからどこまでが関数や if の中身か」を決めます。<code>:</code> で終わる行（<code>def …:</code>、<code>if …:</code>、<code>for …:</code>）の次の行から、1 段深く下げた行が続く間がその中身です。深さを戻した行で中身が終わります。空白の数を間違えると、意味が変わるかエラーになります。</p>
+<p><strong>文法: <code>from __future__ import annotations</code></strong></p>
+<p>型注釈（<code>-&gt; str | None</code> など）を、関数を定義した時点では評価せず、文字列のまま持っておくよう指示する 1 行です。これがあると、古い版の Python が知らない <code>str | None</code> のような新しい書き方を注釈に書いてもエラーになりません。ファイルの先頭（docstring の直後）にしか置けません。</p>
+</blockquote>
+<p>取り込んでいるのはすべて Python に最初から付いている標準のモジュールです（追加のインストールは要りません）。</p>
+<table>
+<thead>
+<tr>
+<th>モジュール</th>
+<th>このファイルでの使い道</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>argparse</code></td>
+<td>コマンドの引数（<code>--force</code>）を読む（L92-94）</td>
+</tr>
+<tr>
+<td><code>hashlib</code></td>
+<td>ファイルの SHA-256 を計算する（L81）</td>
+</tr>
+<tr>
+<td><code>json</code></td>
+<td><code>songs.json</code> を読み、<code>meta.json</code> を書く</td>
+</tr>
+<tr>
+<td><code>re</code></td>
+<td>正規表現（L26-29）</td>
+</tr>
+<tr>
+<td><code>sys</code></td>
+<td>終了コードを返す（L102）</td>
+</tr>
+<tr>
+<td><code>urllib.request</code></td>
+<td>HTTP でファイルを取る（L45-47）</td>
+</tr>
+<tr>
+<td><code>datetime.date</code></td>
+<td>今日の日付（L85）</td>
+</tr>
+<tr>
+<td><code>pathlib.Path</code></td>
+<td>ファイルの場所を扱う（L21-23）</td>
+</tr>
+</tbody>
+</table></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">json</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">re</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="kn">import</span><span class="w"> </span><span class="nn">urllib</span><span class="nn">.</span><span class="nn">request</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">date</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L21–L25</p><blockquote>
+<p><strong>文法: パスの組み立て（<code>Path</code> と <code>/</code>）</strong></p>
+<p><code>Path</code> はファイルやフォルダの場所を表す物（オブジェクト）です。</p>
+<ul>
+<li><code>__file__</code> は Python が用意する変数で、いま実行しているファイル自身の場所（ここでは <code>tools/fetch_sources.py</code>）。</li>
+<li><code>.resolve()</code> はそれを絶対パスに直し、<code>.parent</code> は 1 つ上のフォルダ。<code>.parent.parent</code> で 2 つ上です。このように <code>.</code> で処理をつないでいく書き方を「メソッドの連鎖」と呼び、左から順に評価されます。</li>
+<li><code>Path</code> どうし、または <code>Path</code> と文字列を <code>/</code> でつなぐと、フォルダの区切りを足した新しい <code>Path</code> になります（割り算ではありません）。OS が Windows でも同じ書き方で済みます。</li>
+</ul>
+</blockquote>
+<p>L21 は <code>tools/fetch_sources.py</code> → <code>tools/</code> → リポジトリの一番上、と 2 段上がるので、<code>ROOT</code> はリポジトリの根です。そこから:</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>場所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CATALOG</code></td>
+<td><code>tools/songs.json</code>（曲の目録）</td>
+</tr>
+<tr>
+<td><code>OUT_DIR</code></td>
+<td><code>sources/mutopia/</code>（取ったファイルの置き場）</td>
+</tr>
+<tr>
+<td><code>BASE_URL</code></td>
+<td>Mutopia の配布サーバ。ファイルはすべてこの下から取る</td>
+</tr>
+</tbody>
+</table>
+<p>名前が全部大文字なのは「ファイル全体で使う定数」という慣習です。Python が書き換えを禁止するわけではありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="n">ROOT</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">parent</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="n">CATALOG</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">tools</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">songs.json</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="n">OUT_DIR</span> <span class="o">=</span> <span class="n">ROOT</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">sources</span><span class="s2">&quot;</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">mutopia</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="n">BASE_URL</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="s2">https://www.mutopiaproject.org/ftp/</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L26–L31</p><blockquote>
+<p><strong>文法: 正規表現と生文字列 <code>r"…"</code></strong></p>
+<p><code>re.compile(パターン)</code> は、文字列の「形」を表す<strong>正規表現</strong>を、何度も使える検査器にしておく関数です。<code>.match(文字列)</code> は先頭から形に合うかを、<code>.search(文字列)</code> はどこかに合う部分があるかを調べ、合えば一致の情報（<code>Match</code>）、合わなければ <code>None</code> を返します。</p>
+<p>文字列の前の <code>r</code> は「生文字列」の印で、<code>\</code> を特別扱いしません。正規表現では <code>\s</code>（空白）や <code>\-</code>（ハイフンそのもの）のように <code>\</code> を多用するので、ふつうの文字列だと <code>\\s</code> と二重に書く必要があり、それを避けるためです。</p>
+</blockquote>
+<p>4 つのパターンを分解します。</p>
+<p><strong><code>SAFE_PATH</code>（L26）</strong> — Mutopia 上のフォルダのパス用。</p>
+<ol>
+<li><code>^</code> 先頭から</li>
+<li><code>[A-Za-z0-9_\-]+</code> 英数字・<code>_</code>・<code>-</code> が 1 文字以上（<code>+</code> は「1 回以上」）</li>
+<li><code>(/[A-Za-z0-9_\-]+)*</code> 「<code>/</code> と同じ文字の並び」の組が 0 回以上（<code>*</code> は「0 回以上」）</li>
+<li><code>$</code> 末尾まで</li>
+</ol>
+<p><code>.</code> が使えないので <code>..</code>（上のフォルダへ戻る）は書けず、<code>/</code> で始めることも終えることもできません。例 <code>BeethovenLv/WoO59/fur_Elise_WoO59</code> は通ります。</p>
+<p><strong><code>SAFE_ID</code>（L27）</strong> — 曲 ID 用。英小文字・数字・<code>-</code> だけ。曲 ID は保存先のフォルダ名（L57）と、ブラウザが読む <code>public/songs/&lt;id&gt;.json</code> の名前になります。ブラウザ側の <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> も同じ形（docs/design.md の 3 節では <code>^[a-z0-9-]{1,64}$</code>）を確かめます。</p>
+<p><strong><code>PD_HEADER</code>（L28）</strong> — Public Domain の宣言。</p>
+<ol>
+<li><code>^\s*</code> 行頭と、0 個以上の空白（字下げ）</li>
+<li><code>(license|copyright)</code> <code>license</code> か <code>copyright</code>（<code>|</code> は「または」）</li>
+<li><code>\s*=\s*</code> 空白をはさんだ <code>=</code></li>
+<li><code>"Public Domain"</code> この綴りそのもの（大文字小文字も区別）</li>
+</ol>
+<p><code>re.MULTILINE</code> を付けると、<code>^</code> が「文字列全体の先頭」ではなく「各行の先頭」を意味するようになります。<code>.ly</code> のヘッダは <code>\header { … }</code> の中に 1 行ずつ <code>title = "…"</code> の形で並ぶので、行ごとに見る必要があります。</p>
+<p><code>copyright</code> も受け付けるのは、Mutopia の古い版の楽譜が <code>copyright = "Public Domain"</code> と書くためです（docs/research/04-assets-and-licenses.md の 2 節）。収録 12 曲のうち、たとえば <code>arabesque-1</code> や <code>clair-de-lune</code> は <code>copyright</code>、<code>fur-elise</code> や <code>gymnopedie-1</code> は <code>license</code> の形です。<code>fur-elise</code> には <code>copyright = \markup { … }</code> という行もありますが、<code>=</code> の後が <code>"Public Domain"</code> ではないのでこちらは一致せず、<code>license</code> の行で通ります。</p>
+<p><strong><code>HEADER_FIELD</code>（L29）</strong> — <code>re.compile</code> していない、ただの文字列です。<code>{name}</code> の所に後で項目名を入れて（L51）使います。<code>"([^"]*)"</code> の <code>( )</code> は「この部分を取り出す」印（グループ）で、<code>[^"]*</code> は「<code>"</code> 以外の文字が 0 個以上」。つまり引用符の中身を取り出します。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="n">SAFE_PATH</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;</span><span class="s2">^[A-Za-z0-9_</span><span class="s2">\</span><span class="s2">-]+(/[A-Za-z0-9_</span><span class="s2">\</span><span class="s2">-]+)*$</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="n">SAFE_ID</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;</span><span class="s2">^[a-z0-9</span><span class="s2">\</span><span class="s2">-]+$</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="n">PD_HEADER</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s1">&#x27;</span><span class="s1">^</span><span class="s1">\</span><span class="s1">s*(license|copyright)</span><span class="s1">\</span><span class="s1">s*=</span><span class="s1">\</span><span class="s1">s*</span><span class="s1">&quot;</span><span class="s1">Public Domain</span><span class="s1">&quot;</span><span class="s1">&#x27;</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="n">HEADER_FIELD</span> <span class="o">=</span> <span class="sa">r</span><span class="s1">&#x27;</span><span class="s1">^</span><span class="s1">\</span><span class="s1">s*</span><span class="si">{name}</span><span class="s1">\</span><span class="s1">s*=</span><span class="s1">\</span><span class="s1">s*</span><span class="s1">&quot;</span><span class="s1">([^</span><span class="s1">&quot;</span><span class="s1">]*)</span><span class="s1">&quot;</span><span class="s1">&#x27;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L32–L41</p><blockquote>
+<p><strong>文法: リストと辞書</strong></p>
+<ul>
+<li><strong>リスト</strong> <code>[a, b, c]</code> は順番付きの並び。<code>songs[0]</code> で先頭、<code>for song in songs:</code> で 1 つずつ取り出せます。</li>
+<li><strong>辞書（dict）</strong> <code>{"id": "fur-elise", "path": "…"}</code> は「キー → 値」の対応表。<code>song["id"]</code> でキー <code>"id"</code> の値を取ります。無いキーを <code>[ ]</code> で取ると例外（<code>KeyError</code>）になります。</li>
+</ul>
+<p><code>json.loads(文字列)</code> は JSON の文字列を、Python のリストと辞書の組み合わせに変換します。<code>songs.json</code> は <code>[ {…}, {…} ]</code> の形なので、<code>songs</code> は「辞書のリスト」になります。型注釈 <code>list[dict]</code> はこのことを表しています。</p>
+<p><strong>文法: <code>raise</code> による例外</strong></p>
+<p><code>raise ValueError("…")</code> は、処理をその場で打ち切り、エラー（例外）を呼び出し元へ投げます。受け止める処理（<code>try</code> / <code>except</code>）がどこにも無ければ、プログラムはエラーの説明を表示して止まります。<code>ValueError</code> は「値が不正」、L68 の <code>RuntimeError</code> は「実行中の一般的な異常」を表す、標準の例外の種類です。</p>
+<p><strong>文法: f 文字列</strong></p>
+<p>文字列の前に <code>f</code> を付けると、<code>{ }</code> の中に書いた式の値が埋め込まれます。<code>f"invalid song id: {song['id']!r}"</code> は、<code>song['id']</code> の値をその場で文字列にして差し込みます。<code>!r</code> は「<code>repr</code> で表示する」指定で、文字列なら <code>'fur elise'</code> のように引用符付きになります。空白や見えにくい文字が混ざっていても、どこからどこまでが値か分かるようにするためです。</p>
+<p>f 文字列の外側を <code>"</code> で囲んでいるので、内側のキーは <code>'id'</code> と別の引用符で書いています。</p>
+</blockquote>
+<p><code>load_catalog</code> は目録を読み、全曲の ID とパスを L26-27 の形で確かめてから返します。</p>
+<ul>
+<li><code>CATALOG.read_text(encoding="utf-8")</code> で <code>songs.json</code> を文字列として読み、<code>json.loads</code> でリストにする。</li>
+<li>1 曲でも形が違えば、L36 か L38 の例外で、何も取りに行く前に止まる。</li>
+</ul>
+<p><code>.match</code> は先頭から形に合うかを見ます。L26-27 のパターンは <code>$</code> で終わるので、全体が合わないと <code>None</code> になり、<code>not None</code> は真なので例外に進みます。</p>
+<blockquote>
+<p><strong>文法: <code>not</code></strong></p>
+<p><code>not x</code> は真偽を反転します。Python では <code>None</code>・<code>0</code>・空の文字列・空のリストは「偽」として扱われるので、<code>not SAFE_ID.match(...)</code> は「一致しなかったら」と読めます。</p>
+</blockquote>
+<p>ID とパスを確かめる理由は、どちらも外から来た文字列をそのままファイルの場所（L57）と URL（L63）に使うからです。<code>../</code> のような値が目録に紛れ込むと、リポジトリの外にファイルを書いたり、Mutopia 以外を指したりできてしまいます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">load_catalog</span><span class="p">(</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">    <span class="n">songs</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">CATALOG</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl">    <span class="k">for</span> <span class="n">song</span> <span class="ow">in</span> <span class="n">songs</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">SAFE_ID</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="s2">invalid song id: </span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">id</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl">        <span class="k">if</span> <span class="ow">not</span> <span class="n">SAFE_PATH</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">path</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="s2">invalid mutopia path: </span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">path</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl">    <span class="k">return</span> <span class="n">songs</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L42–L49</p><blockquote>
+<p><strong>文法: キーワード引数</strong></p>
+<p><code>urllib.request.Request(url, headers={...})</code> の <code>headers=…</code> のように、引数を「名前=値」で渡す書き方です。順番に頼らないので、何を渡しているかが読んで分かります。L33 の <code>encoding="utf-8"</code>、L46 の <code>timeout=60</code> も同じです。</p>
+<p><strong>文法: with 文</strong></p>
+<p><code>with A as x:</code> は「A を開いて <code>x</code> と呼び、下の字下げの中が終わったら（途中でエラーが起きても）必ず閉じる」書き方です。ここでは HTTP の接続 <code>response</code> を、読み終えたら確実に閉じるために使っています。中で <code>return</code> しても閉じる処理は走ります。</p>
+</blockquote>
+<p><code>download</code> は URL から中身をバイト列で取ってきます。</p>
+<ol>
+<li>L43: URL が <code>BASE_URL</code>（Mutopia の配布サーバ）で始まらなければ、取らずに例外。L37-38 でパスを確かめていても、URL を組み立てる所でもう一度確かめる二重の守りです。</li>
+<li>L45: 要求を作る。<code>User-Agent</code> は「誰が取りに来たか」をサーバに名乗る見出しで、ここではこの道具の名前を名乗っています。</li>
+<li>L46: 接続して、60 秒で応答が無ければ例外（<code>timeout=60</code>）。</li>
+<li>L47: 中身を全部読んで返す。</li>
+</ol>
+<p>戻り値の型 <code>bytes</code> は文字列ではなく生のバイト列です。<code>.mid</code> は文字ではないので、ここでは文字に直さずに扱います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">download</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">bytes</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl">    <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">BASE_URL</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl">        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="s2">refusing to fetch outside Mutopia: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl">    <span class="n">request</span> <span class="o">=</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">Request</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;</span><span class="s2">User-Agent</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">syncadence-v2 source fetcher</span><span class="s2">&quot;</span><span class="p">}</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl">    <span class="k">with</span> <span class="n">urllib</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">urlopen</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl">        <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L50–L54</p><blockquote>
+<p><strong>文法: <code>None</code> と条件式 <code>A if 条件 else B</code></strong></p>
+<p><code>None</code> は「値が無い」を表す特別な値で、型注釈 <code>str | None</code> は「文字列か、値が無いか」です。</p>
+<p><code>match.group(1) if match else None</code> は、<code>match</code> が真（一致があった）なら <code>match.group(1)</code>、偽（<code>None</code>）なら <code>None</code>、という 1 行の if です。評価の順は <strong>条件 → 選ばれた側</strong>で、選ばれなかった側は計算されません。<code>match</code> が <code>None</code> のときに <code>match.group(1)</code> を呼ぶとエラーになるので、この順序が大事です。</p>
+</blockquote>
+<p><code>header_field</code> は <code>.ly</code> のヘッダから、指定した項目の値を取り出します。</p>
+<ol>
+<li><code>HEADER_FIELD.format(name=name)</code> で、L29 の <code>{name}</code> を項目名に置き換える。<code>name="maintainer"</code> なら <code>^\s*maintainer\s*=\s*"([^"]*)"</code> になる。</li>
+<li><code>re.search(…, ly_text, re.MULTILINE)</code> で、行頭からその形の行を探す。</li>
+<li>見つかれば <code>group(1)</code>（L29 の <code>( )</code> で囲んだ部分＝引用符の中身）を返す。</li>
+</ol>
+<p>L75-76 で浄書者（<code>maintainer</code>）と底本（<code>source</code>）を取るのに使います。<code>fur-elise</code> ならそれぞれ <code>Stelios Samelis</code> と <code>Breitkopf &amp; Härtel, 1888</code> です。項目が無い楽譜では <code>None</code> が返り、<code>meta.json</code> には <code>null</code> と書かれます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">header_field</span><span class="p">(</span><span class="n">ly_text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">    <span class="n">match</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">HEADER_FIELD</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span><span class="p">,</span> <span class="n">ly_text</span><span class="p">,</span> <span class="n">re</span><span class="o">.</span><span class="n">MULTILINE</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl">    <span class="k">return</span> <span class="n">match</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">match</span> <span class="k">else</span> <span class="kc">None</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L55–L65</p><blockquote>
+<p><strong>文法: 負の添字</strong></p>
+<p>リストや文字列の <code>[-1]</code> は「最後の要素」、<code>[-2]</code> は「後ろから 2 番目」です。</p>
+<p><code>"BeethovenLv/WoO59/fur_Elise_WoO59".rsplit("/", 1)</code> は、<strong>右から</strong> <code>/</code> で <strong>1 回だけ</strong>切って <code>["BeethovenLv/WoO59", "fur_Elise_WoO59"]</code> を返します。その <code>[-1]</code> で最後の部分 <code>fur_Elise_WoO59</code> が取れます。</p>
+<p><strong>文法: タプル</strong></p>
+<p><code>("ly", "mid")</code> のように <code>( )</code> で囲んで <code>,</code> で区切った並びです。リストと似ていますが、作った後に中身を変えられません。決まった組をそのまま回すときによく使います。</p>
+<p><strong>文法: <code>or</code></strong></p>
+<p><code>a or b</code> は、<code>a</code> が真なら真、偽なら <code>b</code> を見ます。<code>force or not target.exists()</code> は「取り直しの指定があるか、まだファイルが無いなら」です。<code>a</code> が真のときは <code>b</code> を計算しません。</p>
+</blockquote>
+<p><code>fetch_song</code> の前半は、2 つのファイルを取ってきます。</p>
+<ol>
+<li>L56: 楽譜のフォルダ名（<code>fur_Elise_WoO59</code>）を <code>stem</code> にする。Mutopia では、フォルダと同じ名前の <code>.ly</code> と <code>.mid</code> が中に置かれる。</li>
+<li>L57-58: 保存先 <code>sources/mutopia/&lt;曲ID&gt;/</code> を作る。<code>parents=True</code> は途中のフォルダもまとめて作る、<code>exist_ok=True</code> は既にあってもエラーにしない、という指定。</li>
+<li>L59: <code>files = {}</code> は空の辞書。拡張子 → 保存した場所、を入れていく。</li>
+<li>L60-64: <code>ly</code> と <code>mid</code> の 2 回まわる。<code>--force</code> が無く、既にファイルがあれば取りに行かない（L62）。取るときは <code>BASE_URL + パス + / + stem.拡張子</code> の URL から取り、<code>write_bytes</code> でバイト列のまま保存する。</li>
+</ol>
+<p><code>fur-elise</code> なら、取る URL は <code>…/ftp/BeethovenLv/WoO59/fur_Elise_WoO59/fur_Elise_WoO59.ly</code> と <code>….mid</code> です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">fetch_song</span><span class="p">(</span><span class="n">song</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">force</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">dict</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl">    <span class="n">stem</span> <span class="o">=</span> <span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">path</span><span class="s2">&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">rsplit</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">/</span><span class="s2">&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">    <span class="n">song_dir</span> <span class="o">=</span> <span class="n">OUT_DIR</span> <span class="o">/</span> <span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl">    <span class="n">song_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl">    <span class="n">files</span> <span class="o">=</span> <span class="p">{</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl">    <span class="k">for</span> <span class="n">ext</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;</span><span class="s2">ly</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">mid</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl">        <span class="n">target</span> <span class="o">=</span> <span class="n">song_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl">        <span class="k">if</span> <span class="n">force</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">target</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl">            <span class="n">target</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">download</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">BASE_URL</span><span class="si">}</span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">path</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">stem</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl">        <span class="n">files</span><span class="p">[</span><span class="n">ext</span><span class="p">]</span> <span class="o">=</span> <span class="n">target</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L66–L69</p><p>ここが Public Domain の検査です。</p>
+<ol>
+<li>L66: 保存した <code>.ly</code> を文字列として読む。<code>errors="replace"</code> は、UTF-8 として読めないバイトがあっても止まらず、置き換え文字（�）にして読み進める指定。ヘッダは英字なので、本文の一部が化けても検査には影響しない。</li>
+<li>L67: L28 の <code>PD_HEADER</code> で、どこかの行頭に <code>license = "Public Domain"</code> か <code>copyright = "Public Domain"</code> があるかを探す。</li>
+<li>無ければ L68 で例外を投げて止まる。</li>
+</ol>
+<p>ここで止まると <code>meta.json</code> は書かれません（L87 に届かない）。<code>build_songs.py</code> は <code>meta.json</code> を読まないと曲を作れないので、検査に落ちた曲が譜面になる道はありません。ただし、取った <code>.ly</code> と <code>.mid</code> はフォルダに残ります（intro の「落とし穴」）。</p>
+<p>検査は楽譜の作者（浄書者）の<strong>自己申告</strong>を読むだけです。docs/research/04-assets-and-licenses.md の 2 節によると、12 曲は Mutopia の曲のページでもライセンスを確かめてあり、このコードはその確認を取り込みのたびに自動で繰り返す役です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl">    <span class="n">ly_text</span> <span class="o">=</span> <span class="n">files</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">ly</span><span class="s2">&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">replace</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl">    <span class="k">if</span> <span class="ow">not</span> <span class="n">PD_HEADER</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">ly_text</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl">        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">id</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">: .ly header does not declare Public Domain</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L70–L90</p><blockquote>
+<p><strong>文法: 辞書内包表記</strong></p>
+<p><code>{キー: 値 for 変数 in 並び}</code> は、並びを 1 つずつ取り出して、その都度「キー: 値」を作り、まとめて新しい辞書にする書き方です。</p>
+<p><code>python
+{ext: {...} for ext, path in files.items()}</code></p>
+<p><code>files.items()</code> は辞書の「キーと値の組」を順に出します。<code>for ext, path in …</code> はその組を <code>ext</code> と <code>path</code> に分けて受け取ります（2 つの変数で同時に受け取る書き方）。<code>files</code> は <code>{"ly": …, "mid": …}</code> なので、出来上がるのは <code>{"ly": {...}, "mid": {...}}</code> です。</p>
+</blockquote>
+<p><code>meta</code> は、この曲をどこから、いつ、どの中身で取ったかの記録です。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>値</th>
+<th>使われる所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code>・<code>mutopiaId</code></td>
+<td>目録の値</td>
+<td><code>build_songs.py</code> の L53（クレジット）</td>
+</tr>
+<tr>
+<td><code>pieceUrl</code></td>
+<td>Mutopia の曲のページ</td>
+<td>プレイ前の画面のリンク（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L235）</td>
+</tr>
+<tr>
+<td><code>license</code></td>
+<td>常に <code>"Public Domain"</code>（L67 を通ったものだけがここに来る）</td>
+<td>クレジット</td>
+</tr>
+<tr>
+<td><code>maintainer</code>・<code>edition</code></td>
+<td>ヘッダの <code>maintainer</code> と <code>source</code>（L50-52）</td>
+<td>クレジット</td>
+</tr>
+<tr>
+<td><code>files.&lt;拡張子&gt;</code></td>
+<td>ファイル名・取得元 URL・SHA-256</td>
+<td><code>build_songs.py</code> の L82 でファイル名を使う</td>
+</tr>
+<tr>
+<td><code>verifiedOn</code></td>
+<td>実行した日（<code>2026-10-08</code> の形）</td>
+<td>記録用</td>
+</tr>
+</tbody>
+</table>
+<p><code>hashlib.sha256(バイト列).hexdigest()</code> は、ファイルの中身から 64 桁の 16 進数の「指紋」を計算します。中身が 1 バイトでも変われば値が変わるので、後で同じファイルかどうかを確かめられます。</p>
+<p>L87 は 1 行に処理が詰まっているので、内側から順に:</p>
+<ol>
+<li><code>json.dumps(meta, ensure_ascii=False, indent=2)</code> — 辞書を JSON の文字列にする。<code>ensure_ascii=False</code> は <code>Härtel</code> の <code>ä</code> のような文字を <code>ä</code> に変えずにそのまま書く指定、<code>indent=2</code> は 2 文字ずつ字下げして人が読める形にする指定。</li>
+<li><code>+ "\n"</code> — 末尾に改行を足す。</li>
+<li><code>(song_dir / "meta.json").write_text(…, encoding="utf-8")</code> — UTF-8 で保存する。</li>
+</ol>
+<p>最後に <code>meta</code> を返し、<code>main</code> が 1 行の報告に使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl">    <span class="n">meta</span> <span class="o">=</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">id</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">mutopiaId</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">song</span><span class="p">[</span><span class="s2">&quot;</span><span class="s2">mutopiaId</span><span class="s2">&quot;</span><span class="p">]</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">pieceUrl</span><span class="s2">&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="s2">https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=</span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">mutopiaId</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">license</span><span class="s2">&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="s2">Public Domain</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">maintainer</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">header_field</span><span class="p">(</span><span class="n">ly_text</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">maintainer</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">edition</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">header_field</span><span class="p">(</span><span class="n">ly_text</span><span class="p">,</span> <span class="s2">&quot;</span><span class="s2">source</span><span class="s2">&quot;</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">files</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl">            <span class="n">ext</span><span class="p">:</span> <span class="p">{</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl">                <span class="s2">&quot;</span><span class="s2">name</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl">                <span class="s2">&quot;</span><span class="s2">url</span><span class="s2">&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">BASE_URL</span><span class="si">}</span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">path</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl">                <span class="s2">&quot;</span><span class="s2">sha256</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">path</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(</span><span class="p">)</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">(</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl">            <span class="p">}</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl">            <span class="k">for</span> <span class="n">ext</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">files</span><span class="o">.</span><span class="n">items</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl">        <span class="p">}</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl">        <span class="s2">&quot;</span><span class="s2">verifiedOn</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">date</span><span class="o">.</span><span class="n">today</span><span class="p">(</span><span class="p">)</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl">    <span class="p">}</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl">    <span class="p">(</span><span class="n">song_dir</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">meta.json</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">meta</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">utf-8</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl">    <span class="k">return</span> <span class="n">meta</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L91–L100</p><p><code>main</code> はコマンドとして動かしたときの本体です。</p>
+<ol>
+<li>L92: <code>argparse.ArgumentParser</code> で引数の読み手を作る。<code>description=__doc__</code> で、L1-8 の docstring が <code>--help</code> の説明文になる。</li>
+<li>L93: <code>--force</code> という引数を登録する。<code>action="store_true"</code> は「付いていれば <code>True</code>、無ければ <code>False</code>」の印になる指定。</li>
+<li>L94: 実際のコマンドの引数を読み、<code>args.force</code> で取り出せるようにする。</li>
+<li>L95-97: 目録の全曲について <code>fetch_song</code> を呼び、<code>fur-elise: Public Domain (maintainer: Stelios Samelis)</code> のような 1 行を表示する。</li>
+<li>L98: <code>0</code> を返す。コマンドの終了コード 0 は「成功」の意味。</li>
+</ol>
+<p>途中で例外が起きると、ここには戻らずに止まり、終了コードは 0 以外になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl"><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="p">)</span> <span class="o">-</span><span class="o">&gt;</span> <span class="nb">int</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl">    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="vm">__doc__</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl">    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">--force</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">store_true</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">既存ファイルがあっても取り直す</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl">    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">(</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl">    <span class="k">for</span> <span class="n">song</span> <span class="ow">in</span> <span class="n">load_catalog</span><span class="p">(</span><span class="p">)</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl">        <span class="n">meta</span> <span class="o">=</span> <span class="n">fetch_song</span><span class="p">(</span><span class="n">song</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">force</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl">        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">song</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">id</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">license</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2"> (maintainer: </span><span class="si">{</span><span class="n">meta</span><span class="p">[</span><span class="s1">&#x27;</span><span class="s1">maintainer</span><span class="s1">&#x27;</span><span class="p">]</span><span class="si">}</span><span class="s2">)</span><span class="s2">&quot;</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl">    <span class="k">return</span> <span class="mi">0</span></td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L101–L102</p><blockquote>
+<p><strong>文法: <code>if __name__ == "__main__":</code></strong></p>
+<p>Python は、ファイルをコマンドで直接動かしたときだけ、変数 <code>__name__</code> に <code>"__main__"</code> を入れます。ほかのファイルから <code>import</code> されたときは、ファイル名（<code>fetch_sources</code>）が入ります。この if によって、「直接動かしたときだけ <code>main()</code> を実行し、取り込まれただけのときは関数の定義だけを提供する」ようにしています。</p>
+</blockquote>
+<p><code>sys.exit(main())</code> は、<code>main()</code> の戻り値（<code>0</code>）を終了コードにしてプログラムを終えます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl"><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;</span><span class="s2">__main__</span><span class="s2">&quot;</span><span class="p">:</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl">    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="n">main</span><span class="p">(</span><span class="p">)</span><span class="p">)</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

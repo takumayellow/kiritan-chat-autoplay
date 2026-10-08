@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/ui/Calibrate.tsx | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html" class="current">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TSX · 全 132 行</p>
+<h1><code>src/ui/Calibrate.tsx</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>0.6 秒おきに 20 回鳴るクリック音に合わせてキーか画面を叩いてもらい、音が聞こえてから押すまでのずれの中央値を測って「入力の補正」に入れる、タイミング調整の画面の部品です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>クリック音を Web Audio（ブラウザの音を作る仕組み）で 20 回、あらかじめ予約して鳴らす（L22-32、L45）。</li>
+<li>叩いた時刻を、「最初のクリックが聞こえた時刻から何ミリ秒後か」として集める（L61-68）。</li>
+<li>最後のクリックの 1 秒後に集計し、最初の 4 回を除いたクリックとのずれの中央値を出す（L52-59）。</li>
+<li>測れたら、その値を入力の補正に<strong>置き換えて</strong>選曲に戻るボタンを出す（L113-120）。</li>
+</ul>
+<p>画面は 3 つの段階（<code>Phase</code>）を行き来します。</p>
+<table>
+<thead>
+<tr>
+<th>段階</th>
+<th>画面</th>
+<th>次へ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>idle</code></td>
+<td>説明と「始める」</td>
+<td>「始める」で <code>running</code></td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>叩いた回数</td>
+<td>13 秒後に <code>done</code></td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>測った値と「入力の補正を〜にして戻る」、または「測れませんでした」</td>
+<td>「もう一度測る」で <code>running</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L102-103</td>
+<td>タイミング調整の画面として描かれる</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-context.ts.html"><code>src/audio/context.ts</code></a> の <code>audioKit</code></td>
+<td>ゲーム全体で 1 つだけ作る <code>AudioContext</code>（音の時計と出口）</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の <code>SongClock</code></td>
+<td>押した時刻を「聞こえている音の時刻」に直す</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の <code>eventTimeMs</code></td>
+<td>キーや指のイベントに付いた時刻を、壊れていなければ使う</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-keys.ts.html"><code>src/game/keys.ts</code></a> の <code>isStartKey</code></td>
+<td>叩いたことにするキーかどうか</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a> の <code>calibrate</code></td>
+<td>叩いた時刻とクリックの時刻から、ずれの中央値を出す</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>src/ui/format.ts</code>（解説キット外）の <code>signedMs</code></td>
+<td><code>+23 ms</code> の形の文字列</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L37 <code>useRef&lt;…&gt;(null)</code> — 文法の索引の『useRef』</li>
+<li>L39 <code>() =&gt; () =&gt; …</code> — 「後片付けだけをする」<code>useEffect</code></li>
+<li>L41 <code>async () =&gt; { await … }</code> — 文法の索引の『async / await と Promise』</li>
+<li>L46 <code>new SongClock(…)</code> — 文法の索引の『class と constructor』</li>
+<li>L47 <code>window.setTimeout(関数, ミリ秒)</code> と L39 <code>window.clearTimeout(…)</code> — 時間をおいて関数を呼ぶ予約と、その取り消し</li>
+<li>L55 <code>Array.from({ length: n }, (_, i) =&gt; …)</code> — 番号から配列を作る</li>
+<li>L124 <code>void start()</code> — 文法の索引の『void 演算子』</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L37 の <code>run</code> を <code>useRef</code> に置いている理由（L61-69 と L70-85 で説明します）。キーの受け付けは画面を開いたときに 1 回付けるだけなのに、いつ叩いても最新の記録に足せます。</li>
+<li>L55 の「拍の時刻の表」が 5 拍目から始まることで、最初の 4 回の叩きが自動で捨てられる仕組み（L52-60）。</li>
+<li>L115 の、測った値で補正を<strong>置き換える</strong>処理。結果画面（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74）は今の補正に<strong>足し</strong>ます。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>途中で Esc や「戻る」で抜けても、残りのクリック音は鳴り続けます。</strong> 20 回の音は L45 で始めた時点にすべて予約され、止める処理がありません。L39 で取り消すのは集計の予約だけです。最長で 12 秒ほど、選曲画面でクリック音が鳴ります。</li>
+<li><strong>13 秒という長さは 2 か所に分かれています。</strong> L47 の <code>600</code> は、L44 の <code>0.6</code>（最初のクリックまでの 0.6 秒）と同じものですが、片方はミリ秒、片方は秒で別々に書かれています。片方だけを変えると、集計が最後のクリックより前に始まることがあります。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L9</p><p><code>import type</code> は型だけの取り込みです（<a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『import と export』の囲み）。L2-6 で、音・時計・入力・統計の 4 つの層から 1 つずつ部品を借りてきます。この画面は、それらをつなぐだけの薄い部品です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useEffect</span><span class="p">,</span><span class="w"> </span><span class="nx">useRef</span><span class="p">,</span><span class="w"> </span><span class="nx">useState</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">audioKit</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../audio/context&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">SongClock</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../audio/clock&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">eventTimeMs</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/engine&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">isStartKey</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/keys&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">calibrate</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/stats&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../storage&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">signedMs</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./format&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L21</p><p><code>Props</code> は、設定と、設定を変える関数、選曲に戻る関数の 3 つです。</p>
+<p>L16-18 の 3 つの数が測り方を決めます。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>値</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>INTERVAL_MS</code></td>
+<td>600</td>
+<td>クリックの間隔（ミリ秒）。1 分に 100 回の速さ</td>
+</tr>
+<tr>
+<td><code>CLICKS</code></td>
+<td>20</td>
+<td>クリックの回数。全部で 0.6 × 19 = 11.4 秒</td>
+</tr>
+<tr>
+<td><code>WARMUP</code></td>
+<td>4</td>
+<td>最初の何回を数えないか。音に慣れて、リズムをつかむまでの分</td>
+</tr>
+</tbody>
+</table>
+<p>L20 の <code>Phase</code> は、画面の段階を表す型です。<code>kind</code> で 3 つのどれかを見分け、段階ごとに持つ値が違います（文法の索引の『型の別名 type と合併型 <code>|</code>』）。</p>
+<ul>
+<li><code>running</code> は、叩いた回数 <code>taps</code>（画面に出すため）を持つ</li>
+<li><code>done</code> は、測ったずれ <code>offset</code> を持つ。測れなかったら <code>null</code></li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="kd">interface</span><span class="w"> </span><span class="nx">Props</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">settings</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onSettings</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onBack</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">INTERVAL_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">600</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">CLICKS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">20</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">WARMUP</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">4</span><span class="p">;</span><span class="w"> </span><span class="c1">// 最初の数拍は耳慣らしとして数えない</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="kr">type</span><span class="w"> </span><span class="nx">Phase</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;idle&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;done&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">readonly</span><span class="w"> </span><span class="nx">offset</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L22–L33</p><p><code>click(ctx, when, accent)</code> は、クリック音を 1 つ、時刻 <code>when</code>（<code>AudioContext</code> の時計で秒）に鳴るよう予約します。</p>
+<p>Web Audio では、音を作る部品（ノード）を線でつないで、最後に出口（<code>ctx.destination</code>、スピーカー）へ流します。ここでは 2 つのノードを使います。</p>
+<table>
+<thead>
+<tr>
+<th>ノード</th>
+<th>作る行</th>
+<th>役目</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OscillatorNode</code>（<code>osc</code>）</td>
+<td>L23</td>
+<td>決まった高さの音を出し続ける発振器</td>
+</tr>
+<tr>
+<td><code>GainNode</code>（<code>gain</code>）</td>
+<td>L24</td>
+<td>通る音の大きさを変える</td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li>L25 — 音の高さ。<code>accent</code> なら 1760 Hz、そうでなければ 1320 Hz。L45 で 4 回に 1 回（1・5・9・13・17 回目）を <code>accent</code> にするので、4 拍ごとに 1 回だけ高い音になります</li>
+<li>L26-28 — 音の大きさの時間変化を予約する。<code>when</code> に 0.0001（ほぼ無音）、2 ミリ秒後に 0.5、60 ミリ秒後に 0.0001 まで、指数的に（同じ時間ごとに同じ割合で）変える。急に立ち上がって、すっと消える「コッ」という音になる</li>
+<li>L29 — 発振器 → 音量 → 出口の順につなぐ。<code>connect</code> はつないだ先のノードを返すので、<code>.connect(…).connect(…)</code> と続けて書ける</li>
+<li>L30-31 — <code>when</code> に鳴らし始め、80 ミリ秒後に止める</li>
+</ol>
+<p>大きさを 0 ではなく 0.0001 にしているのは、指数的な変化（<code>exponentialRampToValueAtTime</code>）では 0 を始まりにも終わりにもできないからです。0 から何倍しても 0 のままなので、0 へ向かう指数的な変化は計算できません。</p>
+<p>すべて<strong>時刻を指定した予約</strong>なので、JavaScript の処理が少し遅れても、音は <code>AudioContext</code> の時計どおりに鳴ります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">click</span><span class="p">(</span><span class="nx">ctx</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioContext</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">accent</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">osc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">createOscillator</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">gain</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">createGain</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="nx">osc</span><span class="p">.</span><span class="nx">frequency</span><span class="p">.</span><span class="nx">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">accent</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">1760</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">1320</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">setValueAtTime</span><span class="p">(</span><span class="mf">0.0001</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">exponentialRampToValueAtTime</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.002</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="w">  </span><span class="nx">gain</span><span class="p">.</span><span class="nx">gain</span><span class="p">.</span><span class="nx">exponentialRampToValueAtTime</span><span class="p">(</span><span class="mf">0.0001</span><span class="p">,</span><span class="w"> </span><span class="nx">when</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.06</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">  </span><span class="nx">osc</span><span class="p">.</span><span class="nx">connect</span><span class="p">(</span><span class="nx">gain</span><span class="p">)</span><span class="p">.</span><span class="nx">connect</span><span class="p">(</span><span class="nx">ctx</span><span class="p">.</span><span class="nx">destination</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">  </span><span class="nx">osc</span><span class="p">.</span><span class="nx">start</span><span class="p">(</span><span class="nx">when</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">  </span><span class="nx">osc</span><span class="p">.</span><span class="nx">stop</span><span class="p">(</span><span class="nx">when</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.08</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L34–L40</p><p>L36 の <code>phase</code> は今の段階（文法の索引の『useState』）、L37 の <code>run</code> は測っている最中の記録です。<code>run.current</code> には、測っている間だけ次の 3 つが入り、それ以外は <code>null</code> です。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clock</code></td>
+<td>最初のクリックを 0 秒とする時計（L46）</td>
+</tr>
+<tr>
+<td><code>taps</code></td>
+<td>叩いた時刻（ミリ秒）の配列</td>
+</tr>
+<tr>
+<td><code>timer</code></td>
+<td>集計の予約の番号（L47）</td>
+</tr>
+</tbody>
+</table>
+<p><code>useRef</code> に入れた値は、描き直しても同じものが残り、書き換えても描き直しが起きません（文法の索引の『useRef』）。</p>
+<p>L39 は、<code>useEffect</code> に渡す関数（<code>() =&gt; …</code>）が、すぐに後片付けの関数（<code>() =&gt; window.clearTimeout(…)</code>）を返す形です。画面を開いたときには何もせず、画面を閉じるときに、集計の予約が残っていれば取り消します（L47 で説明します）。依存配列が <code>[]</code> なので、開いたときに 1 回だけ登録されます（文法の索引の『useEffect』）。</p>
+<p>測っていないときは <code>run.current?.timer</code> が <code>undefined</code> になりますが、<code>clearTimeout(undefined)</code> は何もしないので問題ありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="cm">/** メトロノームに合わせて叩き、音が聞こえてから押すまでのずれを測る。 */</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">Calibrate</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">onSettings</span><span class="p">,</span><span class="w"> </span><span class="nx">onBack</span><span class="w"> </span><span class="p">}</span><span class="o">:</span><span class="w"> </span><span class="nx">Props</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="p">[</span><span class="nx">phase</span><span class="p">,</span><span class="w"> </span><span class="nx">setPhase</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useState</span><span class="p">&lt;</span><span class="nt">Phase</span><span class="p">&gt;</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;idle&quot;</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">run</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">useRef</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">clock</span><span class="o">:</span><span class="w"> </span><span class="kt">SongClock</span><span class="p">;</span><span class="w"> </span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">[</span><span class="p">]</span><span class="p">;</span><span class="w"> </span><span class="nx">timer</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="o">&gt;</span><span class="p">(</span><span class="kc">null</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">  </span><span class="nx">useEffect</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">clearTimeout</span><span class="p">(</span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="o">?</span><span class="p">.</span><span class="nx">timer</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L41–L51</p><blockquote>
+<p><strong>文法: setTimeout と clearTimeout</strong></p>
+<p><code>window.setTimeout(関数, ミリ秒)</code> は、「このミリ秒が経ったら、この関数を 1 回呼んで」とブラウザに予約します。予約するとすぐに次の行へ進み、待っている間もほかの処理は動きます。</p>
+<p>戻り値は予約の番号です。この番号を <code>window.clearTimeout(番号)</code> に渡すと、まだ呼ばれていない予約を取り消せます。</p>
+<p>時間はおおよそで、ブラウザが忙しいと遅れます。正確な時刻が要る音は、L22-32 のように <code>AudioContext</code> の予約で鳴らします。</p>
+</blockquote>
+<p><code>start</code> は「始める」を押したときに呼ばれ、測り始めます。<code>async</code> が付いているので、途中の <code>await</code> で待つことができます（文法の索引の『async / await と Promise』）。</p>
+<ol>
+<li>L42 — ゲーム全体で 1 つの <code>AudioContext</code> を受け取る。まだ無ければここで作られる（<a class="xref" href="src-audio-context.ts.html"><code>src/audio/context.ts</code></a> の L11-17）</li>
+<li>L43 — <code>ctx.resume()</code> で音を出せる状態にし、それが終わるまで待つ。ブラウザは、利用者がページを操作するまで音を出させないので、ボタンを押した流れの中で呼ぶ</li>
+<li>L44 — 最初のクリックの時刻 <code>begin</code> を、今から 0.6 秒後にする。予約を並べ終える前に時刻が過ぎてしまわないための余裕</li>
+<li>L45 — 20 回のクリックを予約する。<code>i</code> 回目（0 から数える）は <code>begin + i × 0.6</code> 秒。<code>i % 4 === 0</code> は「<code>i</code> を 4 で割った余りが 0」で、<code>i</code> が 0・4・8・12・16 のとき高い音にする</li>
+<li>L46 — <code>begin</code> を曲の 0 秒とする時計を作る（<code>SongClock</code>、文法の索引の『class と constructor』）。最後の <code>1</code> は再生速度で、時計がそのままの速さで進む</li>
+<li>L47 — 集計の予約。600 + 20 × 600 + 400 = 13000 ミリ秒後に <code>finish</code> を呼ぶ。最後のクリックは押してから 0.6 + 11.4 = 12.0 秒後なので、その 1.0 秒後に締め切る</li>
+<li>L48 — 記録を <code>run.current</code> に入れる。<code>taps: []</code> は空の配列から始めるということ</li>
+<li>L49 — 段階を <code>running</code> にして、画面を描き直す</li>
+</ol>
+<p><code>SongClock</code> は、プレイ画面でも使う「いま聞こえている音は、曲の何秒目か」を出す時計です（<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L30-68）。スピーカーやイヤホンまでの遅れをブラウザが申告していれば、その分を差し引きます。L94 の説明文の「自動で差し引いている」はこのことです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ctx</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">audioKit</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">resume</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">begin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ctx</span><span class="p">.</span><span class="nx">currentTime</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">0.6</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kd">let</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">CLICKS</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="w"> </span><span class="nx">click</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">begin</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">INTERVAL_MS</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mf">4</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">clock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">SongClock</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">begin</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">timer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">setTimeout</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">finish</span><span class="p">(</span><span class="p">)</span><span class="p">,</span><span class="w"> </span><span class="mf">600</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">CLICKS</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">INTERVAL_MS</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">400</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">    </span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">clock</span><span class="p">,</span><span class="w"> </span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">,</span><span class="w"> </span><span class="nx">timer</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">    </span><span class="nx">setPhase</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L52–L60</p><blockquote>
+<p><strong>文法: Array.from で番号から配列を作る</strong></p>
+<p><code>Array.from({ length: n }, (_, i) =&gt; 式)</code> は、長さ <code>n</code> の配列を作り、<code>i</code> 番目（0 から）の要素を <code>式</code> で決めます。<code>for</code> で空の配列に 1 つずつ足すのと同じ結果を、1 つの式で作れます。</p>
+<p>2 つ目の引数の関数は「要素」と「番号」の 2 つを受け取りますが、ここでは要素（中身は空）を使わないので、名前を <code>_</code> にしています。<code>_</code> は「使わない」の印として慣習的に使う名前で、特別な意味はありません。</p>
+</blockquote>
+<p><code>finish</code> は、L47 の予約から 13 秒後に呼ばれ、集計します。</p>
+<ol>
+<li>L53-54 — 記録が無ければ（もう集計した、画面を離れた、など）何もしない</li>
+<li>L55 — 数える拍の時刻（ミリ秒）の表を作る</li>
+<li>L56 — 叩いた時刻と拍の時刻の表から、ずれの中央値を出す</li>
+<li>L57 — 記録を消す。これ以降の叩きは L63 で無視される</li>
+<li>L58 — 段階を <code>done</code> にして結果を出す</li>
+</ol>
+<p>L55 の表は、<code>i</code> が 0〜15 の 16 個で、<code>(i + 4) × 600</code> です。</p>
+<table>
+<thead>
+<tr>
+<th><code>i</code></th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>…</th>
+<th>15</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>時刻（ミリ秒）</td>
+<td>2400</td>
+<td>3000</td>
+<td>3600</td>
+<td>…</td>
+<td>11400</td>
+</tr>
+<tr>
+<td>何回目のクリックか</td>
+<td>5</td>
+<td>6</td>
+<td>7</td>
+<td>…</td>
+<td>20</td>
+</tr>
+</tbody>
+</table>
+<p>L66 で叩いた時刻を「最初のクリックが聞こえてから何ミリ秒後か」で記録しているので、この表と直接比べられます。</p>
+<p><code>calibrate</code>（<a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a> の L29-39）は、叩いた時刻の 1 つずつについて、表のうち最も近い拍を探し、その差が半拍（300 ミリ秒）未満なら「ずれ」として残します。ずれが 4 個以上あればその中央値を、足りなければ <code>null</code> を返します。</p>
+<p>最初の 4 回の叩きは、この仕組みで自然に捨てられます。4 回目のクリック（1800 ミリ秒）にぴったり叩いても、表で一番近いのは 2400 ミリ秒で、差が 600 ミリ秒あるからです。1 回目から 4 回目の近くの叩きを捨てるための特別な処理は書かれていません。</p>
+<p>平均ではなく中央値を使うのは、叩き損ねや 2 度叩きのような大きく外れた数回に、結果が引っ張られないためです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">finish</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">current</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">clicks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Array</span><span class="p">.</span><span class="kr">from</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">length</span><span class="o">:</span><span class="w"> </span><span class="kt">CLICKS</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">WARMUP</span><span class="w"> </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">i</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">WARMUP</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">INTERVAL_MS</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">offset</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">calibrate</span><span class="p">(</span><span class="nx">current</span><span class="p">.</span><span class="nx">taps</span><span class="p">,</span><span class="w"> </span><span class="nx">clicks</span><span class="p">,</span><span class="w"> </span><span class="nx">INTERVAL_MS</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">    </span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">    </span><span class="nx">setPhase</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;done&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">offset</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L61–L69</p><p><code>tap(timeStamp)</code> は、キーか枠が叩かれるたびに呼ばれ、その時刻を記録します。<code>timeStamp</code> は、ブラウザがイベントに付けた「押された瞬間」の時刻です。</p>
+<ol>
+<li>L62-63 — 測っていなければ何もしない</li>
+<li>L64 — 今の時刻 <code>performance.now()</code>（ページを開いてからのミリ秒）</li>
+<li>L65 — 時計の、音の時刻とページの時刻の対応を最新にする</li>
+<li>L66 — 押された瞬間を、最初のクリックが聞こえた時刻からの秒に直し、1000 倍してミリ秒で記録する。<code>eventTimeMs</code>（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L19-21）は、<code>timeStamp</code> がおかしな値（未来の時刻や 1 秒以上前）なら今の時刻で代わりにする</li>
+<li>L67 — 画面に出す回数を更新する</li>
+</ol>
+<p>イベントに付いた時刻を使うのは、処理が始まるまでの数ミリ秒の遅れを測定に混ぜないためです。</p>
+<p>この記録は、入力の補正を<strong>引く前</strong>の生の時刻です。だから L115 では、測ったずれをそのまま補正の値にします。プレイ中のずれ（補正を引いた後の残り）から提案する結果画面は、今の補正に足します（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74）。</p>
+<p><strong><code>run</code> を <code>useRef</code> にしている理由</strong>: L70-85 のキーの受け付けは、画面を開いたときに 1 回付けたきりで、そのとき作られた <code>tap</code> を呼び続けます。<code>tap</code> が <code>useState</code> の値を読んでいたら、ずっと「開いたときの値」を読むことになります。<code>run</code> は描き直しても同じ入れ物なので、古い <code>tap</code> からでも <code>run.current</code> で最新の記録に届きます。L47 の予約が 13 秒後に呼ぶ <code>finish</code> も同じです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">tap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">timeStamp</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">current</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">current</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">now</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">    </span><span class="nx">current</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nx">update</span><span class="p">(</span><span class="nx">now</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">    </span><span class="nx">current</span><span class="p">.</span><span class="nx">taps</span><span class="p">.</span><span class="nx">push</span><span class="p">(</span><span class="nx">current</span><span class="p">.</span><span class="nx">clock</span><span class="p">.</span><span class="nx">songTimeAt</span><span class="p">(</span><span class="nx">eventTimeMs</span><span class="p">(</span><span class="nx">timeStamp</span><span class="p">,</span><span class="w"> </span><span class="nx">now</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1000</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">    </span><span class="nx">setPhase</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">kind</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">taps</span><span class="o">:</span><span class="w"> </span><span class="kt">current.taps.length</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L70–L85</p><p>画面にいる間、キーボードでも叩けるようにします。登録と解除は <a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L43-63 と同じです（文法の索引の『イベントリスナーの登録と解除』）。</p>
+<ol>
+<li>L72 — <code>e.repeat</code> は、キーを押しっぱなしにしたときに続けて届く 2 回目以降のイベントで真になる。1 回の押下を 1 回の叩きにするため、無視する</li>
+<li>L73-76 — Esc なら選曲に戻る</li>
+<li>L77-80 — 測っていて、叩きに使ってよいキーなら、ブラウザの普段の動き（スペースでのスクロールなど）を止めて、叩きとして記録する</li>
+</ol>
+<p><code>isStartKey</code>（<a class="xref" href="src-game-keys.ts.html"><code>src/game/keys.ts</code></a> の L19-22）は、Ctrl・⌘・Alt との組み合わせと、F1〜F12・Tab・Esc・Shift などブラウザや OS の操作に使うキーを除いた、ほとんどのキーで真になります。説明文（L90）の「好きなキー」はこのことです。</p>
+<p>依存配列は <code>[onBack]</code> だけです。<code>tap</code> は描くたびに作り直されますが、どれも <code>run.current</code> しか読まないので、付け替える必要がありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="w">  </span><span class="nx">useEffect</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">onKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="o">:</span><span class="w"> </span><span class="kt">KeyboardEvent</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">repeat</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">code</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;Escape&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="w">        </span><span class="nx">onBack</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">        </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="w">      </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">run</span><span class="p">.</span><span class="nx">current</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">isStartKey</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="w">        </span><span class="nx">e</span><span class="p">.</span><span class="nx">preventDefault</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="w">        </span><span class="nx">tap</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">timeStamp</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="w">      </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="w">    </span><span class="nb">window</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;keydown&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onKey</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">removeEventListener</span><span class="p">(</span><span class="s2">&quot;keydown&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onKey</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="nx">onBack</span><span class="p">]</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L86–L104</p><p>L90 の <code>{CLICKS}</code> と <code>{WARMUP}</code> は、L17-18 の数をそのまま文に埋め込みます。数を変えれば説明文も変わります。<code>{" "}</code> は空白 1 文字です（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L164 と同じ）。</p>
+<p>L96-104 は叩く枠です。</p>
+<ul>
+<li>L97 — 測っている間は <code>className</code> が <code>tap-pad active</code> になり、CSS の側が枠を目立たせる</li>
+<li>L98-101 — <code>onPointerDown</code> は、マウスのボタン・指・ペンが枠に触れた瞬間に呼ばれる（文法の索引の『JSX でのイベントの受け取り』）。指を離すときではなく触れたときなので、遅れが少ない。<code>e.preventDefault()</code> で、文字の選択などブラウザの普段の動きを止める</li>
+<li>L103 — 測っている間は叩いた回数（<code>12 回</code>）、それ以外は「ここを叩く」</li>
+</ul>
+<p>測っていないときに叩いても、L63 で何もしません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;</span><span class="nt">main</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;page calibrate&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">h1</span><span class="p">&gt;</span><span class="nx">タイミングを測る</span><span class="p">&lt;/</span><span class="nt">h1</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl"><span class="w">        </span><span class="nx">クリック音が</span><span class="w"> </span><span class="p">{</span><span class="nx">CLICKS</span><span class="p">}</span><span class="w"> </span><span class="nx">回鳴ります</span><span class="err">。</span><span class="nx">音に合わせて</span><span class="err">、</span><span class="nx">好きなキーかこの下の枠を叩いてください</span><span class="err">。</span><span class="nx">最初の</span><span class="w"> </span><span class="p">{</span><span class="nx">WARMUP</span><span class="p">}</span><span class="p">{</span><span class="s2">&quot; &quot;</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl"><span class="w">        </span><span class="nx">回は耳慣らしで</span><span class="err">、</span><span class="nx">数えません</span><span class="err">。</span><span class="nx">ずれの中央値を</span><span class="err">「</span><span class="nx">入力の補正</span><span class="err">」</span><span class="nx">に使います</span><span class="err">。</span></td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;muted&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl"><span class="w">        </span><span class="nx">ブラウザが報告する出力の遅れ</span><span class="err">（</span><span class="nx">Bluetooth</span><span class="w"> </span><span class="nx">イヤホンなど</span><span class="err">）</span><span class="nx">は自動で差し引いているので</span><span class="err">、</span><span class="nx">ここで測るのはその残りと</span><span class="err">、</span><span class="nx">押す癖の分です</span><span class="err">。</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl"><span class="w">        </span><span class="na">className</span><span class="o">=</span><span class="p">{</span><span class="sb">`</span><span class="sb">tap-pad </span><span class="si">${</span><span class="nx">phase</span><span class="p">.</span><span class="nx">kind</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">&quot;active&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="si">}</span><span class="sb">`</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl"><span class="w">        </span><span class="na">onPointerDown</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="nx">e</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl"><span class="w">          </span><span class="nx">e</span><span class="p">.</span><span class="nx">preventDefault</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl"><span class="w">          </span><span class="nx">tap</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">timeStamp</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl"><span class="w">        </span><span class="p">}</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl"><span class="w">      </span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L103" href="#L103">103</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">phase</span><span class="p">.</span><span class="nx">kind</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">phase</span><span class="p">.</span><span class="nx">taps</span><span class="si">}</span><span class="sb"> 回</span><span class="sb">`</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;ここを叩く&quot;</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L104" href="#L104">104</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L105–L122</p><p>段階が <code>done</code> のときだけ、結果を出します（文法の索引の『JSX の中での条件付きの表示 <code>&amp;&amp;</code>』）。<code>&amp;&amp;</code> の右は条件演算子で、2 通りに分かれます。</p>
+<ul>
+<li><code>offset</code> が <code>null</code> — 叩いた回数が足りないか、ずれが大きすぎて、残ったずれが 4 個未満だった。「測れませんでした」と出す</li>
+<li>それ以外 — ずれの中央値と、それを補正に入れて戻るボタンを出す</li>
+</ul>
+<p>ボタンを押すと、L115-116 で次のことをします。</p>
+<ol>
+<li><code>phase.offset ?? 0</code> — 測ったずれ</li>
+<li><code>Math.round(…)</code> — 整数のミリ秒に丸める</li>
+<li><code>Math.min(300, …)</code> と <code>Math.max(-300, …)</code> — ±300 の範囲に収める</li>
+<li><code>{ ...settings, inputOffsetMs: … }</code> で入力の補正だけを変えた設定を作り、<code>onSettings</code> で <code>App</code> に渡す（文法の索引の『スプレッド構文 <code>...</code>』）</li>
+<li><code>onBack()</code> で選曲に戻る</li>
+</ol>
+<p>L115 の <code>?? 0</code> は、実際には働きません。L106 で <code>null</code> でないことを確かめた後だからです。それでも要るのは、TypeScript がオブジェクトの項目（<code>phase.offset</code>）について「<code>null</code> ではない」と絞り込んだことを、後で呼ばれる関数（ここでは <code>onClick</code> に渡すアロー関数）の中までは持ち込まないからです。関数が呼ばれるまでの間に、項目の値が変わるかもしれないとみなします。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L105" href="#L105">105</a></td><td class="cl"><span class="w">      </span><span class="p">{</span><span class="nx">phase</span><span class="p">.</span><span class="nx">kind</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;done&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span></td></tr><tr><td class="ln"><a id="L106" href="#L106">106</a></td><td class="cl"><span class="w">        </span><span class="p">(</span><span class="nx">phase</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L107" href="#L107">107</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;error&quot;</span><span class="p">&gt;</span><span class="nx">叩いた回数が足りないか</span><span class="err">、</span><span class="nx">ずれが大きすぎて測れませんでした</span><span class="err">。</span><span class="nx">もう一度どうぞ</span><span class="err">。</span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L108" href="#L108">108</a></td><td class="cl"><span class="w">        </span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L109" href="#L109">109</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;panel&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L110" href="#L110">110</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L111" href="#L111">111</a></td><td class="cl"><span class="w">              </span><span class="nx">ずれの中央値</span><span class="o">:</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">strong</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">phase</span><span class="p">.</span><span class="nx">offset</span><span class="p">)</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">strong</span><span class="p">&gt;</span><span class="err">（</span><span class="nx">正なら遅め</span><span class="err">）</span></td></tr><tr><td class="ln"><a id="L112" href="#L112">112</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L113" href="#L113">113</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">button</span></td></tr><tr><td class="ln"><a id="L114" href="#L114">114</a></td><td class="cl"><span class="w">              </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L115" href="#L115">115</a></td><td class="cl"><span class="w">                </span><span class="nx">onSettings</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">inputOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">Math.max</span><span class="p">(</span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nx">phase</span><span class="p">.</span><span class="nx">offset</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="mf">0</span><span class="p">)</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L116" href="#L116">116</a></td><td class="cl"><span class="w">                </span><span class="nx">onBack</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L117" href="#L117">117</a></td><td class="cl"><span class="w">              </span><span class="p">}</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L118" href="#L118">118</a></td><td class="cl"><span class="w">            </span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L119" href="#L119">119</a></td><td class="cl"><span class="w">              </span><span class="nx">入力の補正を</span><span class="w"> </span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">phase</span><span class="p">.</span><span class="nx">offset</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="nx">にして戻る</span></td></tr><tr><td class="ln"><a id="L120" href="#L120">120</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L121" href="#L121">121</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L122" href="#L122">122</a></td><td class="cl"><span class="w">        </span><span class="p">)</span><span class="p">)</span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L123–L132</p><p>L124 は、測っている間は出さないボタンです。初めは「始める」、測った後は「もう一度測る」と書かれ、どちらも <code>start</code> を呼びます。</p>
+<p><code>start</code> は <code>async</code> の関数なので、呼ぶと「いつか終わる」ことを表す <code>Promise</code> を返します。<code>void start()</code> の <code>void</code> は、その戻り値を受け取らずに捨てることをはっきり示す書き方です（文法の索引の『void 演算子』）。</p>
+<p>L129 は今の入力の補正で、測る前と後の値を見比べられます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L123" href="#L123">123</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;buttons&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L124" href="#L124">124</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">phase</span><span class="p">.</span><span class="nx">kind</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="nx">start</span><span class="p">(</span><span class="p">)</span><span class="p">}</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">phase</span><span class="p">.</span><span class="nx">kind</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;done&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">&quot;もう一度測る&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;始める&quot;</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L125" href="#L125">125</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;secondary&quot;</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="nx">onBack</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L126" href="#L126">126</a></td><td class="cl"><span class="w">          </span><span class="nx">戻る</span><span class="err">（</span><span class="nx">Esc</span><span class="err">）</span></td></tr><tr><td class="ln"><a id="L127" href="#L127">127</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L128" href="#L128">128</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L129" href="#L129">129</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;muted&quot;</span><span class="p">&gt;</span><span class="nx">現在の入力の補正</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="p">)</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L130" href="#L130">130</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;/</span><span class="nt">main</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L131" href="#L131">131</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L132" href="#L132">132</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/audio/context.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html" class="current">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 17 行</p>
+<h1><code>src/audio/context.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>ブラウザで音を鳴らすための土台 <code>AudioContext</code> と、ピアノの音源 <code>Sampler</code> を、アプリ全体で 1 組だけ作って使い回すためのファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li><code>AudioContext</code>（Web Audio の音の土台）を、最初に必要になったときに 1 つだけ作る（L13）。</li>
+<li>その <code>AudioContext</code> で鳴らすピアノの音源 <code>Sampler</code>（<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a>）も同時に 1 つ作る（L14）。</li>
+<li>2 回目以降の呼び出しでは、作ってあるものをそのまま返す（L12・L16）。</li>
+</ul>
+<p><strong>Web Audio</strong> は、ブラウザに組み込まれた音の部品です。<code>AudioContext</code> はその中心で、音を作る部品をつなぐ「配線盤」と、音の時刻を数える「時計」（<code>currentTime</code>）を持っています。このゲームでは、音を鳴らす時刻も、判定の基準の時刻も、すべてこの 1 つの時計で決めます（<code>docs/design.md</code> の 5 節）。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L51）</td>
+<td>プレイ画面を開いて曲を読み込んだ後、<code>ctx</code> と <code>sampler</code> を受け取り、音源を読み込んで <code>PlayEngine</code> に渡す</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a>（L42）</td>
+<td>タイミング調整の画面で、クリック音を鳴らすための <code>ctx</code> を受け取る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a> の <code>Sampler</code></td>
+<td>ピアノの音源を作る</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>ブラウザの <code>AudioContext</code></td>
+<td>音の土台を作る</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L8 <code>let kit: AudioKit | null = null</code> — ファイルの中で値を覚えておく変数（<code>let</code> は <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L88-111 の解説）</li>
+<li>L12 <code>if (!kit)</code> — 値が「無い」かを <code>!</code> で調べる</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><strong>1 つだけ作る理由。</strong> ブラウザは同時に作れる <code>AudioContext</code> の数に上限を設けていることがあり、作るたびに音の装置を確保するので重くもなります。さらに、音の時刻とノーツの時刻を同じ時計で揃えたいので、時計は 1 つにしておく必要があります。</li>
+<li><strong><code>latencyHint: "interactive"</code></strong>（L13）。「遅れを小さくしてほしい」というブラウザへの頼みです。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>ブラウザは、ページで何か操作されるまで音を鳴らさせません</strong>（自動再生の制限）。操作の前に作った <code>AudioContext</code> は <code>"suspended"</code>（一時停止）の状態で始まり、操作の中で <code>resume()</code> を呼ぶまで時計が進みません（<code>docs/research/03-web-audio-timing.md</code> の 6 節）。L10 のコメントの「ユーザー操作の中で最初に呼ぶ」はこのためです。</li>
+<li>ただし <a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L51 は、曲のデータを読み終えた後（クリックやキー操作の処理の外）で <code>audioKit()</code> を呼んでいます。それでも鳴るのは、プレイを始める操作の中で <a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の <code>start</code> が <code>ctx.resume()</code>（L84）を呼び直しているからです。</li>
+<li><code>AudioContext</code> を閉じる処理はどこにもありません。ページを開いている間、ずっと 1 つを使い続けます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><code>Sampler</code>（ピアノの音源。<a class="xref" href="src-audio-sampler.ts.html"><code>src/audio/sampler.ts</code></a>）を取り込みます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Sampler</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./sampler&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L7</p><p><code>AudioKit</code> は、<code>audioKit()</code> が返す 2 つ組の形です（<code>interface</code> と <code>readonly</code> は文法の索引の『interface と readonly』）。</p>
+<table>
+<thead>
+<tr>
+<th>欄</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx</code></td>
+<td>音の土台 <code>AudioContext</code>。音の部品をつなぐ先であり、<code>currentTime</code>（秒）で時刻を数える時計でもある</td>
+</tr>
+<tr>
+<td><code>sampler</code></td>
+<td>その <code>ctx</code> で鳴らすピアノの音源</td>
+</tr>
+</tbody>
+</table>
+<p>2 つを組にしているのは、音源の音の部品は作った <code>AudioContext</code> の中でしか使えず、別々に作ると取り違える恐れがあるからです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">AudioKit</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">ctx</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioContext</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">sampler</span><span class="o">:</span><span class="w"> </span><span class="kt">Sampler</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L8–L9</p><p><code>kit</code> は、作った 2 つ組を覚えておく変数です。型 <code>AudioKit | null</code> は「2 つ組か、まだ作っていないことを表す <code>null</code>」で、最初は <code>null</code> にしておきます。</p>
+<p>この変数は関数の外、ファイルの一番外側に置いた <code>let</code> です。こう置いた変数は、ファイルが最初に読み込まれたときに 1 回だけ作られ、ページを開いている間ずっと値を保ちます。<code>export</code> していないので、このファイルの外からは直接読み書きできず、<code>audioKit()</code> を通してしか手に入りません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="kd">let</span><span class="w"> </span><span class="nx">kit</span><span class="o">:</span><span class="w"> </span><span class="kt">AudioKit</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L10–L17</p><blockquote>
+<p><strong>文法: <code>!</code> で値が「無い」かを調べる</strong></p>
+<p><code>!x</code> は「<code>x</code> が偽とみなされる値なら真」になります。偽とみなされるのは <code>false</code>・<code>0</code>・空の文字列 <code>""</code>・<code>null</code>・<code>undefined</code> などです。オブジェクトは中身に関係なく真とみなされます。</p>
+<p>L12 の <code>if (!kit)</code> は、<code>kit</code> が <code>null</code>（まだ作っていない）なら中に入る、という意味になります。</p>
+</blockquote>
+<p><code>audioKit()</code> は次のように動きます。</p>
+<ol>
+<li>L12 まだ作っていなければ、</li>
+<li>L13 <code>new AudioContext({ latencyHint: "interactive" })</code> で音の土台を作り、</li>
+<li>L14 それを使う <code>Sampler</code> も作って、2 つ組を <code>kit</code> に入れる。<code>{ ctx, sampler: … }</code> の <code>ctx</code> は <code>ctx: ctx</code> の省略形です。</li>
+<li>L16 <code>kit</code> を返す。2 回目以降は 1〜3 を飛ばして、同じ 2 つ組を返します。</li>
+</ol>
+<p>このように「初めて頼まれたときに 1 つだけ作り、あとは同じものを返す」作り方を、<strong>シングルトン</strong>と呼びます。</p>
+<p><code>latencyHint</code> は、音の遅れと安定さのどちらを優先するかをブラウザに伝える設定です。<code>"interactive"</code> は「操作に反応して鳴らすので、遅れをできるだけ小さく」という意味で、ブラウザはそれに合わせて、音を作ってから出すまでの溜め（バッファ）を小さくします。溜めが小さいほど遅れは減りますが、処理が間に合わないと音が途切れやすくなります。実際の遅れの大きさは <code>ctx.baseLatency</code> と <code>ctx.outputLatency</code> で読めて、<a class="xref" href="src-audio-clock.ts.html"><code>src/audio/clock.ts</code></a> の L34 が使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="cm">/** AudioContext は1つだけ作って使い回す。ユーザー操作の中で最初に呼ぶ。 */</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">audioKit</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">AudioKit</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">kit</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">ctx</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">AudioContext</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">latencyHint</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;interactive&quot;</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">    </span><span class="nx">kit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">sampler</span><span class="o">:</span><span class="w"> </span><span class="kt">new</span><span class="w"> </span><span class="nx">Sampler</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">kit</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

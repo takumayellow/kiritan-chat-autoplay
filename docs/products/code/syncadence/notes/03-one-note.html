@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript） | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="note">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="03-one-note.html" class="current">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="../code/src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="../code/src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="../code/src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="../code/src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="../code/src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="../code/src-game-session.ts.html">session.ts</a></li>
+<li><a href="../code/src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="../code/src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="../code/src-audio-context.ts.html">context.ts</a></li>
+<li><a href="../code/src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="../code/src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="../code/src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="../code/src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="../code/src-song-load.ts.html">load.ts</a></li>
+<li><a href="../code/src-song-types.ts.html">types.ts</a></li>
+<li><a href="../code/src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="../code/src-main.tsx.html">main.tsx</a></li>
+<li><a href="../code/src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="../code/tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="../code/tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="../code/tools-chart.py.html">chart.py</a></li>
+<li><a href="../code/tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="../code/tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<h1 id="1-typescript">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</h1>
+<p>PLAY を押してから、1 つのノーツに「PERFECT」が出るまでを、呼ばれる順にたどります。</p>
+<h2 id="_1">登場するもの</h2>
+<table>
+<thead>
+<tr>
+<th>もの</th>
+<th>ファイル</th>
+<th>一言で</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Play</code></td>
+<td><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></td>
+<td>プレイ画面。React の部品で、読み込み・毎フレームのループ・入力の受け付けを持つ</td>
+</tr>
+<tr>
+<td><code>PlayEngine</code></td>
+<td><a href="../code/src-game-engine.ts.html">engine.ts</a></td>
+<td>1 回のプレイの司令塔。時計・音の予約・判定をまとめて動かす</td>
+</tr>
+<tr>
+<td><code>SongClock</code></td>
+<td><a href="../code/src-audio-clock.ts.html">clock.ts</a></td>
+<td>「いま聞こえている曲の位置（秒）」を答える</td>
+</tr>
+<tr>
+<td><code>EventScheduler</code></td>
+<td><a href="../code/src-audio-scheduler.ts.html">scheduler.ts</a></td>
+<td>曲の音を少し先まで予約していく</td>
+</tr>
+<tr>
+<td><code>GameSession</code></td>
+<td><a href="../code/src-game-session.ts.html">session.ts</a></td>
+<td>ノーツごとの状態（まだ・押している途中・済み）とコンボ・スコア</td>
+</tr>
+<tr>
+<td><code>drawFrame</code></td>
+<td><a href="../code/src-render-highway.ts.html">highway.ts</a></td>
+<td>1 フレームの絵を描く</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">全体の流れ</h2>
+<pre class="mermaid">sequenceDiagram
+  participant U as 遊ぶ人
+  participant P as Play.tsx
+  participant E as PlayEngine
+  participant C as SongClock
+  participant S as GameSession
+  participant H as highway.ts
+  P-&gt;&gt;P: 曲の JSON とピアノの音を読み込む
+  P-&gt;&gt;E: new PlayEngine(...)（READY 表示）
+  U-&gt;&gt;P: 好きなキーかタッチ
+  P-&gt;&gt;E: start()
+  E-&gt;&gt;C: 曲の 0 秒を鳴らす時刻を決める
+  loop 毎フレーム（requestAnimationFrame）
+    P-&gt;&gt;E: tick(now)
+    E-&gt;&gt;E: 0.4 秒先までの音を予約
+    E-&gt;&gt;S: update(曲の位置)（見逃しを確定）
+    P-&gt;&gt;E: frame(now)
+    E-&gt;&gt;C: songTimeAt(now)
+    P-&gt;&gt;H: drawFrame(...)（ノーツを描く）
+  end
+  U-&gt;&gt;P: D キーを押す（keydown）
+  P-&gt;&gt;E: press(0, e.timeStamp)
+  E-&gt;&gt;C: 押した瞬間の曲の位置
+  E-&gt;&gt;S: press(0, 曲の位置)
+  S--&gt;&gt;E: { judgement: &quot;perfect&quot;, deltaMs: -8 }
+  E-&gt;&gt;E: 判定の文字を出す（flash）
+</pre>
+
+<h2 id="1-ready">1. 読み込んで、READY で待つ</h2>
+<p><code>Play</code> が画面に出ると、最初の <code>useEffect</code>（<a href="../code/src-ui-Play.tsx.html#L44">Play.tsx L44-67</a>）が曲の JSON を読み込み、その曲で使うピアノの録音をすべて読み込んでから <code>PlayEngine</code> を作ります。</p>
+<p><code>PlayEngine</code> のコンストラクタ（<a href="../code/src-game-engine.ts.html#L49">engine.ts L49-69</a>）がすることは、</p>
+<ul>
+<li>選んだ難易度の譜面から <code>GameSession</code> を作る</li>
+<li>音量のつまみ（<code>GainNode</code>）を 1 つ作り、スピーカーにつなぐ</li>
+<li><code>EventScheduler</code> に曲の音の一覧を渡す</li>
+<li>曲を終える時刻を「最後のノーツ + 2.5 秒」と「曲の長さ」の短い方に決める</li>
+</ul>
+<p>この時点では音も時間も動いていません。画面には READY と出ています。</p>
+<h2 id="2">2. キーを押して始める</h2>
+<p>READY の間に押されたキーは、判定ではなく開始の合図になります（<a href="../code/src-ui-Play.tsx.html#L116">Play.tsx L116-121</a>）。F11 や Tab のようにブラウザの操作に使うキーは合図にしません（<a href="../code/src-game-keys.ts.html">keys.ts</a> の <code>isStartKey</code>）。</p>
+<p><code>start()</code>（<a href="../code/src-game-engine.ts.html#L80">engine.ts L80-90</a>）は、<strong>曲の 0 秒をスピーカーから鳴らす <code>AudioContext</code> の時刻</strong>を 1 つ決めて <code>SongClock</code> に渡します。最初のノーツが奥から判定線まで流れてくる時間（既定 1.6 秒）と、さらに 0.8 秒の間を空けて始まるよう、0 秒より前から時計を動かし始めます。</p>
+<h2 id="3">3. 毎フレーム進める</h2>
+<p><code>requestAnimationFrame</code> で画面の書き換えごと（たいてい 1 秒に 60 回）に <code>loop</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L78">Play.tsx L78-98</a>）。</p>
+<p><code>tick(now)</code>（<a href="../code/src-game-engine.ts.html#L178">engine.ts L178-192</a>）が 1 フレーム分の仕事をします。</p>
+<ol>
+<li><code>SongClock</code> に今の時刻を教え、時計のずれを直す（→ <code>notes/04-timing</code>）。</li>
+<li><code>EventScheduler.pump</code> で、<code>AudioContext</code> の今の時刻から 0.4 秒先までの音を予約する。予約した音は、ブラウザが決まった時刻ぴったりに鳴らします。</li>
+<li><code>GameSession.update</code> で、判定の幅（GOOD の 125 ms）を過ぎても押されなかったノーツを MISS にする。</li>
+<li>すべてのノーツが判定済みで、曲の終わりの時刻を過ぎたら <code>true</code> を返す。<code>Play</code> はそれを見て結果画面へ移ります。</li>
+</ol>
+<p>続いて <code>frame(now)</code>（<a href="../code/src-game-engine.ts.html#L194">engine.ts L194-215</a>）が「いま描くべき曲の位置」などを 1 つの値にまとめ、<code>drawFrame</code> が描きます。</p>
+<h2 id="4">4. ノーツが奥から流れてくる</h2>
+<p>あるノーツが画面のどこに描かれるかは、<strong>そのノーツの時刻と、いま聞こえている曲の位置の差</strong>だけで決まります（<a href="../code/src-render-highway.ts.html#L163">highway.ts L163</a>）。</p>
+<div class="codehilite"><pre><span></span><code>u = (ノーツの時刻 − 曲の位置) ÷ (流れてくる時間 × 再生速度)
+</code></pre></div>
+
+<p><code>u = 1</code> が奥の端、<code>u = 0</code> が判定線です。<code>u</code> を <a href="../code/src-render-perspective.ts.html">perspective.ts</a> の <code>depthOf</code> で「奥行き」に写すと、奥ではゆっくり、手前ほど速く動いて見えます。ノーツの位置を毎フレーム少しずつ動かしているのではなく、毎フレーム時刻から計算し直しているので、フレームが飛んでもノーツの位置は狂いません。</p>
+<h2 id="5">5. 押した瞬間の時刻で判定する</h2>
+<p>D キーを押すと <code>keydown</code> が届き、<code>engine.press(0, e.timeStamp)</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L134">Play.tsx L134-137</a>）。スマホでは、画面のどの横位置を叩いたかからレーンを出します（<code>laneAt</code>）。</p>
+<p>ここで渡すのは、処理が動いた時刻ではなく <code>e.timeStamp</code>（<strong>キーが押された瞬間の時刻</strong>）です。描画で忙しくて処理が数 ms 遅れても、押した瞬間で判定できます。</p>
+<p><code>press</code>（<a href="../code/src-game-engine.ts.html#L145">engine.ts L145-151</a>）は、その時刻を <code>judgeTime</code> で「曲の何秒目か」に直し、入力の補正を引いてから <code>GameSession.press</code> に渡します。</p>
+<p><code>GameSession.press</code>（<a href="../code/src-game-session.ts.html#L90">session.ts L90-111</a>）は、</p>
+<ol>
+<li>そのレーンでまだ判定されていない最初のノーツを探す</li>
+<li>ノーツの時刻との差を実時間のミリ秒にする（再生速度を落としているときは速度で割る）</li>
+<li><code>judgeDelta</code>（<a href="../code/src-game-judge.ts.html#L20">judge.ts L20</a>）で判定を決める</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>差（±）</th>
+<th>判定</th>
+<th>スコアの重み</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>42 ms 以内</td>
+<td>PERFECT</td>
+<td>1</td>
+</tr>
+<tr>
+<td>83 ms 以内</td>
+<td>GREAT</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>125 ms 以内</td>
+<td>GOOD</td>
+<td>0.35</td>
+</tr>
+<tr>
+<td>160 ms 以内</td>
+<td>MISS</td>
+<td>0</td>
+</tr>
+<tr>
+<td>それより外</td>
+<td>何もしない（空振り）</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>160 ms より早い空振りを無視するのは、早く押しすぎただけで次のノーツを消費しないためです。</p>
+<ol start="4">
+<li>判定を数え、コンボを伸ばす（MISS なら 0 に戻す）。ロングノーツなら「押している途中」にする。</li>
+</ol>
+<h2 id="6">6. 判定が画面に出る</h2>
+<p><code>press</code> が返した結果は <code>handle</code>（<a href="../code/src-game-engine.ts.html#L127">engine.ts L127-139</a>）で「判定の文字を出す」記録（flash）になり、次のフレームから <code>drawFrame</code> が判定線の上に PERFECT などの文字と光を描きます。スコアは <code>重みの合計 ÷ 判定の数の合計 × 1,000,000</code> で、毎フレーム計算し直して左上に出します。</p>
+<h2 id="7">7. ロングノーツと一時停止</h2>
+<ul>
+<li><strong>ロングノーツ</strong>は始点と終点で 2 回数えます。終点の 150 ms 手前より後に離せば成功、それより早く離すと終点は MISS です（<a href="../code/src-game-session.ts.html#L114">session.ts L114-121</a>）。押し続けたまま終点を過ぎれば、<code>update</code> が成功として確定させます。</li>
+<li><strong>一時停止</strong>（Esc か画面の ❚❚ ボタン）では、<code>AudioContext</code> そのものを止めます（<code>ctx.suspend()</code>）。予約済みの音も、曲の時計も一緒に止まります。描画は止めた瞬間の時刻で固定するので、ノーツも動きません（<a href="../code/src-game-engine.ts.html#L92">engine.ts L92-109</a>、<a href="../code/src-game-engine.ts.html#L195">L195</a>）。タブを切り替えたときやウィンドウから離れたときも、自動で一時停止します。</li>
+</ul>
+<figure><img alt="一時停止の画面。ノーツは止めた位置のまま残り、続ける・やり直す・選曲に戻るを選べる" src="../assets/shots/pause.webp" /><figcaption>一時停止の画面。ノーツは止めた位置のまま残り、続ける・やり直す・選曲に戻るを選べる</figcaption></figure>
+</article>
+<aside class="toc"><p class="navlabel">このページの中身</p><ul><li class="d2"><a href="#_1">登場するもの</a></li><li class="d2"><a href="#_2">全体の流れ</a></li><li class="d2"><a href="#1-ready">1. 読み込んで、READY で待つ</a></li><li class="d2"><a href="#2">2. キーを押して始める</a></li><li class="d2"><a href="#3">3. 毎フレーム進める</a></li><li class="d2"><a href="#4">4. ノーツが奥から流れてくる</a></li><li class="d2"><a href="#5">5. 押した瞬間の時刻で判定する</a></li><li class="d2"><a href="#6">6. 判定が画面に出る</a></li><li class="d2"><a href="#7">7. ロングノーツと一時停止</a></li></ul></aside>
+</main>
+<script src="../site.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad: true, theme: "neutral"});</script>
+
+</body>
+</html>

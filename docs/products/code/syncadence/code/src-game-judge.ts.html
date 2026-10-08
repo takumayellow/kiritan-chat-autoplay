@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/game/judge.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html" class="current">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 31 行</p>
+<h1><code>src/game/judge.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>押した時刻のずれ（ミリ秒）を PERFECT・GREAT・GOOD・MISS のどれかに決める「判定幅」と、判定ごとのスコアの重みを決めておくファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>判定の 4 つの名前（<code>Judgement</code>、L1）と、その並び順（<code>JUDGEMENTS</code>、L3）。</li>
+<li>判定幅 <code>WINDOWS</code>（L6-11）。PERFECT ±42 ms、GREAT ±83 ms、GOOD ±125 ms、MISS ±160 ms。</li>
+<li>ロングノーツを離すときの猶予 <code>HOLD_RELEASE_TOLERANCE_MS</code>（L14）。150 ms。</li>
+<li>スコアの重み <code>SCORE_WEIGHT</code> と満点 <code>MAX_SCORE</code>（L16-17）。</li>
+<li>ずれから判定を 1 つ決める関数 <code>judgeDelta</code>（L20-27）。</li>
+</ul>
+<p>どのノーツに当てるか、ロングノーツをどう数えるかは <a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> が決めます。このファイルは数を決めておくだけで、状態を持ちません。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a>（L2 で取り込み）</td>
+<td><code>judgeDelta</code> で押下を判定し（L100）、<code>WINDOWS.good</code> で見逃しを決め（L148）、離しの猶予（L119）・重み（L79）・満点（L170）を使う</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a>（L2 で取り込み、L51）</td>
+<td><code>JUDGEMENTS</code> の順に、判定ごとの数の行を並べる</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a>（L1 で取り込み、L373・L383）</td>
+<td><code>MAX_SCORE</code> で割って、スコアのゲージの長さを決める</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L1 <code>type Judgement = "perfect" | …</code>（文法の索引の『型の別名 type と合併型 <code>|</code>』）</li>
+<li>L11 オブジェクトに付けた <code>as const</code>（文法の索引の『as const と配列の要素の型』）</li>
+<li>L16 <code>Record&lt;Judgement, number&gt;</code>（文法の索引の『Record 型』）</li>
+<li>L17 <code>1_000_000</code> — 数の区切りの <code>_</code></li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>judgeDelta</code>（L20-27）。ずれの絶対値を、狭い幅から順に比べるだけの短い関数です。</li>
+<li><code>WINDOWS</code> の 4 つの数と <code>SCORE_WEIGHT</code> の 4 つの数が、ゲームの手応えのほぼ全部を決めています。<code>docs/design.md</code> の 6 節に同じ表があります。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>幅は実時間のミリ秒です。</strong> 曲の時間差のまま渡すと、テンポを落としたときに幅が狭く感じられます。曲の秒から実時間のミリ秒への換算は、呼び出し側の <code>session.ts</code> の <code>realMs</code>（L72-74）がしています。</li>
+<li><strong>早すぎても遅すぎても、絶対値で同じ幅です</strong>（L21）。ただし遅い側は、<code>session.ts</code> の <code>update</code> が 125 ms を過ぎたノーツを先に見逃しの MISS にするので、125〜160 ms 遅れの MISS はめったに出ません（session.ts の解説の「落とし穴」）。</li>
+<li><code>breaksCombo</code>（L29-31）は、このコミットではどこからも呼ばれていません。コンボを切る条件は <code>session.ts</code> の L80 に直接書かれています。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><code>Judgement</code> は、判定の 4 つの名前のどれか 1 つを表す型です（文法の索引の『型の別名 type と合併型 <code>|</code>』）。<code>"perfect"</code> などの文字列そのものを型にしているので、<code>"Perfect"</code> のような書き間違いは TypeScript が見つけてくれます。</p>
+<p>画面に出す <code>"PERFECT"</code> などの大文字の表記は、使う側（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L21 など）がこの名前から引いて決めます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Judgement</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;perfect&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;great&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;good&quot;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="s2">&quot;miss&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L4</p><p><code>JUDGEMENTS</code> は 4 つの判定を、良い順に並べた配列です。型 <code>readonly Judgement[]</code> は「<code>Judgement</code> の配列で、要素を足したり書き換えたりできない」という意味です（<code>readonly</code> は文法の索引の『interface と readonly』）。</p>
+<p>結果画面（<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L51）が、この順に「PERFECT が何個、GREAT が何個…」の行を並べるのに使います。合併型の <code>Judgement</code> は型なので実行時には消えてしまい、並び順を取り出せません。そこで、実行時にも残る値として同じ 4 つを配列で持っています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">JUDGEMENTS</span><span class="o">:</span><span class="w"> </span><span class="kt">readonly</span><span class="w"> </span><span class="nx">Judgement</span><span class="p">[</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;perfect&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;great&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;good&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;miss&quot;</span><span class="p">]</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L5–L12</p><p>判定幅です。押した時刻とノーツの時刻の差の<strong>絶対値</strong>（早くても遅くても正の数にしたもの）が、</p>
+<table>
+<thead>
+<tr>
+<th>差の絶対値</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>42 ms 以下</td>
+<td>PERFECT</td>
+</tr>
+<tr>
+<td>42 ms より大きく 83 ms 以下</td>
+<td>GREAT</td>
+</tr>
+<tr>
+<td>83 ms より大きく 125 ms 以下</td>
+<td>GOOD</td>
+</tr>
+<tr>
+<td>125 ms より大きく 160 ms 以下</td>
+<td>MISS</td>
+</tr>
+<tr>
+<td>160 ms より大きい</td>
+<td>判定しない（空振り）</td>
+</tr>
+</tbody>
+</table>
+<p>になります。比べ方は L22-26 の <code>&lt;=</code>（以下）なので、ちょうど 42 ms は PERFECT です。</p>
+<p>60 フレーム毎秒の画面では 1 フレームが約 16.7 ms なので、PERFECT の幅 ±42 ms は前後それぞれ約 2.5 フレーム分です。</p>
+<p>最後の <code>as const</code>（文法の索引の『as const と配列の要素の型』）は、オブジェクトの欄を読み取り専用にし、<code>perfect</code> の型を「数」ではなく「ちょうど <code>42</code>」にします。うっかり <code>WINDOWS.good = 200</code> と書き換えると TypeScript がエラーにします。</p>
+<p>L5 のコメントにある「これより外の早押しは空振りとして無視する」は、MISS の幅（160 ms）より早い押下を判定に数えない、という意味です。ノーツが来るかなり前に押してしまっても、MISS を付けてノーツを消費することはなく、ノーツはそのまま残ります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="cm">/** 判定幅（実時間ミリ秒、±）。これより外の早押しは空振りとして無視する。 */</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">WINDOWS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="nx">perfect</span><span class="o">:</span><span class="w"> </span><span class="kt">42</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="nx">great</span><span class="o">:</span><span class="w"> </span><span class="kt">83</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="w">  </span><span class="nx">good</span><span class="o">:</span><span class="w"> </span><span class="kt">125</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">  </span><span class="nx">miss</span><span class="o">:</span><span class="w"> </span><span class="kt">160</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L13–L15</p><p>ロングノーツの終点の猶予です。<code>session.ts</code> の <code>release</code>（L114-121）は、終点の時刻より何ミリ秒早く離したかを計算し、それが 150 以下なら終点を PERFECT、それより早ければ MISS にします。終点の判定は、この 2 通りしかありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="cm">/** ロングノーツの終点は、この時間だけ手前で離しても成功にする。 */</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">HOLD_RELEASE_TOLERANCE_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">150</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L16–L18</p><blockquote>
+<p><strong>文法: 数の区切り <code>_</code></strong></p>
+<p><code>1_000_000</code> は 1000000（百万）と同じ数です。数字の間の <code>_</code> は読みやすくするための区切りで、値には影響しません。日本語で「1,000,000」とカンマを入れるのと同じ使い方です（プログラムではカンマは別の意味になるので <code>_</code> を使います）。</p>
+</blockquote>
+<p><code>SCORE_WEIGHT</code> は、判定 1 つで得る点の重みです。型 <code>Record&lt;Judgement, number&gt;</code>（文法の索引の『Record 型』）は「4 つの判定の名前を全部、欄として持ち、どれも数」という意味で、どれか 1 つでも書き忘れるとエラーになります。</p>
+<p><code>MAX_SCORE</code> は満点です。<code>session.ts</code> の <code>currentScore</code>（L169-171）は、</p>
+<div class="codehilite"><pre><span></span><code>スコア = 重みの合計 ÷ 判定の総数 × 1,000,000
+</code></pre></div>
+
+<p>で計算します。全部 PERFECT なら 1,000,000、全部 GREAT なら 750,000、全部 GOOD なら 350,000 です。ロングノーツの終点は PERFECT（重み 1）か MISS（重み 0）にしかならないので、押し切れば必ず満点の分を取れます。</p>
+<p>ランク（SSS は 990,000 以上など）は、この数をもとに <a class="xref" href="src-game-rank.ts.html"><code>src/game/rank.ts</code></a> が決めます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">SCORE_WEIGHT</span><span class="o">:</span><span class="w"> </span><span class="kt">Record</span><span class="o">&lt;</span><span class="nx">Judgement</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">perfect</span><span class="o">:</span><span class="w"> </span><span class="kt">1</span><span class="p">,</span><span class="w"> </span><span class="nx">great</span><span class="o">:</span><span class="w"> </span><span class="kt">0.75</span><span class="p">,</span><span class="w"> </span><span class="nx">good</span><span class="o">:</span><span class="w"> </span><span class="kt">0.35</span><span class="p">,</span><span class="w"> </span><span class="nx">miss</span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">MAX_SCORE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1</span><span class="nx">_000_000</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L19–L28</p><p><code>judgeDelta(deltaMs)</code> は、押した時刻の差（実時間ミリ秒）から判定を 1 つ返します。戻り値の型 <code>Judgement | null</code> は「判定か、判定しないことを表す <code>null</code>」です。</p>
+<ol>
+<li>L21 <code>Math.abs(deltaMs)</code> で絶対値を取る。<code>-30</code>（30 ms 早い）も <code>30</code>（30 ms 遅い）も <code>30</code> として扱います。</li>
+<li>L22-25 狭い幅から順に比べ、最初に収まった判定を返す。<code>return</code> した時点で関数は終わるので、例えば 30 は L22 で <code>"perfect"</code> を返し、L23 以降は見ません。</li>
+<li>L26 どれにも収まらなければ <code>null</code>。</li>
+</ol>
+<p>狭い順に並べてあるので、L23 の GREAT の条件は「83 以下」と書くだけで、実際には「42 より大きく 83 以下」の意味になります。</p>
+<p>例えば再生速度 1 で、ノーツより 0.06 秒遅く押した場合、差は 60 ms なので GREAT です。再生速度 0.5 で曲の時間で 0.03 秒遅く押した場合も、<code>session.ts</code> が実時間の 60 ms に直してから渡すので、同じく GREAT になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="cm">/** 押した時刻の差（実時間ミリ秒、正なら遅い）から判定する。判定の外なら null。 */</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">judgeDelta</span><span class="p">(</span><span class="nx">deltaMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Judgement</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">deltaMs</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">WINDOWS</span><span class="p">.</span><span class="nx">perfect</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;perfect&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">WINDOWS</span><span class="p">.</span><span class="nx">great</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;great&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">WINDOWS</span><span class="p">.</span><span class="nx">good</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;good&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">d</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="nx">WINDOWS</span><span class="p">.</span><span class="nx">miss</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="s2">&quot;miss&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L31</p><p><code>breaksCombo</code> は、その判定でコンボが切れるか（MISS かどうか）を返します。このコミットでは <code>src/</code> のどこからも呼ばれておらず、<code>session.ts</code> の <code>record</code>（L80）が <code>judgement === "miss"</code> と同じ条件を直接書いています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">breaksCombo</span><span class="p">(</span><span class="nx">judgement</span><span class="o">:</span><span class="w"> </span><span class="kt">Judgement</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">judgement</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;miss&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/storage.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html" class="current">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 119 行</p>
+<h1><code>src/storage.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>設定・自己ベスト・最後に選んだ曲と難易度を、ブラウザの中の小さな保存場所（<code>localStorage</code>）に書き込み、次に開いたときに読み戻すファイルです。読み戻した値は型と範囲を 1 つずつ確かめ、壊れていれば既定値に戻します。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>設定の形（<code>Settings</code>、L3-15）と既定値（<code>DEFAULT_SETTINGS</code>、L17-25）を決める。ゲームのどこで設定を使うときも、この形を参照します。</li>
+<li>3 種類のデータの読み書き。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>データ</th>
+<th>保存のキー</th>
+<th>読む</th>
+<th>書く</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>設定</td>
+<td><code>syncadence.v2.settings</code></td>
+<td><code>loadSettings</code>（L66）</td>
+<td><code>saveSettings</code>（L70）</td>
+</tr>
+<tr>
+<td>自己ベスト</td>
+<td><code>syncadence.v2.best</code></td>
+<td><code>loadBest</code>（L80）</td>
+<td><code>recordBest</code>（L91）</td>
+</tr>
+<tr>
+<td>最後に選んだ曲と難易度</td>
+<td><code>syncadence.v2.last</code></td>
+<td><code>loadSelection</code>（L113）</td>
+<td><code>saveSelection</code>（L117）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>読み戻した値の検査（<code>sanitizeSettings</code>、<code>loadBest</code> の中、<code>sanitizeSelection</code>）。<code>localStorage</code> の中身は利用者が開発者ツールで書き換えられますし、古い版のゲームが別の形で保存したものが残っているかもしれません。そのまま使わず、1 項目ずつ確かめます。</li>
+<li>保存できない環境（プライベートモードなど）でも、例外を出さずに動き続ける（L49-64）。</li>
+</ul>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a>（L31-33、L45、L55、L65-67）</td>
+<td>起動時の読み込みと、変わるたびの保存</td>
+</tr>
+<tr>
+<td>型を貸す</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a>、<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>、<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a>、<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a>、<a class="xref" href="src-ui-SettingsPanel.tsx.html"><code>src/ui/SettingsPanel.tsx</code></a>、<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a></td>
+<td><code>Settings</code> の形</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L69・L95・L134</td>
+<td><code>bestKey</code> で自己ベストの表を引く</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の <code>DIFFICULTIES</code></td>
+<td>難易度として正しい文字列かを確かめる</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>ブラウザの <code>window.localStorage</code>、<code>JSON</code></td>
+<td>文字列としての保存と、文字列とデータの変換</td>
+</tr>
+<tr>
+<td>試される</td>
+<td><code>src/storage.test.ts</code>（解説キット外）</td>
+<td>保存して読み戻せるか、壊れた JSON や <code>localStorage</code> の例外で既定値になるか</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L3 <code>export interface Settings { readonly approachSeconds: number; … }</code> — interface と readonly</li>
+<li>L4 <code>/** … */</code> — ドキュメントコメント</li>
+<li>L31 <code>function clamp(value: unknown, …): number</code> — 引数と戻り値の型</li>
+<li>L32 <code>typeof value === "number"</code> — 値の種類を調べる <code>typeof</code></li>
+<li>L36 <code>raw as Record&lt;string, unknown&gt;</code> — 型の言い張り <code>as</code> と Record 型</li>
+<li>L50-55 <code>try { … } catch { … }</code> — 例外の受け止め</li>
+<li>L74 <code>Readonly&lt;Record&lt;string, number&gt;&gt;</code> — 項目を書き換えられない型</li>
+<li>L85 <code>(entry): entry is [string, number] =&gt;</code> — 型ガード（文法の索引の『型ガード <code>x is T</code>』）とタプル型（『タプル型』）</li>
+<li>L92-93 <code>best[key]</code>、<code>{ ...best, [key]: score }</code> — 角括弧での項目の読み書き</li>
+<li>L108 <code>/^[a-z0-9-]{1,64}$/.test(…)</code> — 正規表現</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li><code>sanitizeSettings</code>（L35-47）。1 項目ずつ「種類が合っているか」「範囲に収まっているか」を確かめ、外れたら既定値にする。この範囲が、設定の画面で選べる範囲の元になっています。</li>
+<li><code>read</code> / <code>write</code>（L49-64）。<code>localStorage</code> と JSON の失敗をすべてここで受け止め、ほかの関数は失敗を気にせずに済む。</li>
+<li><code>recordBest</code>（L91-96）。前より高いときだけ新しい表を作って保存し、それ以外は元の表をそのまま返す。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>範囲の数値が複数のファイルに書いてあります。</strong> 補正の範囲 ±300 ms は L40-41 のほかに、<a class="xref" href="src-ui-SettingsPanel.tsx.html"><code>src/ui/SettingsPanel.tsx</code></a> の L49-53・L61-65、<a class="xref" href="src-ui-Result.tsx.html"><code>src/ui/Result.tsx</code></a> の L74、<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L115 にも別々に書かれています。範囲を変えるときは全部を直す必要があります。</li>
+<li><strong>曲 ID の形の決まり（L108）は <a class="xref" href="src-song-validate.ts.html"><code>src/song/validate.ts</code></a> の L3 <code>SONG_ID</code> と同じ正規表現を書き写したものです。</strong> 片方だけ変えると、保存した曲 ID が読み戻せなくなるか、一覧に無い形の ID を受け付けることになります。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L2</p><p><code>DIFFICULTIES</code> は 4 つの難易度の名前を並べた配列 <code>["easy", "normal", "hard", "expert"]</code>、<code>Difficulty</code> はそのどれか 1 つの文字列という型です（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の L1-2）。L109 で、読み戻した難易度が正しい名前かを確かめるのに使います。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Difficulty</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./song/types&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L3–L16</p><blockquote>
+<p><strong>文法: interface と readonly</strong></p>
+<p><code>interface 名前 { 項目: 型; … }</code> は、オブジェクトの形（どんな名前の項目を持ち、それぞれがどんな種類の値か）に名前を付ける書き方です。<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L22 の <code>type 名前 = { … }</code> とほぼ同じことができます。このコードでは、オブジェクトの形には主に <code>interface</code>、合併型 <code>|</code> などそれ以外には <code>type</code> を使っています。</p>
+<p><code>ts
+interface Settings {
+  readonly approachSeconds: number;   // 数の項目
+  readonly keysound: boolean;         // 真偽の項目
+}</code></p>
+<p>項目の前の <code>readonly</code> は「作ったあとで書き換えない」という印です。<code>settings.volume = 0.5;</code> と書くと型の検査でエラーになります。値を変えたいときは、スプレッド構文（文法の索引の『スプレッド構文 <code>...</code>』）で新しいオブジェクトを作ります（<a class="xref" href="src-ui-SettingsPanel.tsx.html"><code>src/ui/SettingsPanel.tsx</code></a> の L12）。</p>
+<p><code>readonly</code> も型と同じく、TypeScript が書いた時点で確かめるだけの印で、実行中に書き換えを止める仕組みではありません。</p>
+<p><code>interface B extends A { … }</code> と書くと、A の項目をすべて持ったうえで項目を足した形になります（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の L43）。</p>
+<p><strong>文法: ドキュメントコメント <code>/** */</code></strong></p>
+<p><code>//</code> から行末までと、<code>/*</code> から <code>*/</code> までは、実行に関係しないコメントです。<code>/**</code> で始めたコメントを項目や関数の直前に置くと、エディタ（VS Code など）がその説明を覚えていて、別のファイルでその名前にマウスを乗せたときに表示してくれます。ここでは <code>Settings</code> の各項目の意味を書くのに使っています。</p>
+</blockquote>
+<p>設定の 7 項目と、ゲームの中での効き方です。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>単位</th>
+<th>効く場所</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>approachSeconds</code></td>
+<td>秒</td>
+<td><a class="xref" href="src-render-highway.ts.html"><code>src/render/highway.ts</code></a>、<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L88・L206</td>
+<td>ノーツが奥に現れてから判定線に届くまでの時間。小さいほど速く流れる</td>
+</tr>
+<tr>
+<td><code>inputOffsetMs</code></td>
+<td>ミリ秒</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L124</td>
+<td>押した時刻から差し引いてから判定する。正なら、遅めに押しても合う</td>
+</tr>
+<tr>
+<td><code>visualOffsetMs</code></td>
+<td>ミリ秒</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L204</td>
+<td>描画に使う曲の位置から差し引く。正なら、ノーツが遅れて判定線に届く</td>
+</tr>
+<tr>
+<td><code>keysound</code></td>
+<td>—</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L59-63、L129-134</td>
+<td>オンにすると、ノーツに結び付いた音を自動では鳴らさず、叩けたときだけ鳴らす</td>
+</tr>
+<tr>
+<td><code>volume</code></td>
+<td>0〜1</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L57</td>
+<td>音量</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td>倍</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a>、<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> など</td>
+<td>再生の速さ。0.5 なら半分の速さ</td>
+</tr>
+<tr>
+<td><code>autoplay</code></td>
+<td>—</td>
+<td><a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> ほか</td>
+<td>ゲームが自分で叩く見本。自己ベストに残さない</td>
+</tr>
+</tbody>
+</table>
+<p><code>volume</code>・<code>rate</code>・<code>autoplay</code> にはコメントがありません。</p>
+<p>2 つの補正は、ブラウザが教えてくれない遅れ（OS の音の処理や Bluetooth イヤホンなど）と、その人の押す癖を利用者が埋めるためのものです（<code>docs/design.md</code> の 5.4 節）。入力の補正は <a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> で測って入れることもできます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="w">  </span><span class="cm">/** ノーツが判定線まで流れてくる時間（秒）。小さいほど速い */</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">approachSeconds</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 入力の補正（ミリ秒）。正なら、遅めに押しても合うように判定をずらす */</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">inputOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 表示の補正（ミリ秒）。正なら、ノーツを遅らせて描く */</span></td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">visualOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">  </span><span class="cm">/** 叩いたときに音を鳴らす（叩かなかった音は鳴らない） */</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">keysound</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">volume</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">autoplay</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L17–L30</p><p><code>DEFAULT_SETTINGS</code> は、何も保存されていないときや、保存された値が壊れていたときに使う設定です。<code>: Settings</code> と型を書いているので、項目が 1 つでも足りなかったり、名前を打ち間違えたりすると、型の検査でエラーになります。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>既定値</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ノーツの速さ</td>
+<td>1.6 秒で判定線に届く</td>
+</tr>
+<tr>
+<td>2 つの補正</td>
+<td>0 ms</td>
+</tr>
+<tr>
+<td>キー音</td>
+<td>オフ（曲の音はすべて自動で鳴る）</td>
+</tr>
+<tr>
+<td>音量</td>
+<td>0.8</td>
+</tr>
+<tr>
+<td>速さ</td>
+<td>1（もとの速さ）</td>
+</tr>
+<tr>
+<td>オートプレイ</td>
+<td>オフ</td>
+</tr>
+</tbody>
+</table>
+<p>L27-29 は <code>localStorage</code> に保存するときの名前（キー）です。<code>localStorage</code> は同じサイトのすべてのページで共有されるので、ほかのプログラムの保存と混ざらないよう、ゲーム名と版（<code>v2</code>）を頭に付けています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">DEFAULT_SETTINGS</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="nx">approachSeconds</span><span class="o">:</span><span class="w"> </span><span class="kt">1.6</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="w">  </span><span class="nx">inputOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="w">  </span><span class="nx">visualOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">0</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="nx">keysound</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="nx">volume</span><span class="o">:</span><span class="w"> </span><span class="kt">0.8</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="w">  </span><span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="kt">1</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="w">  </span><span class="nx">autoplay</span><span class="o">:</span><span class="w"> </span><span class="kt">false</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">SETTINGS_KEY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;syncadence.v2.settings&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">BEST_KEY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;syncadence.v2.best&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">LAST_KEY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;syncadence.v2.last&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L31–L34</p><blockquote>
+<p><strong>文法: 引数と戻り値の型</strong></p>
+<p>関数の引数にも <code>名前: 型</code> で型を書きます。<code>)</code> の後ろの <code>: number</code> は「この関数は数を返す」という戻り値の型です。<code>: void</code> は「何も返さない」です（L58）。</p>
+<p>L31 の <code>value: unknown</code> の <code>unknown</code> は「何の値か分からない」型です（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の『instanceof』の囲み）。確かめるまでは数として計算することも、項目を読むこともできません。</p>
+<p><strong>文法: typeof</strong></p>
+<p><code>typeof 値</code> は、その値の種類を <code>"number"</code>、<code>"string"</code>、<code>"boolean"</code>、<code>"object"</code>、<code>"undefined"</code>、<code>"function"</code> などの文字列で返します。<code>typeof value === "number"</code> は「<code>value</code> は数か」です。TypeScript はこの比較を見て、<code>&amp;&amp;</code> の右側では <code>value</code> を数として扱わせてくれます（型の絞り込み）。</p>
+<p><code>A &amp;&amp; B</code> は「A が偽ならそこで偽、A が真なら B の結果」です。左が偽なら右は実行されないので、左で種類を確かめてから右でその種類として使う、という書き方ができます。<code>||</code> は逆に「A が真ならそこで真、偽なら B」です。</p>
+<p><code>typeof null</code> は歴史的な事情で <code>"object"</code> になります。そのため L36 では <code>typeof raw === "object" &amp;&amp; raw !== null</code> と 2 つ並べて、本物のオブジェクトだけを通しています。</p>
+</blockquote>
+<p><code>clamp(value, lo, hi, fallback)</code> は「<code>value</code> が普通の数なら <code>lo</code> 以上 <code>hi</code> 以下に収めて返す。数でなければ <code>fallback</code> を返す」関数です。L32 の式を評価の順に分けると次のとおりです。</p>
+<ol>
+<li><code>typeof value === "number"</code> — 数か。文字列の <code>"1.6"</code> や <code>null</code> はここで落ちる</li>
+<li><code>Number.isFinite(value)</code> — 普通の数か。JavaScript の数には「数ではない」を表す <code>NaN</code> と、無限大 <code>Infinity</code> があり、どちらも <code>typeof</code> では <code>"number"</code> になる。<code>Number.isFinite</code> は両方とも偽にする</li>
+<li>両方真なら <code>Math.min(hi, Math.max(lo, value))</code> — まず <code>lo</code> より小さければ <code>lo</code> に引き上げ、次に <code>hi</code> より大きければ <code>hi</code> に引き下げる</li>
+<li>どちらかが偽なら <code>fallback</code></li>
+</ol>
+<p>たとえば <code>clamp(9, 0.6, 4, 1.6)</code> は 4、<code>clamp("x", 0.6, 4, 1.6)</code> は 1.6 です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">clamp</span><span class="p">(</span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">,</span><span class="w"> </span><span class="nx">lo</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">hi</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">,</span><span class="w"> </span><span class="nx">fallback</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">value</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">Number</span><span class="p">.</span><span class="nb">isFinite</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="nx">hi</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">max</span><span class="p">(</span><span class="nx">lo</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nx">fallback</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L35–L48</p><blockquote>
+<p><strong>文法: 型の言い張り as</strong></p>
+<p><code>値 as 型</code> は、TypeScript に「この値はこの型だとみなして」と言い張る書き方です。実行時には何もしません。確かめずに言い張るので、間違っていれば後で壊れます。ここでは直前の <code>typeof raw === "object" &amp;&amp; raw !== null</code> で「オブジェクトである」ことまでは確かめたうえで、項目を読めるようにするために使っています。</p>
+<p><strong>文法: Record 型</strong></p>
+<p><code>Record&lt;キーの型, 値の型&gt;</code> は「キーが キーの型、値が 値の型 の項目を、いくつでも持つオブジェクト」という型です。<code>Record&lt;string, unknown&gt;</code> は「どんな名前の項目でも読んでよいが、その中身は分からない」という意味になります。</p>
+<p>キーの型に合併型を渡すと、その全部をキーに持つ型になります。<code>Record&lt;Difficulty, number&gt;</code> は <code>easy</code>・<code>normal</code>・<code>hard</code>・<code>expert</code> の 4 つの項目をすべて持ち、どれも数です（<a class="xref" href="src-song-types.ts.html"><code>src/song/types.ts</code></a> の L44）。</p>
+<p><code>Readonly&lt;型&gt;</code> で包むと、その全項目に <code>readonly</code> を付けた型になります（L74）。</p>
+</blockquote>
+<p><code>sanitizeSettings(raw)</code> は、<code>localStorage</code> から読み戻した何か分からない値 <code>raw</code> から、正しい形の設定を作り直す関数です。</p>
+<p>L36 で、<code>raw</code> がオブジェクトならそれを、そうでなければ（<code>null</code>、数、文字列、壊れた JSON から <code>read</code> が返した <code>null</code> など）空のオブジェクト <code>{}</code> を <code>obj</code> にします。空のオブジェクトから項目を読むと <code>undefined</code> が返り、L39-45 ですべて既定値になります。</p>
+<p>L37 の <code>d</code> は <code>DEFAULT_SETTINGS</code> の短い別名です。</p>
+<p>L38-46 は、7 項目を 1 つずつ確かめて新しいオブジェクトを作って返します。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>確かめ方</th>
+<th>許す範囲</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>approachSeconds</code></td>
+<td><code>clamp</code></td>
+<td>0.6〜4 秒</td>
+</tr>
+<tr>
+<td><code>inputOffsetMs</code>・<code>visualOffsetMs</code></td>
+<td><code>clamp</code></td>
+<td>−300〜+300 ms</td>
+</tr>
+<tr>
+<td><code>keysound</code>・<code>autoplay</code></td>
+<td><code>typeof … === "boolean"</code>（条件演算子、文法の索引の『条件演算子 <code>? :</code>』）</td>
+<td>真か偽</td>
+</tr>
+<tr>
+<td><code>volume</code></td>
+<td><code>clamp</code></td>
+<td>0〜1</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td><code>clamp</code></td>
+<td>0.5〜1</td>
+</tr>
+</tbody>
+</table>
+<p>範囲の外の値は、既定値ではなく<strong>範囲の端</strong>に寄せます。<code>approachSeconds</code> が 10 なら 4 になります。種類が違う（数でない）ときだけ既定値です。</p>
+<p><code>obj</code> に余分な項目があっても、新しいオブジェクトには入りません。この関数が返すのは、L39-45 に書いた 7 項目だけです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">sanitizeSettings</span><span class="p">(</span><span class="nx">raw</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">obj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span><span class="nx">raw</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">DEFAULT_SETTINGS</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">    </span><span class="nx">approachSeconds</span><span class="o">:</span><span class="w"> </span><span class="kt">clamp</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="p">,</span><span class="w"> </span><span class="mf">0.6</span><span class="p">,</span><span class="w"> </span><span class="mf">4</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">approachSeconds</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">    </span><span class="nx">inputOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">clamp</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">    </span><span class="nx">visualOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">clamp</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">visualOffsetMs</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">visualOffsetMs</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">    </span><span class="nx">keysound</span><span class="o">:</span><span class="w"> </span><span class="kt">typeof</span><span class="w"> </span><span class="nx">obj</span><span class="p">.</span><span class="nx">keysound</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">obj.keysound</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">d.keysound</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">    </span><span class="nx">volume</span><span class="o">:</span><span class="w"> </span><span class="kt">clamp</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">volume</span><span class="p">,</span><span class="w"> </span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">volume</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">    </span><span class="nx">rate</span><span class="o">:</span><span class="w"> </span><span class="kt">clamp</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">rate</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="nx">d</span><span class="p">.</span><span class="nx">rate</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">    </span><span class="nx">autoplay</span><span class="o">:</span><span class="w"> </span><span class="kt">typeof</span><span class="w"> </span><span class="nx">obj</span><span class="p">.</span><span class="nx">autoplay</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;boolean&quot;</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">obj.autoplay</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">d.autoplay</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L49–L65</p><blockquote>
+<p><strong>文法: try / catch</strong></p>
+<p><code>ts
+try {
+  失敗するかもしれない処理
+} catch {
+  失敗したときの処理
+}</code></p>
+<p><code>try { }</code> の中で例外が投げられると（<a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『例外を投げる throw』）、そこで中の処理をやめて <code>catch { }</code> へ飛びます。例外は外へ伝わらず、ここで受け止めたことになります。何も起きなければ <code>catch</code> の中は実行されません。</p>
+<p>投げられたエラーを使いたいときは <code>catch (e) { … }</code> と名前を付けて受け取ります。ここでは中身を使わないので、<code>catch {</code> と名前を省いています。</p>
+</blockquote>
+<p><code>read(key)</code> は、保存された文字列を読んでデータに戻します。</p>
+<ol>
+<li><code>window.localStorage.getItem(key)</code> — キーで保存された文字列を読む。無ければ <code>null</code></li>
+<li><code>text ? JSON.parse(text) : null</code> — 文字列があれば（空文字でも <code>null</code> でもなければ）、<code>JSON.parse</code> でデータに戻す。無ければ <code>null</code></li>
+<li>どこかで例外が出たら <code>null</code></li>
+</ol>
+<p><code>localStorage</code> は、ブラウザがサイトごとに用意する小さな保存場所で、ページを閉じても消えません。ただし<strong>文字列しか保存できない</strong>ので、オブジェクトは JSON という文字列の形式に直して保存します。<code>JSON.stringify({ volume: 0.8 })</code> は文字列 <code>'{"volume":0.8}'</code> を、<code>JSON.parse</code> はその逆を返します。</p>
+<p>ここで受け止める例外は 2 種類です。</p>
+<ul>
+<li>保存場所が使えない環境では、<code>localStorage</code> を触っただけで例外になることがある（L62 のコメントのプライベートモードなど）</li>
+<li>保存された文字列が JSON として壊れていると、<code>JSON.parse</code> が例外を出す</li>
+</ul>
+<p><code>write(key, value)</code> は逆に、<code>JSON.stringify</code> で文字列にして <code>setItem</code> で保存します。保存場所が満杯のときや使えないときは例外になりますが、受け止めて何もしません。コメント（L62）のとおり、保存できなくても、画面に出ている間は <code>App</code> が値を持っているので、その回のプレイの間は設定が効きます。</p>
+<p><code>read</code> が返す型が <code>unknown</code> なのは、保存された中身が何かは読むまで分からないからです。呼び出し側はかならず確かめてから使うことになります（L67、L81-82、L114）。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">read</span><span class="p">(</span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">unknown</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">  </span><span class="k">try</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">text</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">localStorage</span><span class="p">.</span><span class="nx">getItem</span><span class="p">(</span><span class="nx">key</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">text</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nb">JSON</span><span class="p">.</span><span class="nx">parse</span><span class="p">(</span><span class="nx">text</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="kd">function</span><span class="w"> </span><span class="nx">write</span><span class="p">(</span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">value</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">  </span><span class="k">try</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">    </span><span class="nb">window</span><span class="p">.</span><span class="nx">localStorage</span><span class="p">.</span><span class="nx">setItem</span><span class="p">(</span><span class="nx">key</span><span class="p">,</span><span class="w"> </span><span class="nb">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">(</span><span class="nx">value</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">    </span><span class="c1">// 保存できない環境（プライベートモード等）では、その回のプレイだけ設定が効く</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L66–L73</p><p><code>loadSettings</code> は「読んで、確かめて、返す」を 1 行にしたものです。何も保存されていなければ <code>read</code> が <code>null</code> を返し、<code>sanitizeSettings(null)</code> は既定値と同じ設定を返します。</p>
+<p><code>saveSettings</code> は設定の全体を保存します。呼ぶのは <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L55 だけで、設定が変わるたびに呼ばれます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">loadSettings</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">sanitizeSettings</span><span class="p">(</span><span class="nx">read</span><span class="p">(</span><span class="nx">SETTINGS_KEY</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">saveSettings</span><span class="p">(</span><span class="nx">settings</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">  </span><span class="nx">write</span><span class="p">(</span><span class="nx">SETTINGS_KEY</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L74–L79</p><p><code>BestScores</code> は自己ベストの表の型で、「キーが文字列、値が数」の項目をいくつでも持つ、書き換えないオブジェクトです（L35-48 の『Record 型』の囲み）。</p>
+<p>表のキーは <code>bestKey(songId, difficulty)</code> で作ります。テンプレート文字列（文法の索引の『テンプレート文字列』）で曲 ID と難易度を <code>:</code> でつなぐので、<code>bestKey("fur-elise", "hard")</code> は <code>"fur-elise:hard"</code> です。曲と難易度の組ごとに 1 つのスコアを持ちます。</p>
+<p>実際の表は、たとえば次のような形です。</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;fur-elise:hard&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">912345</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;clair-de-lune:easy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">998000</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">BestScores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">Readonly</span><span class="o">&lt;</span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="o">&gt;&gt;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">bestKey</span><span class="p">(</span><span class="nx">songId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="kt">Difficulty</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">songId</span><span class="si">}</span><span class="sb">:</span><span class="si">${</span><span class="nx">difficulty</span><span class="si">}</span><span class="sb">`</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L80–L89</p><p><code>loadBest</code> は、保存された自己ベストの表を読み、正しい項目だけを残した新しい表を返します。</p>
+<p>L82 で、オブジェクトでなければ（何も保存されていない場合を含む）空の表 <code>{}</code> を返します。</p>
+<p>L83-87 は内側から評価します。</p>
+<ol>
+<li><code>Object.entries(raw)</code> — オブジェクトを「<code>[キー, 値]</code> の 2 つ組の配列」に変える。<code>{ a: 1, b: "x" }</code> なら <code>[["a", 1], ["b", "x"]]</code></li>
+<li><code>.filter(関数)</code> — 関数が真を返した要素だけを残した新しい配列を作る（文法の索引の『map・filter・reduce』）。ここでは「値（<code>entry[1]</code>、2 つ組の 2 番目）が普通の数」の組だけを残す</li>
+<li><code>Object.fromEntries(…)</code> — 2 つ組の配列をオブジェクトに戻す</li>
+</ol>
+<p>L85 の <code>(entry): entry is [string, number] =&gt;</code> は、<code>filter</code> に渡す関数の戻り値の型に <code>entry is [string, number]</code> と書いたものです。「この関数が真を返したら、<code>entry</code> は『文字列と数の 2 つ組』だ」と TypeScript に教える書き方で（文法の索引の『型ガード <code>x is T</code>』）、これによって <code>filter</code> の結果が「文字列と数の 2 つ組の配列」として扱われ、L83 の戻り値が <code>BestScores</code> の形に合うようになります。<code>[string, number]</code> は「1 番目が文字列、2 番目が数の、長さ 2 の配列」という型です（文法の索引の『タプル型』）。</p>
+<p>キーのほうは確かめていないので、<code>"abc"</code> のような、曲と難易度の形になっていないキーも残ります。表を引くときは <code>bestKey</code> で作ったキーしか使わないので、余分なキーは読まれないだけです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">loadBest</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">BestScores</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">read</span><span class="p">(</span><span class="nx">BEST_KEY</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nb">Object</span><span class="p">.</span><span class="nx">fromEntries</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">    </span><span class="nb">Object</span><span class="p">.</span><span class="nx">entries</span><span class="p">(</span><span class="nx">raw</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">)</span><span class="p">.</span><span class="nx">filter</span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="w">      </span><span class="p">(</span><span class="nx">entry</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">entry</span><span class="w"> </span><span class="nx">is</span><span class="w"> </span><span class="p">[</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="kt">number</span><span class="p">]</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">entry</span><span class="p">[</span><span class="mf">1</span><span class="p">]</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;number&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">Number</span><span class="p">.</span><span class="nb">isFinite</span><span class="p">(</span><span class="nx">entry</span><span class="p">[</span><span class="mf">1</span><span class="p">]</span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="w">    </span><span class="p">)</span><span class="p">,</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L90–L97</p><blockquote>
+<p><strong>文法: 角括弧での項目の読み書き <code>obj[key]</code> と <code>{ [key]: 値 }</code></strong></p>
+<p>オブジェクトの項目は <code>best.foo</code> のように <code>.</code> で読めますが、項目の名前が変数に入っているときは <code>best[key]</code> と角括弧で読みます。<code>key</code> が <code>"fur-elise:hard"</code> なら、<code>best["fur-elise:hard"]</code> と同じです（<code>:</code> を含む名前は <code>.</code> では書けません）。無い項目を読むと <code>undefined</code> です。</p>
+<p>オブジェクトを作るときに <code>{ [key]: score }</code> と書くと、項目の名前を変数 <code>key</code> の中身にできます。<code>{ key: score }</code> と書くと、<code>"key"</code> という名前の項目になってしまいます。</p>
+</blockquote>
+<p><code>recordBest(best, key, score)</code> は、今回のスコア <code>score</code> が自己ベストを超えたら新しい表を作って保存し、その表を返します。</p>
+<ol>
+<li>L92 <code>(best[key] ?? -1) &gt;= score</code> — いまの記録（無ければ −1）が今回のスコア以上なら、何もせずに元の表 <code>best</code> を返す。スコアは 0 以上なので、記録が無ければ 0 点でも必ず記録される。同点は書き換えない</li>
+<li>L93 <code>{ ...best, [key]: score }</code> — 元の表を写した新しいオブジェクトを作り、<code>key</code> の項目だけ今回のスコアにする（文法の索引の『スプレッド構文 <code>...</code>』）</li>
+<li>L94 保存する</li>
+<li>L95 新しい表を返す</li>
+</ol>
+<p>元の表 <code>best</code> を書き換えずに新しい表を返すのは、<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L67 で、戻り値をそのまま <code>setBest</code> に渡すからです。React は「前と別のオブジェクトか」で変化を見分けます。記録を更新しなかったときに元の表を返すと、<code>setBest</code> に同じものが渡り、React は描き直しを省きます。</p>
+<p>オートプレイのときにこの関数を呼ばないのは、呼び出し側（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L67）の役目です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl"><span class="cm">/** 自己ベストを更新したら新しい表を返す。 */</span></td></tr><tr><td class="ln"><a id="L91" href="#L91">91</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">recordBest</span><span class="p">(</span><span class="nx">best</span><span class="o">:</span><span class="w"> </span><span class="kt">BestScores</span><span class="p">,</span><span class="w"> </span><span class="nx">key</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">score</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">BestScores</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L92" href="#L92">92</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="p">(</span><span class="nx">best</span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">score</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">best</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L93" href="#L93">93</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">next</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="nx">best</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="nx">key</span><span class="p">]</span><span class="o">:</span><span class="w"> </span><span class="nx">score</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L94" href="#L94">94</a></td><td class="cl"><span class="w">  </span><span class="nx">write</span><span class="p">(</span><span class="nx">BEST_KEY</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L95" href="#L95">95</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">next</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L96" href="#L96">96</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L97" href="#L97">97</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L98–L105</p><p><code>LastSelection</code> は、選曲画面で最後に選んでいた曲と難易度です。<code>songId</code> が <code>string | null</code> なのは、初めて遊ぶ人にはまだ選んだ曲が無いからです。<code>null</code> のときは <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L43 で一覧の先頭の曲を選びます。</p>
+<p><code>DEFAULT_SELECTION</code> は「曲は未選択、難易度は NORMAL」です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L98" href="#L98">98</a></td><td class="cl"><span class="cm">/** 選曲画面で最後に選んでいた曲と難易度。 */</span></td></tr><tr><td class="ln"><a id="L99" href="#L99">99</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">LastSelection</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L100" href="#L100">100</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">songId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L101" href="#L101">101</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="kt">Difficulty</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L102" href="#L102">102</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L103" href="#L103">103</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L104" href="#L104">104</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">DEFAULT_SELECTION</span><span class="o">:</span><span class="w"> </span><span class="kt">LastSelection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">songId</span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">,</span><span class="w"> </span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;normal&quot;</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L105" href="#L105">105</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L106–L112</p><blockquote>
+<p><strong>文法: 正規表現</strong></p>
+<p><code>/</code> と <code>/</code> で挟んだものは、文字列の形の決まりを書いた<strong>正規表現</strong>です。<code>.test(文字列)</code> で、その文字列が形に合うかを真偽で返します。</p>
+<p><code>/^[a-z0-9-]{1,64}$/</code> を部品に分けると:</p>
+<table>
+<thead>
+<tr>
+<th>部品</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>^</code></td>
+<td>文字列の先頭から</td>
+</tr>
+<tr>
+<td><code>[a-z0-9-]</code></td>
+<td>小文字の英字、数字、<code>-</code> のどれか 1 文字</td>
+</tr>
+<tr>
+<td><code>{1,64}</code></td>
+<td>直前のものを 1〜64 回くり返す</td>
+</tr>
+<tr>
+<td><code>$</code></td>
+<td>文字列の最後まで</td>
+</tr>
+</tbody>
+</table>
+<p>全体で「小文字・数字・<code>-</code> だけでできた、1〜64 文字の文字列」です。<code>"fur-elise"</code> は合い、<code>"Fur Elise"</code>（大文字と空白）や <code>"../x"</code>（<code>.</code> と <code>/</code>）は合いません。</p>
+</blockquote>
+<p><code>sanitizeSelection(raw)</code> は、読み戻した値から正しい形の <code>LastSelection</code> を作ります。</p>
+<ul>
+<li>L107 は L36 と同じで、オブジェクトでなければ空のオブジェクトにします。</li>
+<li>L108 は、<code>songId</code> が文字列で、曲 ID の形に合っていればそのまま、そうでなければ <code>null</code> にします。曲 ID はあとで <code>songs/&lt;ID&gt;.json</code> というファイルの名前に使われるので（<a class="xref" href="src-song-load.ts.html"><code>src/song/load.ts</code></a> の L18）、<code>/</code> や <code>.</code> の混じった値を通さないようにしています。</li>
+<li>L109 は、<code>DIFFICULTIES.find((d) =&gt; d === obj.difficulty)</code> で、4 つの難易度の名前のうち <code>obj.difficulty</code> と同じものを探します。<code>.find(関数)</code> は、関数が真を返した最初の要素を返し、見つからなければ <code>undefined</code> を返します。見つからなければ <code>?? DEFAULT_SELECTION.difficulty</code> で <code>"normal"</code> にします（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）。</li>
+</ul>
+<p>L109 の書き方は、確かめと型の絞り込みを一度に済ませています。<code>obj.difficulty</code> は <code>unknown</code> ですが、<code>find</code> が返すのは <code>DIFFICULTIES</code> の要素なので、結果は最初から <code>Difficulty</code> 型です。</p>
+<p>この関数は曲 ID が<strong>いまの曲の一覧にあるか</strong>までは確かめません。一覧は読み込みが終わるまで分からないので、そこは <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L43 が受け持ちます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L106" href="#L106">106</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">sanitizeSelection</span><span class="p">(</span><span class="nx">raw</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">LastSelection</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L107" href="#L107">107</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">obj</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">raw</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span><span class="nx">raw</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Record</span><span class="o">&lt;</span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">unknown</span><span class="o">&gt;</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L108" href="#L108">108</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">songId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">obj</span><span class="p">.</span><span class="nx">songId</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;string&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="sr">/^[a-z0-9-]{1,64}$/</span><span class="p">.</span><span class="nx">test</span><span class="p">(</span><span class="nx">obj</span><span class="p">.</span><span class="nx">songId</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nx">obj.songId</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L109" href="#L109">109</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">difficulty</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">DIFFICULTIES</span><span class="p">.</span><span class="nx">find</span><span class="p">(</span><span class="p">(</span><span class="nx">d</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">d</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="nx">obj</span><span class="p">.</span><span class="nx">difficulty</span><span class="p">)</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="nx">DEFAULT_SELECTION</span><span class="p">.</span><span class="nx">difficulty</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L110" href="#L110">110</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">songId</span><span class="p">,</span><span class="w"> </span><span class="nx">difficulty</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L111" href="#L111">111</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L112" href="#L112">112</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L113–L119</p><p><code>loadSelection</code>・<code>saveSelection</code> は、設定の <code>loadSettings</code>・<code>saveSettings</code>（L66-72）と同じ形です。<code>saveSelection</code> は <a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L45 で、選んだ曲や難易度が変わるたびに呼ばれます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L113" href="#L113">113</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">loadSelection</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">LastSelection</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L114" href="#L114">114</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">sanitizeSelection</span><span class="p">(</span><span class="nx">read</span><span class="p">(</span><span class="nx">LAST_KEY</span><span class="p">)</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L115" href="#L115">115</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L116" href="#L116">116</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L117" href="#L117">117</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">saveSelection</span><span class="p">(</span><span class="nx">selection</span><span class="o">:</span><span class="w"> </span><span class="kt">LastSelection</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L118" href="#L118">118</a></td><td class="cl"><span class="w">  </span><span class="nx">write</span><span class="p">(</span><span class="nx">LAST_KEY</span><span class="p">,</span><span class="w"> </span><span class="nx">selection</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L119" href="#L119">119</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

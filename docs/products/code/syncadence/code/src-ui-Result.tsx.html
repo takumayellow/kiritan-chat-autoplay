@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/ui/Result.tsx | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html" class="current">Result.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TSX · 全 90 行</p>
+<h1><code>src/ui/Result.tsx</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>1 曲を遊び終えた後に、ランク・スコア・判定ごとの回数・最大コンボと、押したタイミングの偏りを出し、偏りが大きければ「入力の補正」の変更を 1 ボタンで提案する結果画面の部品です。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li>スコアとランクを大きく出し、自己ベストを更新したら札を付ける（L45-49）。</li>
+<li>PERFECT・GREAT・GOOD・MISS の回数と、最大コンボ / コンボの数の上限を並べる（L50-63）。</li>
+<li>押したタイミングの中央値と、早すぎ・遅すぎの回数を出す（L64-69）。</li>
+<li>中央値が 12 ms 以上ずれていれば、入力の補正をその分だけ動かすボタンを出す（L70-79）。</li>
+<li>R でもう一度、Esc か Q で選曲に戻る（L29-36、L82-87）。</li>
+</ul>
+<p>この部品は自分では何も覚えていません（<code>useState</code> がありません）。結果の数はすべて props で受け取り、その場で計算して描くだけです。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L88-101</td>
+<td>結果画面として描かれる</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a> の <code>summarizeDeltas</code></td>
+<td>タイミングのずれの中央値と、早め・遅めの回数</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td><code>src/ui/format.ts</code>（解説キット外）の <code>rankOf</code>・<code>signedMs</code></td>
+<td>ランク（<a class="xref" href="src-game-rank.ts.html"><code>src/game/rank.ts</code></a> の <code>rankOf</code>）。ミリ秒を <code>+15 ms</code> の形に</td>
+</tr>
+<tr>
+<td>借りる</td>
+<td><a class="xref" href="src-game-judge.ts.html"><code>src/game/judge.ts</code></a> の <code>JUDGEMENTS</code></td>
+<td>判定の並び <code>perfect</code>・<code>great</code>・<code>good</code>・<code>miss</code></td>
+</tr>
+<tr>
+<td>型を借りる</td>
+<td><a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の <code>SessionStats</code></td>
+<td>1 回のプレイの集計の形</td>
+</tr>
+</tbody>
+</table>
+<p><code>signedMs(ms)</code> は、ミリ秒を四捨五入し、正なら <code>+</code> を付けて <code>ms</code> を足す関数です。15.4 は <code>+15 ms</code>、−8 は <code>-8 ms</code>、0 は <code>0 ms</code> になります。</p>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L21 <code>{ … } as const</code> — 文法の索引の『as const と配列の要素の型』</li>
+<li>L27 の長い条件演算子 — 新しい文法ではありませんが、<code>&amp;&amp;</code> を 4 つつないだ条件を本文で分解します</li>
+<li>L51 <code>JUDGEMENTS.map((j) =&gt; ( … ))</code> — <a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L93 と同じ「配列から JSX を並べる」書き方（文法の索引の『map・filter・reduce』）</li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L26 の「自己ベストを更新したか」。前の記録が無ければ、何点でも更新です。</li>
+<li>L27 の提案の条件と、L74 の「足してから ±300 に収める」。結果画面は<strong>今の補正に足す</strong>のに対して、タイミング調整の画面（<a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> の L115）は<strong>測った値で置き換えます</strong>。なぜ違うのかを L64-81 で説明します。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>ボタンの文字と、実際に入る値が違うことがあります。</strong> L76 の矢印の右は <code>settings.inputOffsetMs + suggestion</code> をそのまま出しますが、L74 で入るのは ±300 に収めた値です。補正が <code>+295 ms</code> で提案が <code>+15</code> なら、ボタンには <code>+295 ms → +310 ms</code> と出て、押すと <code>+300 ms</code> になります。</li>
+<li><strong>ボタンは押した後も残り、もう一度押すと、もう一度足されます。</strong> 提案は、プレイ中のずれ（L25）から決まり、そのずれは押しても変わりません。一方、矢印の左右は押した後の新しい補正で描き直されます。2 回押すと、ずれの 2 倍だけ補正が動きます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L8</p><p><code>import type</code> は型だけを取り込む書き方です（<a class="xref" href="src-main.tsx.html"><code>src/main.tsx</code></a> の『import と export』の囲み）。L5 は <code>DIFFICULTY_LABELS</code> を値として、<code>Difficulty</code> と <code>Song</code> を型として、1 行で取り込んでいます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useEffect</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">JUDGEMENTS</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/judge&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">SessionStats</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/session&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">summarizeDeltas</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../game/stats&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">DIFFICULTY_LABELS</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Difficulty</span><span class="p">,</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Song</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../song/types&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Settings</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;../storage&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">rankOf</span><span class="p">,</span><span class="w"> </span><span class="nx">signedMs</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;./format&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L9–L23</p><p><code>Props</code> は結果画面が受け取る値です（<code>interface</code> と <code>readonly</code> は文法の索引の『interface と readonly』）。</p>
+<table>
+<thead>
+<tr>
+<th>props</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>song</code></td>
+<td>遊んだ曲（譜面を含む全部）</td>
+</tr>
+<tr>
+<td><code>difficulty</code></td>
+<td>遊んだ難易度</td>
+</tr>
+<tr>
+<td><code>stats</code></td>
+<td>1 回のプレイの集計。スコア・判定ごとの回数・最大コンボ・押したずれの一覧など（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L22-31）</td>
+</tr>
+<tr>
+<td><code>previousBest</code></td>
+<td><strong>このプレイの前の</strong>自己ベスト。記録が無ければ <code>null</code></td>
+</tr>
+<tr>
+<td><code>autoplay</code></td>
+<td>オートプレイで遊んだか</td>
+</tr>
+<tr>
+<td><code>settings</code>・<code>onSettings</code></td>
+<td>設定と、設定を変える関数（L74 の提案のボタンで使う）</td>
+</tr>
+<tr>
+<td><code>onRetry</code>・<code>onBack</code></td>
+<td>もう一度遊ぶ・選曲に戻る</td>
+</tr>
+</tbody>
+</table>
+<p><code>previousBest</code> が「前の」記録なのは、<code>App</code> が結果画面に切り替える前に自己ベストを書き換えるからです（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L65-67）。書き換えた後の記録と比べると、更新したかどうかが分からなくなります。</p>
+<p>L21 の <code>LABEL</code> は、判定の名前（<code>perfect</code>）から画面に出す文字（<code>PERFECT</code>）への対応表です。<code>as const</code> は、中身を書き換えられない、決まった値の表にする印です（文法の索引の『as const と配列の要素の型』）。</p>
+<p>L22 の <code>SUGGEST_MS</code> は、補正の変更を提案するずれの大きさの下限（12 ms）です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="kd">interface</span><span class="w"> </span><span class="nx">Props</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">song</span><span class="o">:</span><span class="w"> </span><span class="kt">Song</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">difficulty</span><span class="o">:</span><span class="w"> </span><span class="kt">Difficulty</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">stats</span><span class="o">:</span><span class="w"> </span><span class="kt">SessionStats</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">previousBest</span><span class="o">:</span><span class="w"> </span><span class="kt">number</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">autoplay</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">settings</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onSettings</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="o">:</span><span class="w"> </span><span class="kt">Settings</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onRetry</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">onBack</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="ow">void</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">LABEL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">perfect</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;PERFECT&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">great</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;GREAT&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">good</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;GOOD&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">miss</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;MISS&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="kd">const</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="kd">const</span><span class="w"> </span><span class="nx">SUGGEST_MS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">12</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L24–L28</p><p>L24 は props を引数の位置で取り出しています（文法の索引の『分割代入』）。</p>
+<p>L25 の <code>timing</code> は、押したずれの一覧 <code>stats.deltas</code> をまとめたものです。<code>summarizeDeltas</code>（<a class="xref" href="src-game-stats.ts.html"><code>src/game/stats.ts</code></a> の L15-23）は次の 3 つを返し、一覧が空なら <code>null</code> を返します。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>median</code></td>
+<td>ずれの中央値（ミリ秒）。正なら遅め</td>
+</tr>
+<tr>
+<td><code>early</code></td>
+<td>20 ms より早く押した回数</td>
+</tr>
+<tr>
+<td><code>late</code></td>
+<td>20 ms より遅く押した回数</td>
+</tr>
+</tbody>
+</table>
+<p>ずれの一覧に入るのは、PERFECT・GREAT・GOOD と判定された押し方だけです（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L86）。ずれは、ノーツの時刻と押した時刻の差を実際の時間のミリ秒にしたもので、<strong>今の入力の補正を引いた後の</strong>値です（<a class="xref" href="src-game-engine.ts.html"><code>src/game/engine.ts</code></a> の L124）。</p>
+<p>L26 の <code>newBest</code> は、次の 2 つがどちらも真のときに真です。</p>
+<ol>
+<li><code>!autoplay</code> — オートプレイではない（オートプレイの結果は記録に残さないので）</li>
+<li><code>previousBest === null || stats.score &gt; previousBest</code> — 前の記録が無いか、前の記録より高い。同点は更新に数えない</li>
+</ol>
+<p>L27 の <code>suggestion</code> は、補正をどれだけ動かすかの提案です。条件演算子（文法の索引の『条件演算子 <code>? :</code>』）の <code>?</code> の左の条件を、左から順に確かめます。</p>
+<ol>
+<li><code>timing</code> — ずれの一覧が空でない</li>
+<li><code>timing.median !== 0</code> — 中央値が 0 ではない</li>
+<li><code>Math.abs(timing.median) &gt;= SUGGEST_MS</code> — 中央値の大きさ（<code>Math.abs</code> は符号を取った値）が 12 ms 以上</li>
+<li><code>stats.deltas.length &gt;= 20</code> — 20 回以上押している</li>
+</ol>
+<p>すべて真なら <code>Math.round(timing.median)</code>（中央値を整数に丸めたもの）、どれかが偽なら <code>null</code> です。<code>&amp;&amp;</code> は左が偽ならそこで止まるので、1 で <code>timing</code> が <code>null</code> なら、2 以降で <code>timing.median</code> を読もうとして止まることはありません。2 は 3 が真なら必ず真なので、無くても結果は同じです。</p>
+<p>20 回以上という条件は、数回しか押していない短いプレイで、たまたまのずれから補正を動かさないためです。12 ms と 20 回の値は <code>docs/design.md</code> の 5.4 節に書かれた決まりと同じです。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">Result</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">song</span><span class="p">,</span><span class="w"> </span><span class="nx">difficulty</span><span class="p">,</span><span class="w"> </span><span class="nx">stats</span><span class="p">,</span><span class="w"> </span><span class="nx">previousBest</span><span class="p">,</span><span class="w"> </span><span class="nx">autoplay</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">onSettings</span><span class="p">,</span><span class="w"> </span><span class="nx">onRetry</span><span class="p">,</span><span class="w"> </span><span class="nx">onBack</span><span class="w"> </span><span class="p">}</span><span class="o">:</span><span class="w"> </span><span class="nx">Props</span><span class="p">)</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">timing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">summarizeDeltas</span><span class="p">(</span><span class="nx">stats</span><span class="p">.</span><span class="nx">deltas</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">newBest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">!</span><span class="nx">autoplay</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span><span class="nx">previousBest</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">stats</span><span class="p">.</span><span class="nx">score</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="nx">previousBest</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">suggestion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">timing</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">timing</span><span class="p">.</span><span class="nx">median</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="mf">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">abs</span><span class="p">(</span><span class="nx">timing</span><span class="p">.</span><span class="nx">median</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">SUGGEST_MS</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">stats</span><span class="p">.</span><span class="nx">deltas</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mf">20</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">round</span><span class="p">(</span><span class="nx">timing</span><span class="p">.</span><span class="nx">median</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L29–L37</p><p>結果画面にいる間、R でもう一度、Esc か Q で選曲に戻ります。キーの受け付けの付け方と外し方は、<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L43-63 と同じです（文法の索引の『イベントリスナーの登録と解除』）。</p>
+<p>選曲画面と違い、Ctrl などとの組み合わせや、入力欄にいるかは確かめていません。結果画面には入力欄が無いからです。</p>
+<p><code>onRetry</code> と <code>onBack</code> は L36 の依存配列に入っています。<code>App</code> は <code>onRetry</code> を描くたびに新しいアロー関数として渡すので（<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L98）、<code>App</code> が描き直されるたびに、キーの受け付けも付け直されます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">  </span><span class="nx">useEffect</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">onKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="o">:</span><span class="w"> </span><span class="kt">KeyboardEvent</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">code</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;KeyR&quot;</span><span class="p">)</span><span class="w"> </span><span class="nx">onRetry</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">      </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">code</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;Escape&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">code</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;KeyQ&quot;</span><span class="p">)</span><span class="w"> </span><span class="nx">onBack</span><span class="p">(</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="w">    </span><span class="nb">window</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;keydown&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onKey</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">removeEventListener</span><span class="p">(</span><span class="s2">&quot;keydown&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onKey</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="nx">onRetry</span><span class="p">,</span><span class="w"> </span><span class="nx">onBack</span><span class="p">]</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl">&nbsp;</td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L38–L49</p><p>画面の上半分です。</p>
+<ul>
+<li>L41-42 — 難易度の表示名とレベル、オートプレイなら「 · オートプレイ」。たとえば <code>HARD Lv8 · オートプレイ</code> のように出ます</li>
+<li>L44 — 曲名</li>
+<li>L46 — ランク。スコア 990,000 以上が SSS、970,000 以上が SS、940,000 以上が S、880,000 以上が A、800,000 以上が B、700,000 以上が C、それより下が D です（<a class="xref" href="src-game-rank.ts.html"><code>src/game/rank.ts</code></a> の L2-10）</li>
+<li>L47 — スコア。<code>toLocaleString("ja-JP")</code> で 3 桁ごとにカンマを入れます（1000000 なら <code>1,000,000</code>）</li>
+<li>L48 — 自己ベストを更新していれば札を出す（文法の索引の『JSX の中での条件付きの表示 <code>&amp;&amp;</code>』）</li>
+</ul></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;</span><span class="nt">main</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;page result&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">p</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;muted&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">DIFFICULTY_LABELS</span><span class="p">[</span><span class="nx">difficulty</span><span class="p">]</span><span class="p">}</span><span class="w"> </span><span class="nx">Lv</span><span class="p">{</span><span class="nx">song</span><span class="p">.</span><span class="nx">charts</span><span class="p">[</span><span class="nx">difficulty</span><span class="p">]</span><span class="p">.</span><span class="nx">level</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">autoplay</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s2">&quot; · オートプレイ&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">h1</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">song</span><span class="p">.</span><span class="nx">title</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">h1</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;score-line&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;rank&quot;</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">rankOf</span><span class="p">(</span><span class="nx">stats</span><span class="p">.</span><span class="nx">score</span><span class="p">)</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;score&quot;</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">stats</span><span class="p">.</span><span class="nx">score</span><span class="p">.</span><span class="nx">toLocaleString</span><span class="p">(</span><span class="s2">&quot;ja-JP&quot;</span><span class="p">)</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">newBest</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">span</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;badge&quot;</span><span class="p">&gt;</span><span class="nx">自己ベスト</span><span class="p">&lt;/</span><span class="nt">span</span><span class="p">&gt;</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L50–L63</p><p>判定ごとの回数と、最大コンボの表です。</p>
+<p><code>&lt;dl&gt;</code> は「用語と説明の組」を並べる HTML の要素で、<code>&lt;dt&gt;</code> が用語（<code>PERFECT</code>）、<code>&lt;dd&gt;</code> がその説明（回数）です。ここでは「名前と数の組」の並びとして使っています。</p>
+<p>L51-56 は、<code>JUDGEMENTS</code>（<code>perfect</code>・<code>great</code>・<code>good</code>・<code>miss</code> の順）の 1 つずつについて、組を 1 つ作ります。</p>
+<ul>
+<li>L52 — <code>key={j}</code> は並べた組の見分け札（文法の索引の『key（部品の見分け札）』）。<code>className</code> は <code>count count-perfect</code> のようになり、CSS の側が判定ごとに色を変えます</li>
+<li>L53 — <code>LABEL[j]</code> で画面に出す名前</li>
+<li>L54 — <code>stats.counts[j]</code> でその判定の回数</li>
+</ul>
+<p><code>map</code> に渡すアロー関数の右が <code>( … )</code> で囲まれた JSX なので、<code>{ }</code> と <code>return</code> を書かずに、JSX をそのまま返しています。<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L93 のように途中で変数を作る必要が無いからです。</p>
+<p>L57-62 は最大コンボです。<code>stats.total</code> は、そのプレイで判定される回数の合計で、ロングノーツは押す・離すの 2 回として数えます（<a class="xref" href="src-game-session.ts.html"><code>src/game/session.ts</code></a> の L61）。全部をつなげば、最大コンボはこの数と同じになります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">dl</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;counts&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">        </span><span class="p">{</span><span class="nx">JUDGEMENTS</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="p">(</span><span class="nx">j</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">key</span><span class="o">=</span><span class="p">{</span><span class="nx">j</span><span class="p">}</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="p">{</span><span class="sb">`</span><span class="sb">count count-</span><span class="si">${</span><span class="nx">j</span><span class="si">}</span><span class="sb">`</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">dt</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">LABEL</span><span class="p">[</span><span class="nx">j</span><span class="p">]</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">dt</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">dd</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">stats</span><span class="p">.</span><span class="nx">counts</span><span class="p">[</span><span class="nx">j</span><span class="p">]</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">dd</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">        </span><span class="p">)</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;count&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">dt</span><span class="p">&gt;</span><span class="nx">MAX</span><span class="w"> </span><span class="nx">COMBO</span><span class="p">&lt;/</span><span class="nt">dt</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">dd</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">            </span><span class="p">{</span><span class="nx">stats</span><span class="p">.</span><span class="nx">maxCombo</span><span class="p">}</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">{</span><span class="nx">stats</span><span class="p">.</span><span class="nx">total</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;/</span><span class="nt">dd</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L63" href="#L63">63</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">dl</span><span class="p">&gt;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L64–L81</p><p>ずれの一覧が空でなければ（L64）、タイミングの枠を出します。</p>
+<p>L68 の文の例は「押したタイミングの中央値は <strong>+15 ms</strong>（正なら遅め）。早め 3 回、遅め 41 回。」のようになります。</p>
+<p>L70-79 は、L27 の提案があるときだけ出すボタンです。押すと L74 で次の順に計算して、設定を変えます。</p>
+<ol>
+<li><code>settings.inputOffsetMs + suggestion</code> — 今の入力の補正に、提案を足す</li>
+<li><code>Math.min(300, 1 の結果)</code> — 300 より大きければ 300 にする</li>
+<li><code>Math.max(-300, 2 の結果)</code> — −300 より小さければ −300 にする</li>
+<li><code>{ ...settings, inputOffsetMs: 3 の結果 }</code> — ほかの設定はそのままで、入力の補正だけを変えた新しい設定（文法の索引の『スプレッド構文 <code>...</code>』）</li>
+<li><code>onSettings(4 の結果)</code> — <code>App</code> に渡して保存してもらう</li>
+</ol>
+<p>±300 は、設定を読み込むときの範囲（<a class="xref" href="src-storage.ts.html"><code>src/storage.ts</code></a> の L40）と同じです。</p>
+<p><strong>足す理由</strong>: L25 のずれは、今の補正を引いた<strong>後</strong>の値です。補正 0 ms で中央値が +15 ms なら、15 ms 遅く押す癖があるので、補正を +15 ms にすれば、次からは判定に使う時刻が 15 ms 前へずれて、ぴったりになります。補正がすでに +10 ms で中央値が +15 ms なら、まだ 15 ms 残っているので、+25 ms にします。どちらも「今の補正 + 残ったずれ」です。</p>
+<p><a class="xref" href="src-ui-Calibrate.tsx.html"><code>src/ui/Calibrate.tsx</code></a> のタイミング調整は、補正を引く前の生のずれを測るので、測った値で<strong>置き換え</strong>ます。</p>
+<p>例: 補正が 0 ms で、中央値が −12.5 ms なら、<code>Math.round(-12.5)</code> は −12 なので（JavaScript の <code>Math.round</code> は、ちょうど半分のときは大きいほうへ丸めます）、ボタンは「入力の補正を 0 ms → -12 ms にする」になります。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L64" href="#L64">64</a></td><td class="cl"><span class="w">      </span><span class="p">{</span><span class="nx">timing</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L65" href="#L65">65</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">section</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;panel timing&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L66" href="#L66">66</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">h2</span><span class="p">&gt;</span><span class="nx">タイミング</span><span class="p">&lt;/</span><span class="nt">h2</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L67" href="#L67">67</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L68" href="#L68">68</a></td><td class="cl"><span class="w">            </span><span class="nx">押したタイミングの中央値は</span><span class="w"> </span><span class="p">&lt;</span><span class="nt">strong</span><span class="p">&gt;</span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">timing</span><span class="p">.</span><span class="nx">median</span><span class="p">)</span><span class="p">}</span><span class="p">&lt;/</span><span class="nt">strong</span><span class="p">&gt;</span><span class="err">（</span><span class="nx">正なら遅め</span><span class="err">）</span><span class="err">。</span><span class="nx">早め</span><span class="w"> </span><span class="p">{</span><span class="nx">timing</span><span class="p">.</span><span class="nx">early</span><span class="p">}</span><span class="w"> </span><span class="nx">回</span><span class="err">、</span><span class="nx">遅め</span><span class="w"> </span><span class="p">{</span><span class="nx">timing</span><span class="p">.</span><span class="nx">late</span><span class="p">}</span><span class="w"> </span><span class="nx">回</span><span class="err">。</span></td></tr><tr><td class="ln"><a id="L69" href="#L69">69</a></td><td class="cl"><span class="w">          </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L70" href="#L70">70</a></td><td class="cl"><span class="w">          </span><span class="p">{</span><span class="nx">suggestion</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="kc">null</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">(</span></td></tr><tr><td class="ln"><a id="L71" href="#L71">71</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L72" href="#L72">72</a></td><td class="cl"><span class="w">              </span><span class="p">&lt;</span><span class="nt">button</span></td></tr><tr><td class="ln"><a id="L73" href="#L73">73</a></td><td class="cl"><span class="w">                </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;secondary&quot;</span></td></tr><tr><td class="ln"><a id="L74" href="#L74">74</a></td><td class="cl"><span class="w">                </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">onSettings</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="p">...</span><span class="nx">settings</span><span class="p">,</span><span class="w"> </span><span class="nx">inputOffsetMs</span><span class="o">:</span><span class="w"> </span><span class="kt">Math.max</span><span class="p">(</span><span class="o">-</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nb">Math</span><span class="p">.</span><span class="nx">min</span><span class="p">(</span><span class="mf">300</span><span class="p">,</span><span class="w"> </span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">suggestion</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="p">}</span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L75" href="#L75">75</a></td><td class="cl"><span class="w">              </span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L76" href="#L76">76</a></td><td class="cl"><span class="w">                </span><span class="nx">入力の補正を</span><span class="w"> </span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="err">→</span><span class="w"> </span><span class="p">{</span><span class="nx">signedMs</span><span class="p">(</span><span class="nx">settings</span><span class="p">.</span><span class="nx">inputOffsetMs</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">suggestion</span><span class="p">)</span><span class="p">}</span><span class="w"> </span><span class="nx">にする</span></td></tr><tr><td class="ln"><a id="L77" href="#L77">77</a></td><td class="cl"><span class="w">              </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L78" href="#L78">78</a></td><td class="cl"><span class="w">            </span><span class="p">&lt;/</span><span class="nt">p</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L79" href="#L79">79</a></td><td class="cl"><span class="w">          </span><span class="p">)</span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L80" href="#L80">80</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;/</span><span class="nt">section</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L81" href="#L81">81</a></td><td class="cl"><span class="w">      </span><span class="p">)</span><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L82–L90</p><p>下のボタンです。「もう一度（R）」と「選曲に戻る（Esc）」は、L31-32 のキーと同じ関数を呼びます。Q でも戻れますが、ボタンの文字には Esc だけを書いています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L82" href="#L82">82</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;</span><span class="nt">div</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;buttons&quot;</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L83" href="#L83">83</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="nx">onRetry</span><span class="p">}</span><span class="p">&gt;</span><span class="nx">もう一度</span><span class="err">（</span><span class="nx">R</span><span class="err">）</span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L84" href="#L84">84</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;</span><span class="nt">button</span><span class="w"> </span><span class="na">className</span><span class="o">=</span><span class="s">&quot;secondary&quot;</span><span class="w"> </span><span class="na">onClick</span><span class="o">=</span><span class="p">{</span><span class="nx">onBack</span><span class="p">}</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L85" href="#L85">85</a></td><td class="cl"><span class="w">          </span><span class="nx">選曲に戻る</span><span class="err">（</span><span class="nx">Esc</span><span class="err">）</span></td></tr><tr><td class="ln"><a id="L86" href="#L86">86</a></td><td class="cl"><span class="w">        </span><span class="p">&lt;/</span><span class="nt">button</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L87" href="#L87">87</a></td><td class="cl"><span class="w">      </span><span class="p">&lt;/</span><span class="nt">div</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L88" href="#L88">88</a></td><td class="cl"><span class="w">    </span><span class="p">&lt;/</span><span class="nt">main</span><span class="p">&gt;</span></td></tr><tr><td class="ln"><a id="L89" href="#L89">89</a></td><td class="cl"><span class="w">  </span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L90" href="#L90">90</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>
