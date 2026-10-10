@@ -24,8 +24,10 @@
 <li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
 <li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
 <li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-RotateHint.tsx.html">RotateHint.tsx</a></li>
 <li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
 <li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-landscape.ts.html">landscape.ts</a></li>
 <li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
 </ul>
 <p class="navsub">進行と判定 (src/game)</p><ul>
@@ -104,11 +106,15 @@
 <tbody>
 <tr>
 <td><a href="../code/src-main.tsx.html">main.tsx</a></td>
-<td>入口。React に <code>App</code> を描かせる</td>
+<td>入口。React に <code>App</code> と <code>RotateHint</code> を描かせる</td>
 </tr>
 <tr>
 <td><a href="../code/src-ui-App.tsx.html">App.tsx</a></td>
 <td>いまどの画面か（選曲・プレイ・結果・タイミング調整）を持ち、切り替える</td>
+</tr>
+<tr>
+<td><a href="../code/src-ui-landscape.ts.html">landscape.ts</a> / <a href="../code/src-ui-RotateHint.tsx.html">RotateHint.tsx</a></td>
+<td>スマホでは、タップで全画面に入って横向きに固定し、縦に持っている間は「横向きにしてください」を重ねる</td>
 </tr>
 <tr>
 <td><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a> / <a href="../code/src-ui-select.ts.html">select.ts</a></td>
@@ -252,7 +258,7 @@
 <ol>
 <li>まず <code>notes/02-from-score</code> と <code>notes/03-one-note</code> で、譜面ができるまでと、ノーツ 1 つが判定されるまでの筋をつかみます。</li>
 <li>次にコードを、プレイの流れに沿って読みます。
-   - 画面の入口: <code>main.tsx</code> → <code>App.tsx</code> → <code>storage.ts</code>
+   - 画面の入口: <code>main.tsx</code> → <code>App.tsx</code> → <code>landscape.ts</code> → <code>RotateHint.tsx</code> → <code>storage.ts</code>
    - 曲を読む: <code>song/types.ts</code> → <code>song/load.ts</code> → <code>song/validate.ts</code> → <code>SongSelect.tsx</code> → <code>select.ts</code>
    - プレイ: <code>Play.tsx</code> → <code>engine.ts</code> → <code>keys.ts</code> → <code>session.ts</code> → <code>judge.ts</code>
    - 音と時計: <code>context.ts</code> → <code>clock.ts</code> → <code>scheduler.ts</code> → <code>sampler.ts</code> → <code>regions.ts</code>
@@ -263,7 +269,7 @@
 <li>「この数字を変えるとどうなるか」は <code>notes/06-knobs</code> にまとめてあります。</li>
 </ol>
 <h2 id="_6">写したファイルと、写していないもの</h2>
-<p>このキットはコミット <code>eb9c698</code> の 30 ファイルを丸ごと写しています。プレイの筋に関わらないものは外しました。</p>
+<p>このキットはコミット <code>404da56</code> の 32 ファイルを丸ごと写しています。プレイの筋に関わらないものは外しました。</p>
 <ul>
 <li><code>src/ui/format.ts</code>（秒を「2:10」の形にするなどの小さな整形）と <code>src/ui/SettingsDrawer.tsx</code>（選曲画面の右から出す枠。中に <code>SettingsPanel.tsx</code> と遊び方の説明を入れる）。</li>
 <li><code>tools/inspect_chart.py</code>（作った譜面を確かめるための道具）。</li>

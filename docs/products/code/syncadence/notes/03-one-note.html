@@ -24,8 +24,10 @@
 <li><a href="../code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
 <li><a href="../code/src-ui-Play.tsx.html">Play.tsx</a></li>
 <li><a href="../code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="../code/src-ui-RotateHint.tsx.html">RotateHint.tsx</a></li>
 <li><a href="../code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
 <li><a href="../code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="../code/src-ui-landscape.ts.html">landscape.ts</a></li>
 <li><a href="../code/src-ui-select.ts.html">select.ts</a></li>
 </ul>
 <p class="navsub">進行と判定 (src/game)</p><ul>
@@ -140,7 +142,7 @@
 </pre>
 
 <h2 id="1-ready">1. 読み込んで、READY で待つ</h2>
-<p><code>Play</code> が画面に出ると、最初の <code>useEffect</code>（<a href="../code/src-ui-Play.tsx.html#L44">Play.tsx L44-67</a>）が曲の JSON を読み込み、その曲で使うピアノの録音をすべて読み込んでから <code>PlayEngine</code> を作ります。</p>
+<p><code>Play</code> が画面に出ると、最初の <code>useEffect</code>（<a href="../code/src-ui-Play.tsx.html#L45">Play.tsx L45-68</a>）が曲の JSON を読み込み、その曲で使うピアノの録音をすべて読み込んでから <code>PlayEngine</code> を作ります。</p>
 <p><code>PlayEngine</code> のコンストラクタ（<a href="../code/src-game-engine.ts.html#L49">engine.ts L49-69</a>）がすることは、</p>
 <ul>
 <li>選んだ難易度の譜面から <code>GameSession</code> を作る</li>
@@ -150,10 +152,10 @@
 </ul>
 <p>この時点では音も時間も動いていません。画面には READY と出ています。</p>
 <h2 id="2">2. キーを押して始める</h2>
-<p>READY の間に押されたキーは、判定ではなく開始の合図になります（<a href="../code/src-ui-Play.tsx.html#L116">Play.tsx L116-121</a>）。F11 や Tab のようにブラウザの操作に使うキーは合図にしません（<a href="../code/src-game-keys.ts.html">keys.ts</a> の <code>isStartKey</code>）。</p>
+<p>READY の間に押されたキーは、判定ではなく開始の合図になります（<a href="../code/src-ui-Play.tsx.html#L117">Play.tsx L117-122</a>）。F11 や Tab のようにブラウザの操作に使うキーは合図にしません（<a href="../code/src-game-keys.ts.html">keys.ts</a> の <code>isStartKey</code>）。</p>
 <p><code>start()</code>（<a href="../code/src-game-engine.ts.html#L80">engine.ts L80-90</a>）は、<strong>曲の 0 秒をスピーカーから鳴らす <code>AudioContext</code> の時刻</strong>を 1 つ決めて <code>SongClock</code> に渡します。最初のノーツが奥から判定線まで流れてくる時間（既定 1.6 秒）と、さらに 0.8 秒の間を空けて始まるよう、0 秒より前から時計を動かし始めます。</p>
 <h2 id="3">3. 毎フレーム進める</h2>
-<p><code>requestAnimationFrame</code> で画面の書き換えごと（たいてい 1 秒に 60 回）に <code>loop</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L78">Play.tsx L78-98</a>）。</p>
+<p><code>requestAnimationFrame</code> で画面の書き換えごと（たいてい 1 秒に 60 回）に <code>loop</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L79">Play.tsx L79-99</a>）。</p>
 <p><code>tick(now)</code>（<a href="../code/src-game-engine.ts.html#L178">engine.ts L178-192</a>）が 1 フレーム分の仕事をします。</p>
 <ol>
 <li><code>SongClock</code> に今の時刻を教え、時計のずれを直す（→ <code>notes/04-timing</code>）。</li>
@@ -169,7 +171,7 @@
 
 <p><code>u = 1</code> が奥の端、<code>u = 0</code> が判定線です。<code>u</code> を <a href="../code/src-render-perspective.ts.html">perspective.ts</a> の <code>depthOf</code> で「奥行き」に写すと、奥ではゆっくり、手前ほど速く動いて見えます。ノーツの位置を毎フレーム少しずつ動かしているのではなく、毎フレーム時刻から計算し直しているので、フレームが飛んでもノーツの位置は狂いません。</p>
 <h2 id="5">5. 押した瞬間の時刻で判定する</h2>
-<p>D キーを押すと <code>keydown</code> が届き、<code>engine.press(0, e.timeStamp)</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L134">Play.tsx L134-137</a>）。スマホでは、画面のどの横位置を叩いたかからレーンを出します（<code>laneAt</code>）。</p>
+<p>D キーを押すと <code>keydown</code> が届き、<code>engine.press(0, e.timeStamp)</code> が呼ばれます（<a href="../code/src-ui-Play.tsx.html#L135">Play.tsx L135-138</a>）。スマホでは、画面のどの横位置を叩いたかからレーンを出します（<code>laneAt</code>）。</p>
 <p>ここで渡すのは、処理が動いた時刻ではなく <code>e.timeStamp</code>（<strong>キーが押された瞬間の時刻</strong>）です。描画で忙しくて処理が数 ms 遅れても、押した瞬間で判定できます。</p>
 <p><code>press</code>（<a href="../code/src-game-engine.ts.html#L145">engine.ts L145-151</a>）は、その時刻を <code>judgeTime</code> で「曲の何秒目か」に直し、入力の補正を引いてから <code>GameSession.press</code> に渡します。</p>
 <p><code>GameSession.press</code>（<a href="../code/src-game-session.ts.html#L90">session.ts L90-111</a>）は、</p>
