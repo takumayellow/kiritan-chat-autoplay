@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>src/ui/landscape.ts | Syncadence のコードを読む</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="code">
+<button class="navtoggle" aria-label="目次">≡</button>
+<nav class="sidebar"><div class="sidebar-inner">
+<a class="brand" href="../index.html"><span>Syncadence</span> のコードを読む</a>
+<p class="navlabel">解説</p><ul>
+<li><a href="../notes/01-overview.html">全体像 — 何をするプログラムで、どのファイルがどこを担うか</a></li>
+<li><a href="../notes/02-from-score.html">楽譜のファイルが、ゲームが読む譜面になるまで（Python）</a></li>
+<li><a href="../notes/03-one-note.html">ノーツ 1 つが流れてきて、叩いて、判定が出るまで（TypeScript）</a></li>
+<li><a href="../notes/04-timing.html">音と画面と入力の時刻をそろえる仕組み</a></li>
+<li><a href="../notes/05-syntax.html">知らない書き方を引く — 文法の索引</a></li>
+<li><a href="../notes/06-knobs.html">難易度・判定の幅・見た目を決めている数値</a></li>
+</ul>
+<p class="navlabel">コード</p>
+<p class="navsub">画面 (src/ui)</p><ul>
+<li><a href="src-ui-App.tsx.html">App.tsx</a></li>
+<li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
+<li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
+<li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-RotateHint.tsx.html">RotateHint.tsx</a></li>
+<li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
+<li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-landscape.ts.html" class="current">landscape.ts</a></li>
+<li><a href="src-ui-select.ts.html">select.ts</a></li>
+</ul>
+<p class="navsub">進行と判定 (src/game)</p><ul>
+<li><a href="src-game-engine.ts.html">engine.ts</a></li>
+<li><a href="src-game-judge.ts.html">judge.ts</a></li>
+<li><a href="src-game-keys.ts.html">keys.ts</a></li>
+<li><a href="src-game-rank.ts.html">rank.ts</a></li>
+<li><a href="src-game-session.ts.html">session.ts</a></li>
+<li><a href="src-game-stats.ts.html">stats.ts</a></li>
+</ul>
+<p class="navsub">音と時計 (src/audio)</p><ul>
+<li><a href="src-audio-clock.ts.html">clock.ts</a></li>
+<li><a href="src-audio-context.ts.html">context.ts</a></li>
+<li><a href="src-audio-regions.ts.html">regions.ts</a></li>
+<li><a href="src-audio-sampler.ts.html">sampler.ts</a></li>
+<li><a href="src-audio-scheduler.ts.html">scheduler.ts</a></li>
+</ul>
+<p class="navsub">描画 (src/render)</p><ul>
+<li><a href="src-render-highway.ts.html">highway.ts</a></li>
+<li><a href="src-render-perspective.ts.html">perspective.ts</a></li>
+</ul>
+<p class="navsub">曲データの読み込み (src/song)</p><ul>
+<li><a href="src-song-load.ts.html">load.ts</a></li>
+<li><a href="src-song-types.ts.html">types.ts</a></li>
+<li><a href="src-song-validate.ts.html">validate.ts</a></li>
+</ul>
+<p class="navsub">入口と保存 (src)</p><ul>
+<li><a href="src-main.tsx.html">main.tsx</a></li>
+<li><a href="src-storage.ts.html">storage.ts</a></li>
+</ul>
+<p class="navsub">譜面を作る (tools・Python)</p><ul>
+<li><a href="tools-build_samples.py.html">build_samples.py</a></li>
+<li><a href="tools-build_songs.py.html">build_songs.py</a></li>
+<li><a href="tools-chart.py.html">chart.py</a></li>
+<li><a href="tools-fetch_sources.py.html">fetch_sources.py</a></li>
+<li><a href="tools-score.py.html">score.py</a></li>
+</ul>
+</div></nav>
+<main>
+<article>
+<header class="page-head">
+<p class="eyebrow">TypeScript · 全 62 行</p>
+<h1><code>src/ui/landscape.ts</code></h1>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>404da56</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+</header>
+<section class="intro"><p>スマホで遊ぶときに、画面をタップしたら全画面に入り、横向きに固定する仕組みと、「指で触る端末か」「それを縦に持っているか」をたずねる CSS の条件を置いたファイルです。</p>
+<h2 id="_1">このファイルが担うもの</h2>
+<ul>
+<li><strong>条件の文字列を 1 か所に置く。</strong> 「指で触る端末」（<code>TOUCH_QUERY</code>、L4）と「それを縦に持っている」（<code>PORTRAIT_TOUCH_QUERY</code>、L7）を、プレイ画面（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>）と横向きの案内の CSS（<code>src/styles/rotate.css</code>、解説キット外）が同じ条件で使います。</li>
+<li><strong>このタップで全画面に入るかを決める。</strong> <code>wantsFullscreen</code>（L20-23）は、受け取った値だけから答えを決める小さな関数です。ノーツを叩くタップでは入りません。</li>
+<li><strong>タップを見張って全画面に入る。</strong> <code>useLandscapeFullscreen</code>（L42-62）は、<a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L36 で 1 回だけ呼ばれ、ページ全体のタップを見張ります。全画面に入れたら、横向きに固定します（L28-34）。</li>
+</ul>
+<p>パソコン（マウスとキーボード）では何もしません。全画面にすると画面の大きさが急に変わるうえ、ウィンドウで遊ぶほうが自然だからです。</p>
+<h2 id="_2">呼ぶ・呼ばれる</h2>
+<table>
+<thead>
+<tr>
+<th>向き</th>
+<th>相手</th>
+<th>何のために</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>呼ばれる</td>
+<td><a class="xref" href="src-ui-App.tsx.html"><code>src/ui/App.tsx</code></a> の L36</td>
+<td><code>useLandscapeFullscreen()</code> を 1 回だけ呼んで、タップの見張りを取り付ける</td>
+</tr>
+<tr>
+<td>読まれる</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L10</td>
+<td><code>TOUCH_QUERY</code>（キーの名前を出すか）と <code>PORTRAIT_TOUCH_QUERY</code>（縦に持ち直したら止める）</td>
+</tr>
+<tr>
+<td>呼ばれる</td>
+<td><code>src/ui/landscape.test.ts</code>（解説キット外）</td>
+<td><code>wantsFullscreen</code> の試験</td>
+</tr>
+<tr>
+<td>呼ぶ</td>
+<td>ブラウザの <code>matchMedia</code> / <code>requestFullscreen</code> / <code>screen.orientation.lock</code></td>
+<td>端末の種類をたずねる、全画面に入る、横向きに固定する</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">このファイルで初めて出てくる文法</h2>
+<ul>
+<li>L4 <code>"(hover: none) and (pointer: coarse)"</code> — CSS のメディアクエリと、それをたずねる <code>matchMedia</code></li>
+<li>L25 <code>ScreenOrientation &amp; { lock?: … }</code> — 交差型 <code>&amp;</code></li>
+<li>L49-57 <code>.requestFullscreen(…).then(…).catch(…).finally(…)</code> — 全画面と、Promise の <code>finally</code></li>
+</ul>
+<h2 id="_4">読みどころ</h2>
+<ul>
+<li>L22 の「キャンバスのタップでは入らない」。全画面に切り替わると画面の大きさが変わり、レーンの位置も描き直されます。ノーツを叩いた瞬間にそれが起きると、次のノーツを叩く位置がずれます。そこで、ボタンや重ね表示など、キャンバス以外のタップで入ります。READY の重ね表示のタップはキャンバスに届くので（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L148-151）、選曲画面の PLAY ボタン（<a class="xref" href="src-ui-SongSelect.tsx.html"><code>src/ui/SongSelect.tsx</code></a> の L155）など、プレイを始める前のボタンが、全画面に入る主なきっかけになります。</li>
+<li>L47 の <code>pending</code>。全画面を頼んでから入れるまでの間に、もう一度タップしても 2 回目は頼みません。</li>
+</ul>
+<h2 id="_5">落とし穴</h2>
+<ul>
+<li><strong>iPhone では全画面にも横向きの固定にもなりません。</strong> iPhone の Safari は、動画以外の要素の全画面に対応しておらず、<code>document.fullscreenEnabled</code> が真になりません（L21 で <code>false</code> を返します）。横向きの固定 <code>lock</code> もありません。iPhone では、縦に持ったときの案内（<a class="xref" href="src-ui-RotateHint.tsx.html"><code>src/ui/RotateHint.tsx</code></a>）だけが働きます。</li>
+<li><strong>全画面はタップの中でしか頼めません。</strong> ページを開いただけで全画面にすることはできないので、最初の 1 回はどこかをタップしてもらう必要があります。戻る操作などで全画面が外れたときも、次のタップでまた入ります。</li>
+<li><strong>横に戻しても、プレイは止まったままです。</strong> 縦に持ち直すとプレイ画面が一時停止しますが（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L165-169）、横に戻したときに勝手には再開しません。PAUSE の重ね表示の「続ける」を押してもらいます。</li>
+</ul>
+<hr /></section>
+<h2 id="code" class="stream-head">コードを順に読む</h2>
+<p class="stream-hint">左が解説、右が元コード（行番号は元ファイルのもの）。解説が無い範囲は折りたたんであり、開くと元コードがそのまま出る。</p>
+<div class="stream">
+<section class="chunk"><div class="chunk-note"><p class="span">L1–L7</p><p>L1 は React のフック <code>useEffect</code> を取り込みます。L42-62 の <code>useLandscapeFullscreen</code> の中で、タップの見張りを取り付けるのに使います。</p>
+<blockquote>
+<p><strong>文法: CSS のメディアクエリと matchMedia</strong></p>
+<p><code>"(hover: none) and (pointer: coarse)"</code> は、CSS で「この条件の端末のときだけ、この見た目にする」と書くときの条件（メディアクエリ）です。</p>
+<ul>
+<li><code>hover: none</code> — マウスのように「指さしたまま重ねておく（ホバーする）」手段が無い</li>
+<li><code>pointer: coarse</code> — 指のように、指す位置が粗い</li>
+<li><code>orientation: portrait</code> — 画面が横より縦に長い（縦に持っている）</li>
+</ul>
+<p><code>and</code> でつなぐと「全部に合う」になります。JavaScript からは <code>window.matchMedia("条件")</code> でたずねられ、返ってきた物の <code>.matches</code> が、いまその条件に合っているかの真偽です（L44）。</p>
+<p>返ってきた物は、条件に合う・合わないが変わったときに <code>change</code> という出来事で知らせてもくれます。縦に持ち直したのを知るのに使っています（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L166, L178）。</p>
+</blockquote>
+<p>L4 の <code>TOUCH_QUERY</code> は「マウスが無く、指で触る端末」、つまりスマホやタブレットです。L7 の <code>PORTRAIT_TOUCH_QUERY</code> は、その条件の後ろに <code>and (orientation: portrait)</code> を足した「指で触る端末を縦に持っている」です。テンプレート文字列 <code>`${TOUCH_QUERY} and …`</code>（文法の索引の『テンプレート文字列』）で、L4 の文字列をそのまま埋め込んでいるので、L4 を書き換えれば L7 も一緒に変わります。</p>
+<p>同じ条件が CSS の側にも 2 か所あります。横向きの案内を出す <code>src/styles/rotate.css</code> の <code>@media (hover: none) and (pointer: coarse) and (orientation: portrait)</code> と、キーの名前とタップの案内を出し分ける <code>src/styles/base.css</code> です。CSS は JavaScript の変数を読めないので、そちらには文字列を書き写し、「<code>src/ui/landscape.ts</code> と同じ条件」とコメントを添えています。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L1" href="#L1">1</a></td><td class="cl"><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">useEffect</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;react&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L2" href="#L2">2</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L3" href="#L3">3</a></td><td class="cl"><span class="cm">/** 指で触る端末。マウスとキーボードで遊ぶ端末では、全画面にも横向きの案内にもしない */</span></td></tr><tr><td class="ln"><a id="L4" href="#L4">4</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">TOUCH_QUERY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;(hover: none) and (pointer: coarse)&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L5" href="#L5">5</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L6" href="#L6">6</a></td><td class="cl"><span class="cm">/** 指で触る端末を縦に持っている状態。プレイ画面は横長なので、横に持ち直してもらう */</span></td></tr><tr><td class="ln"><a id="L7" href="#L7">7</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">PORTRAIT_TOUCH_QUERY</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">TOUCH_QUERY</span><span class="si">}</span><span class="sb"> and (orientation: portrait)</span><span class="sb">`</span><span class="p">;</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L8–L23</p><p>L9-12 の <code>interface FullscreenState</code> は、<code>wantsFullscreen</code> が受け取る値の形です。ブラウザの <code>document</code> が持っている項目のうち、使う 2 つだけを書いています。</p>
+<ul>
+<li><code>fullscreenEnabled</code> — このページで全画面が使えるか</li>
+<li><code>fullscreenElement</code> — いま全画面になっている要素。全画面でなければ <code>null</code></li>
+</ul>
+<p>本物の <code>document</code> もこの 2 つを持っているので、L47 では <code>document</code> をそのまま渡せます。一方、試験（<code>src/ui/landscape.test.ts</code>）では、<code>{ fullscreenEnabled: true, fullscreenElement: null }</code> のような 2 項目だけの値を渡して、ブラウザ無しで確かめられます。受け取る形を必要な分だけに絞っておくと、こうして試しやすくなります。</p>
+<p><code>wantsFullscreen(doc, target)</code> は、「このタップで全画面に入るか」を答えます。</p>
+<ol>
+<li>L21 — 全画面が使えない、または、もう全画面になっているなら <code>false</code></li>
+<li>L22 — タップした先（<code>target</code>）がキャンバス（<code>&lt;canvas&gt;</code>、レーンを描いている所）でなければ <code>true</code></li>
+</ol>
+<p>L22 の <code>target</code> は「タップした先」ですが、型は <code>EventTarget | null</code> です。<code>EventTarget</code> は「出来事を受け取れる物」という広い型で、要素だけでなく <code>window</code> なども含むため、要素の名前 <code>tagName</code> を持っているとは限りません。そこで <code>as Element | null</code>（文法の索引の『型アサーション <code>as</code>』）で要素とみなし、<code>?.tagName</code>（文法の索引の『オプショナルチェーン <code>?.</code> と <code>??</code>』）で名前を読みます。<code>target</code> が <code>null</code> なら <code>?.</code> の結果は <code>undefined</code> になり、<code>"CANVAS"</code> と等しくないので <code>true</code> です。</p>
+<p><code>tagName</code> は要素の名前を大文字で返します。<code>&lt;canvas&gt;</code> なら <code>"CANVAS"</code>、<code>&lt;button&gt;</code> なら <code>"BUTTON"</code> です。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L8" href="#L8">8</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L9" href="#L9">9</a></td><td class="cl"><span class="kd">interface</span><span class="w"> </span><span class="nx">FullscreenState</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L10" href="#L10">10</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">fullscreenEnabled</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L11" href="#L11">11</a></td><td class="cl"><span class="w">  </span><span class="k">readonly</span><span class="w"> </span><span class="nx">fullscreenElement</span><span class="o">:</span><span class="w"> </span><span class="kt">Element</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L12" href="#L12">12</a></td><td class="cl"><span class="p">}</span></td></tr><tr><td class="ln"><a id="L13" href="#L13">13</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L14" href="#L14">14</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L15" href="#L15">15</a></td><td class="cl"><span class="cm"> * このタップで全画面に入るか。</span></td></tr><tr><td class="ln"><a id="L16" href="#L16">16</a></td><td class="cl"><span class="cm"> *</span></td></tr><tr><td class="ln"><a id="L17" href="#L17">17</a></td><td class="cl"><span class="cm"> * ノーツを叩くタップ（レーンを描いたキャンバスの上）では入らない。</span></td></tr><tr><td class="ln"><a id="L18" href="#L18">18</a></td><td class="cl"><span class="cm"> * 全画面に切り替わると画面の大きさが変わり、叩いている最中にレーンの位置がずれるため。</span></td></tr><tr><td class="ln"><a id="L19" href="#L19">19</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L20" href="#L20">20</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">wantsFullscreen</span><span class="p">(</span><span class="nx">doc</span><span class="o">:</span><span class="w"> </span><span class="kt">FullscreenState</span><span class="p">,</span><span class="w"> </span><span class="nx">target</span><span class="o">:</span><span class="w"> </span><span class="kt">EventTarget</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="kt">boolean</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L21" href="#L21">21</a></td><td class="cl"><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nx">doc</span><span class="p">.</span><span class="nx">fullscreenEnabled</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">fullscreenElement</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L22" href="#L22">22</a></td><td class="cl"><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">target</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">Element</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">null</span><span class="p">)</span><span class="o">?</span><span class="p">.</span><span class="nx">tagName</span><span class="w"> </span><span class="o">!==</span><span class="w"> </span><span class="s2">&quot;CANVAS&quot;</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L23" href="#L23">23</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L24–L34</p><blockquote>
+<p><strong>文法: 交差型 <code>&amp;</code></strong></p>
+<p><code>A &amp; B</code> は、「<code>A</code> の項目と <code>B</code> の項目を両方持っている」型です。合併型 <code>A | B</code>（どちらか一方）と対になります。</p>
+<p><code>ts
+type LockableOrientation = ScreenOrientation &amp; { lock?: (orientation: "landscape") =&gt; Promise&lt;void&gt; };</code></p>
+<p>は、「ブラウザの <code>ScreenOrientation</code> の項目に加えて、省略できる <code>lock</code> という関数を持つ」型です。</p>
+</blockquote>
+<p><code>screen.orientation</code> は、画面の向きを表すブラウザの物です。この中の <code>lock("landscape")</code> を呼ぶと、端末を縦に持っても画面が横向きのまま固定されます。ところが、<code>lock</code> に対応しているのは Android の Chrome などに限られるため、TypeScript が持っているブラウザの型の一覧には <code>lock</code> が載っていません（このプロジェクトの TypeScript 5.8 では、<code>ScreenOrientation</code> に <code>unlock</code> はあっても <code>lock</code> はありません）。L25 は、<code>lock</code> を「あるかもしれない関数」として足した型を自分で作っています。</p>
+<p>L28-34 の <code>lockLandscape</code> は、横向きに固定します。</p>
+<ul>
+<li>L30 — <code>screen.orientation</code> を L25 の型とみなし、<code>?.lock?.("landscape")</code> で呼ぶ。<code>screen.orientation</code> が無い、または <code>lock</code> が無い端末では、<code>?.</code> のところで止まって何もしない</li>
+<li>L29, L31-33 — <code>try</code> / <code>catch</code>（文法の索引の『try / catch』）。<code>lock</code> は、全画面でないときや固定できない端末では失敗を返すので、それを受け止めて何もしない</li>
+</ul>
+<p>固定できなくても困りません。縦に持てば「横向きにしてください」の案内が出るからです。</p>
+<p><code>lockLandscape</code> は <code>export</code> していないので、このファイルの中だけで使う関数です。L51 で、全画面に入れた後に呼ばれます。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L24" href="#L24">24</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L25" href="#L25">25</a></td><td class="cl"><span class="kr">type</span><span class="w"> </span><span class="nx">LockableOrientation</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">ScreenOrientation</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">lock</span><span class="o">?</span><span class="o">:</span><span class="w"> </span><span class="p">(</span><span class="nx">orientation</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;landscape&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L26" href="#L26">26</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L27" href="#L27">27</a></td><td class="cl"><span class="cm">/** 横向きに固定する。固定できない端末（iPhone など）では何もしない */</span></td></tr><tr><td class="ln"><a id="L28" href="#L28">28</a></td><td class="cl"><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">lockLandscape</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="ow">void</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L29" href="#L29">29</a></td><td class="cl"><span class="w">  </span><span class="k">try</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L30" href="#L30">30</a></td><td class="cl"><span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="p">(</span><span class="nx">screen</span><span class="p">.</span><span class="nx">orientation</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">LockableOrientation</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kc">undefined</span><span class="p">)</span><span class="o">?</span><span class="p">.</span><span class="nx">lock</span><span class="o">?</span><span class="p">.</span><span class="p">(</span><span class="s2">&quot;landscape&quot;</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L31" href="#L31">31</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="w"> </span><span class="k">catch</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L32" href="#L32">32</a></td><td class="cl"><span class="w">    </span><span class="c1">// 固定できなくても、縦に持てば案内が出る</span></td></tr><tr><td class="ln"><a id="L33" href="#L33">33</a></td><td class="cl"><span class="w">  </span><span class="p">}</span></td></tr><tr><td class="ln"><a id="L34" href="#L34">34</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+<section class="chunk"><div class="chunk-note"><p class="span">L35–L62</p><blockquote>
+<p><strong>文法: 全画面 requestFullscreen と Promise の finally</strong></p>
+<p><code>要素.requestFullscreen()</code> は、その要素を画面いっぱいに広げ、ブラウザのアドレスバーなどを隠すよう頼む命令です。<code>document.documentElement</code>（ページ全体の <code>&lt;html&gt;</code> 要素）に頼むと、ページ全体が全画面になります。</p>
+<ul>
+<li>頼めるのは、<strong>人がタップやキー入力をした直後の処理の中だけ</strong>です。ページを開いた瞬間に勝手に全画面にされないよう、ブラウザが決めています。</li>
+<li>結果は Promise で返ります（文法の索引の『async / await と Promise』）。全画面に入れたら <code>.then(…)</code> の関数が、断られたら <code>.catch(…)</code> の関数が呼ばれます。</li>
+<li><code>.finally(…)</code> の関数は、入れても断られても<strong>最後に必ず</strong>呼ばれます。どちらの場合にもする後始末を 1 か所に書けます。</li>
+</ul>
+<p>引数の <code>{ navigationUI: "hide" }</code> は、「全画面の間はブラウザの操作部分を隠したい」という希望です。希望なので、ブラウザによっては従いません。</p>
+</blockquote>
+<p><code>useLandscapeFullscreen()</code> は、タップを見張って全画面に入る仕組みを、ページに 1 回だけ取り付けるフックです。<code>useEffect</code>（文法の索引の『useEffect』）の依存の並びが <code>[]</code>（L61）なので、<code>App</code> が最初に描かれたときに 1 回だけ取り付き、画面が消えるときに外れます。</p>
+<p>L44 は、指で触る端末でなければ何も取り付けずに戻ります。後片付けの関数も返さないので、パソコンでは何も起きません。</p>
+<p>L46-58 の <code>onPointerUp</code> は、ページのどこかで指を離すたびに呼ばれます（L59 で <code>window</code> に登録）。最初の L47 で、次のどれかに当たれば何もせずに戻ります。</p>
+<ul>
+<li><code>pending</code> — 前に頼んだ全画面の返事を、まだ待っている</li>
+<li><code>e.pointerType === "mouse"</code> — マウスで押した。タブレットにマウスをつないでいるときなどは、パソコンと同じく全画面にしない（L3 のコメント）</li>
+<li><code>!wantsFullscreen(document, e.target)</code> — 全画面が使えない、もう全画面、またはキャンバスのタップ（L20-23）</li>
+</ul>
+<p>どれにも当たらなければ、L48 で <code>pending</code> を立ててから L49-57 で全画面を頼みます。</p>
+<ol>
+<li>L49-50 — ページ全体に全画面を頼む</li>
+<li>L51 — 入れたら <code>lockLandscape</code>（L28）で横向きに固定する</li>
+<li>L52-54 — 断られたら、何もせずにそのまま遊んでもらう</li>
+<li>L55-57 — どちらの場合も、最後に <code>pending</code> を下ろす。次のタップでまた頼めるようにする</li>
+</ol>
+<p><code>pointerdown</code>（押した瞬間）ではなく <code>pointerup</code>（離した瞬間）で頼むのは、指で触った場合、ブラウザが「人の操作」と認めるのが指を離したときだからです。</p>
+<p>L60 は後片付けで、L59 で登録したのと同じ <code>onPointerUp</code> を外します（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の『イベントリスナーの登録と解除』）。開発中の <code>StrictMode</code> では「取り付け → 後片付け → 取り付け」と 2 回走りますが、後片付けで外しているので、見張りが 2 重になることはありません。</p></div><div class="chunk-code"><div class="codeblock codehilite"><table><tr><td class="ln"><a id="L35" href="#L35">35</a></td><td class="cl">&nbsp;</td></tr><tr><td class="ln"><a id="L36" href="#L36">36</a></td><td class="cl"><span class="cm">/**</span></td></tr><tr><td class="ln"><a id="L37" href="#L37">37</a></td><td class="cl"><span class="cm"> * 指で触る端末では、タップしたときに全画面へ入り、横向きに固定する。</span></td></tr><tr><td class="ln"><a id="L38" href="#L38">38</a></td><td class="cl"><span class="cm"> *</span></td></tr><tr><td class="ln"><a id="L39" href="#L39">39</a></td><td class="cl"><span class="cm"> * 全画面はタップの中でしか頼めない（ブラウザの決まり）ので、画面を開いただけでは入らない。</span></td></tr><tr><td class="ln"><a id="L40" href="#L40">40</a></td><td class="cl"><span class="cm"> * 戻る操作などで全画面が外れても、次のタップでまた入る。</span></td></tr><tr><td class="ln"><a id="L41" href="#L41">41</a></td><td class="cl"><span class="cm"> */</span></td></tr><tr><td class="ln"><a id="L42" href="#L42">42</a></td><td class="cl"><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">useLandscapeFullscreen</span><span class="p">(</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L43" href="#L43">43</a></td><td class="cl"><span class="w">  </span><span class="nx">useEffect</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L44" href="#L44">44</a></td><td class="cl"><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="nb">window</span><span class="p">.</span><span class="nx">matchMedia</span><span class="o">?</span><span class="p">.</span><span class="p">(</span><span class="nx">TOUCH_QUERY</span><span class="p">)</span><span class="p">.</span><span class="nx">matches</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L45" href="#L45">45</a></td><td class="cl"><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">pending</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L46" href="#L46">46</a></td><td class="cl"><span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">onPointerUp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="o">:</span><span class="w"> </span><span class="kt">PointerEvent</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L47" href="#L47">47</a></td><td class="cl"><span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">pending</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">pointerType</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s2">&quot;mouse&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="nx">wantsFullscreen</span><span class="p">(</span><span class="nb">document</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">target</span><span class="p">)</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L48" href="#L48">48</a></td><td class="cl"><span class="w">      </span><span class="nx">pending</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L49" href="#L49">49</a></td><td class="cl"><span class="w">      </span><span class="nb">document</span><span class="p">.</span><span class="nx">documentElement</span></td></tr><tr><td class="ln"><a id="L50" href="#L50">50</a></td><td class="cl"><span class="w">        </span><span class="p">.</span><span class="nx">requestFullscreen</span><span class="p">(</span><span class="p">{</span><span class="w"> </span><span class="nx">navigationUI</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;hide&quot;</span><span class="w"> </span><span class="p">}</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L51" href="#L51">51</a></td><td class="cl"><span class="w">        </span><span class="p">.</span><span class="nx">then</span><span class="p">(</span><span class="nx">lockLandscape</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L52" href="#L52">52</a></td><td class="cl"><span class="w">        </span><span class="p">.</span><span class="k">catch</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L53" href="#L53">53</a></td><td class="cl"><span class="w">          </span><span class="c1">// 全画面に入れない端末では、そのまま遊ぶ</span></td></tr><tr><td class="ln"><a id="L54" href="#L54">54</a></td><td class="cl"><span class="w">        </span><span class="p">}</span><span class="p">)</span></td></tr><tr><td class="ln"><a id="L55" href="#L55">55</a></td><td class="cl"><span class="w">        </span><span class="p">.</span><span class="k">finally</span><span class="p">(</span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span></td></tr><tr><td class="ln"><a id="L56" href="#L56">56</a></td><td class="cl"><span class="w">          </span><span class="nx">pending</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L57" href="#L57">57</a></td><td class="cl"><span class="w">        </span><span class="p">}</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L58" href="#L58">58</a></td><td class="cl"><span class="w">    </span><span class="p">}</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L59" href="#L59">59</a></td><td class="cl"><span class="w">    </span><span class="nb">window</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="s2">&quot;pointerup&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onPointerUp</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L60" href="#L60">60</a></td><td class="cl"><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">window</span><span class="p">.</span><span class="nx">removeEventListener</span><span class="p">(</span><span class="s2">&quot;pointerup&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">onPointerUp</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L61" href="#L61">61</a></td><td class="cl"><span class="w">  </span><span class="p">}</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="p">]</span><span class="p">)</span><span class="p">;</span></td></tr><tr><td class="ln"><a id="L62" href="#L62">62</a></td><td class="cl"><span class="p">}</span></td></tr></table></div></div></section>
+</div>
+</article>
+
+</main>
+<script src="../site.js"></script>
+
+</body>
+</html>

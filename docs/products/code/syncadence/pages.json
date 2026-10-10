@@ -135,6 +135,11 @@
   "kind": "code"
  },
  {
+  "title": "src/ui/landscape.ts",
+  "url": "code/src-ui-landscape.ts.html",
+  "kind": "code"
+ },
+ {
   "title": "src/ui/Play.tsx",
   "url": "code/src-ui-Play.tsx.html",
   "kind": "code"
@@ -142,6 +147,11 @@
  {
   "title": "src/ui/Result.tsx",
   "url": "code/src-ui-Result.tsx.html",
+  "kind": "code"
+ },
+ {
+  "title": "src/ui/RotateHint.tsx",
+  "url": "code/src-ui-RotateHint.tsx.html",
   "kind": "code"
  },
  {

@@ -24,8 +24,10 @@
 <li><a href="code/src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
 <li><a href="code/src-ui-Play.tsx.html">Play.tsx</a></li>
 <li><a href="code/src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="code/src-ui-RotateHint.tsx.html">RotateHint.tsx</a></li>
 <li><a href="code/src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
 <li><a href="code/src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="code/src-ui-landscape.ts.html">landscape.ts</a></li>
 <li><a href="code/src-ui-select.ts.html">select.ts</a></li>
 </ul>
 <p class="navsub">進行と判定 (src/game)</p><ul>
@@ -71,7 +73,7 @@
 <div class="lead"><p>ピアノの名曲の楽譜から譜面を作り、ブラウザで叩くリズムゲーム。
 <strong>楽譜のファイルが譜面になるまで</strong>と、<strong>画面のノーツを 1 つ叩いて判定が出るまで</strong>の 2 本の流れを、
 1 行ずつたどって読むための資料。</p></div>
-<p class="lead small">読んでいるのは takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）時点。コードの写しは 1 文字も変えていない。解説はコードの横に置いてあり、コードそのものには混ぜていない。</p>
+<p class="lead small">読んでいるのは takumayellow/syncadence-v2 の <code>main</code>（<code>404da56</code>）時点。コードの写しは 1 文字も変えていない。解説はコードの横に置いてあり、コードそのものには混ぜていない。</p>
 </header>
 <h2 id="notes">読む順序</h2>
 <div class="cards">
@@ -86,12 +88,14 @@
 <p class="lead small">1 ファイル 1 ページ。元コードを行番号つきで区切り、区切りごとに解説が付いている。</p>
 <h3>画面 (src/ui)</h3>
 <ul class="filelist">
-<li><a href="code/src-ui-App.tsx.html"><code>App.tsx</code><span class="meta">121 行</span></a><span class="blurb">いまどの画面（選曲・プレイ・結果・タイミング調整）を出しているかを 1 つの値で覚え、その値に応じて画面の部品を 1 つだけ選んで描く、ゲーム全体の「司令塔」の部品です。</span></li>
+<li><a href="code/src-ui-App.tsx.html"><code>App.tsx</code><span class="meta">123 行</span></a><span class="blurb">いまどの画面（選曲・プレイ・結果・タイミング調整）を出しているかを 1 つの値で覚え、その値に応じて画面の部品を 1 つだけ選んで描く、ゲーム全体の「司令塔」の部品です。</span></li>
 <li><a href="code/src-ui-Calibrate.tsx.html"><code>Calibrate.tsx</code><span class="meta">132 行</span></a><span class="blurb">0.6 秒おきに 20 回鳴るクリック音に合わせてキーか画面を叩いてもらい、音が聞こえてから押すまでのずれの中央値を測って「入力の補正」に入れる、タイミング調整の画面の部品です。</span></li>
-<li><a href="code/src-ui-Play.tsx.html"><code>Play.tsx</code><span class="meta">259 行</span></a><span class="blurb">プレイ画面そのものです。曲と音源を読み込み、毎フレーム「進行を 1 歩進めて絵を描く」ループを回し、キーボードとタッチの入力を進行役（PlayEngine）に渡し、READY・PAUSE などの重ね表示を出し分けます。</span></li>
+<li><a href="code/src-ui-Play.tsx.html"><code>Play.tsx</code><span class="meta">267 行</span></a><span class="blurb">プレイ画面そのものです。曲と音源を読み込み、毎フレーム「進行を 1 歩進めて絵を描く」ループを回し、キーボードとタッチの入力を進行役（PlayEngine）に渡し、READY・PAUSE などの重ね表示を出し分けます。</span></li>
 <li><a href="code/src-ui-Result.tsx.html"><code>Result.tsx</code><span class="meta">90 行</span></a><span class="blurb">1 曲を遊び終えた後に、ランク・スコア・判定ごとの回数・最大コンボと、押したタイミングの偏りを出し、偏りが大きければ「入力の補正」の変更を 1 ボタンで提案する結果画面の部品です。</span></li>
+<li><a href="code/src-ui-RotateHint.tsx.html"><code>RotateHint.tsx</code><span class="meta">11 行</span></a><span class="blurb">スマホを縦に持っている間だけ、ゲームの上に「画面を横向きにしてください」と重ねて出す部品です。出すか隠すかは、この部品ではなく CSS（src/styles/rotate.css、解説キット外）が決めます。</span></li>
 <li><a href="code/src-ui-SettingsPanel.tsx.html"><code>SettingsPanel.tsx</code><span class="meta">82 行</span></a><span class="blurb">ノーツの速さ・テンポ・音量・2 つの補正・キー音・オートプレイの 7 つの設定を、スライダーや入力欄やチェックボックスで変えられるようにする設定の部品です。</span></li>
 <li><a href="code/src-ui-SongSelect.tsx.html"><code>SongSelect.tsx</code><span class="meta">176 行</span></a><span class="blurb">左に曲の一覧、右に選んだ曲の詳細（難易度ごとのレベル・ノーツ数・ランク、自己ベスト、PLAY ボタン）を並べ、矢印キーと Enter でも操作できる選曲画面の部品です。</span></li>
+<li><a href="code/src-ui-landscape.ts.html"><code>landscape.ts</code><span class="meta">62 行</span></a><span class="blurb">スマホで遊ぶときに、画面をタップしたら全画面に入り、横向きに固定する仕組みと、「指で触る端末か」「それを縦に持っているか」をたずねる CSS の条件を置いたファイルです。</span></li>
 <li><a href="code/src-ui-select.ts.html"><code>select.ts</code><span class="meta">26 行</span></a><span class="blurb">選曲画面（src/ui/SongSelect.tsx）が使う 4 つの小さな計算、つまりジャケットの色と文字、↑↓←→ での移動先を、画面の部品から切り離して置いたファイルです。</span></li>
 </ul>
 <h3>進行と判定 (src/game)</h3>
@@ -124,7 +128,7 @@
 </ul>
 <h3>入口と保存 (src)</h3>
 <ul class="filelist">
-<li><a href="code/src-main.tsx.html"><code>main.tsx</code><span class="meta">12 行</span></a><span class="blurb">ブラウザがページを開いたときに最初に動き、画面全体を描く部品 App を HTML の空の箱 &lt;div id=&quot;root&quot;&gt; の中に描き始めるだけの、12 行の入口です。</span></li>
+<li><a href="code/src-main.tsx.html"><code>main.tsx</code><span class="meta">14 行</span></a><span class="blurb">ブラウザがページを開いたときに最初に動き、画面全体を描く部品 App と、縦持ちのときに重ねる案内 RotateHint を、HTML の空の箱 &lt;div id=&quot;root&quot;&gt; の中に描き始めるだけの、14 行の入口です</span></li>
 <li><a href="code/src-storage.ts.html"><code>storage.ts</code><span class="meta">119 行</span></a><span class="blurb">設定・自己ベスト・最後に選んだ曲と難易度を、ブラウザの中の小さな保存場所（localStorage）に書き込み、次に開いたときに読み戻すファイルです。読み戻した値は型と範囲を 1 つずつ確かめ、壊れていれば既定値に戻しま</span></li>
 </ul>
 <h3>譜面を作る (tools・Python)</h3>
@@ -137,8 +141,8 @@
 </ul>
 <h2 id="howto">このサイトの作り</h2>
 <div class="readme">
-<p>ピアノの名曲を、楽譜から自動で作った譜面で叩くブラウザのリズムゲーム「Syncadence」を、楽譜のファイルが譜面になるまで（Python）と、ノーツ 1 つが流れてきて判定されるまで（TypeScript）の 2 本の筋でたどって読むための資料。本線の 30 ファイルを丸ごと写し、1 行ずつ解説を付けてある。TypeScript・React・Python の書き方を知らなくても読めるよう、出てきた書き方はその場で説明している。</p>
-<p>読む対象はコミット <strong><code>eb9c698</code></strong>（<code>main</code>）。</p>
+<p>ピアノの名曲を、楽譜から自動で作った譜面で叩くブラウザのリズムゲーム「Syncadence」を、楽譜のファイルが譜面になるまで（Python）と、ノーツ 1 つが流れてきて判定されるまで（TypeScript）の 2 本の筋でたどって読むための資料。本線の 32 ファイルを丸ごと写し、1 行ずつ解説を付けてある。TypeScript・React・Python の書き方を知らなくても読めるよう、出てきた書き方はその場で説明している。</p>
+<p>読む対象はコミット <strong><code>404da56</code></strong>（<code>main</code>）。</p>
 <h2 id="_1">何が入っているか</h2>
 <table>
 <thead>

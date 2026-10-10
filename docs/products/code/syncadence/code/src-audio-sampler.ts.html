@@ -24,8 +24,10 @@
 <li><a href="src-ui-Calibrate.tsx.html">Calibrate.tsx</a></li>
 <li><a href="src-ui-Play.tsx.html">Play.tsx</a></li>
 <li><a href="src-ui-Result.tsx.html">Result.tsx</a></li>
+<li><a href="src-ui-RotateHint.tsx.html">RotateHint.tsx</a></li>
 <li><a href="src-ui-SettingsPanel.tsx.html">SettingsPanel.tsx</a></li>
 <li><a href="src-ui-SongSelect.tsx.html">SongSelect.tsx</a></li>
+<li><a href="src-ui-landscape.ts.html">landscape.ts</a></li>
 <li><a href="src-ui-select.ts.html">select.ts</a></li>
 </ul>
 <p class="navsub">進行と判定 (src/game)</p><ul>
@@ -69,7 +71,7 @@
 <header class="page-head">
 <p class="eyebrow">TypeScript · 全 64 行</p>
 <h1><code>src/audio/sampler.ts</code></h1>
-<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>eb9c698</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
+<p class="provenance">takumayellow/syncadence-v2 の <code>main</code>（<code>404da56</code>）の写し。コードは 1 文字も変えていない。右の解説はこのサイトだけのもの。</p>
 </header>
 <section class="intro"><p>本物のピアノを 1 音ずつ録音した音（サンプル）を読み込んでおき、指定された高さ・強さ・時刻・長さでその音を鳴らす、ゲームの「ピアノ」にあたるファイルです。</p>
 <h2 id="_1">このファイルが担うもの</h2>
@@ -96,7 +98,7 @@
 </tr>
 <tr>
 <td>呼ばれる</td>
-<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L52-55）</td>
+<td><a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a>（L53-56）</td>
 <td>プレイ画面を開いたときに、曲の全部の音の <code>[高さ, 強さ]</code> を渡して <code>load</code>。読み込みの進み具合を画面に出す</td>
 </tr>
 <tr>
@@ -140,7 +142,7 @@
 </ul>
 <h2 id="_5">落とし穴</h2>
 <ul>
-<li><strong><code>load</code> を終える前に <code>play</code> を呼ぶと、黙って何も鳴りません</strong>（L47・L50）。エラーにならないので、読み込み忘れに気付きにくい作りです。プレイ画面は、読み込みが終わるまで開始できないようにしています（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L52-59）。</li>
+<li><strong><code>load</code> を終える前に <code>play</code> を呼ぶと、黙って何も鳴りません</strong>（L47・L50）。エラーにならないので、読み込み忘れに気付きにくい作りです。プレイ画面は、読み込みが終わるまで開始できないようにしています（<a class="xref" href="src-ui-Play.tsx.html"><code>src/ui/Play.tsx</code></a> の L53-60）。</li>
 <li><strong>mp3 が 1 つでも取ってこられないと、<code>load</code> 全体が失敗します</strong>（L35 と <code>Promise.all</code>）。そのときプレイ画面はエラーの文を出します。</li>
 <li>再生速度を変えると音の高さだけでなく<strong>長さも縮み・伸びます</strong>。高さを 3 半音上げたサンプルは、約 0.84 倍の時間で終わります。音の長さは L62 で止めているので、ふつうは目立ちません。</li>
 <li>曲のテンポを落としても音の高さは変わりません。テンポは鳴らす時刻と長さ（<code>engine.ts</code> の L77 で <code>duration / rate</code>）だけに効き、L53 の再生速度は音の高さだけで決まるからです（<code>docs/design.md</code> の 5.1 節）。</li>
