@@ -23,7 +23,7 @@ import re
 import json
 import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 try:
     import msvcrt  # type: ignore
 except Exception:
@@ -60,6 +60,7 @@ from core.kiritan_core import (
     SANITIZE_TABLE,
     UserProfile,
     build_kiritan_persona,
+    chat_with_history,
     compose_system_prompt,
     sanitize_for_voice,
     get_model_profile,
@@ -756,43 +757,31 @@ def create_client():
 
 
 
-def _collect_candidate_models(preferred: str) -> List[str]:
-    ordered: List[str] = []
+HISTORY_TURNS = 20  # 覚えておく往復の数
 
-    def _add(name: Optional[str]):
-        if name and name not in ordered:
-            ordered.append(name)
 
-    _add(os.getenv("OPENAI_MODEL"))
-    _add(preferred)
-    for profile in MODEL_PROFILES:
-        _add(profile["model"])
-    for fallback in ("gpt-4o-mini", "o4-mini", "o4-mini-high", "o3-mini", "gpt-4o"):
-        _add(fallback)
-    return ordered
+def chat_once(
+    client,
+    user_text: str,
+    preferred_model: str,
+    system_prompt: str,
+    history: Sequence[Dict[str, str]] = (),
+) -> str:
+    """これまでの会話を踏まえて返答を得る（GUI・LINE と同じ core の会話処理を使う）。"""
+    return chat_with_history(
+        client,
+        user_text,
+        list(history),
+        system_prompt or SYSTEM_PROMPT,
+        preferred_model=preferred_model,
+        history_max=HISTORY_TURNS,
+    )
 
-def chat_once(client, user_text: str, preferred_model: str, system_prompt: str) -> str:
-    """選んだモデルを優先しつつ、順にフォールバックして応答を得る。"""
-    models = _collect_candidate_models(preferred_model)
-    tried = []
-    last_err: Optional[Exception] = None
-    prompt = system_prompt or SYSTEM_PROMPT
 
-    for model_name in models:
-        try:
-            res = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": user_text},
-                ],
-            )
-            raw = (res.choices[0].message.content or "").strip()
-            return sanitize_for_voice(raw)
-        except Exception as err:
-            tried.append(model_name)
-            last_err = err
-    raise RuntimeError(f"利用可能なモデルが見つかりません (tried={tried}) : {last_err}")
+def remember_turn(history: Sequence[Dict[str, str]], user_text: str, reply: str) -> List[Dict[str, str]]:
+    """1 往復を足した新しい履歴を返す。古いものから捨てる"""
+    turn = [{"role": "user", "content": user_text}, {"role": "assistant", "content": reply}]
+    return (list(history) + turn)[-HISTORY_TURNS * 2:]
 
 
 def _record_with_pyaudio(seconds: int, rate: int = 16000) -> bytes:
@@ -940,6 +929,7 @@ def main():
     speed = DEFAULT_SPEED
     wait = DEFAULT_LISTEN
     mode = "dual"
+    history: List[Dict[str, str]] = []
     print_cli_usage()
     print("Ctrl+C でいつでも終了できます。")
 
@@ -1043,7 +1033,8 @@ def main():
                     print("Usage: speed X")
                 continue
 
-            reply = chat_once(client, user, current_model, system_prompt)
+            reply = chat_once(client, user, current_model, system_prompt, history)
+            history = remember_turn(history, user, reply)
             print(f"きりたん: {reply}")
             speak(reply, speed)
 
@@ -1054,7 +1045,8 @@ def main():
                 follow = listen_mic(client, wait)
                 if follow:
                     print(f"You (mic): {follow}")
-                    reply2 = chat_once(client, follow, current_model, system_prompt)
+                    reply2 = chat_once(client, follow, current_model, system_prompt, history)
+                    history = remember_turn(history, follow, reply2)
                     print(f"きりたん: {reply2}")
                     speak(reply2, speed)
     except KeyboardInterrupt:

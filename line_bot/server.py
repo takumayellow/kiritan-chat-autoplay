@@ -18,6 +18,7 @@ import hmac
 import os
 import sys
 import logging
+from datetime import datetime
 
 # .env 読み込み
 try:
@@ -45,6 +46,7 @@ from linebot.v3.webhooks import (
 from linebot.v3.exceptions import InvalidSignatureError
 
 from core import kiritan_core as core
+from line_bot.context import SEEDS as LINE_SEEDS, line_context
 
 # ── ログ設定 ──────────────────────────────────────────────
 logging.basicConfig(
@@ -155,6 +157,7 @@ def _handle_style(user_id: str, arg: str) -> str:
         return "\n".join(lines)
 
     profile = core.get_model_profile(arg.strip())
+    chat_store.set_model_key(user_id, profile["key"])
     return f"会話スタイルを「{profile['label']}」に変更しました。"
 
 
@@ -173,6 +176,12 @@ def generate_reply(user_id: str, user_text: str) -> str:
     )
 
     history = chat_store.get_history(user_id)
+    now = datetime.now(core.JST)
+    try:
+        last_at = chat_store.last_message_at(user_id)
+    except Exception as e:  # 前回からの間隔は無くても返答できる
+        logger.warning(f"last_message_at failed for user {user_id}: {e}")
+        last_at = None
 
     try:
         reply = core.chat_with_history(
@@ -181,6 +190,10 @@ def generate_reply(user_id: str, user_text: str) -> str:
             history=history,
             system_prompt=system_prompt,
             preferred_model=model_profile["model"],
+            now=now,
+            gap=(now - last_at) if last_at else None,
+            context=line_context(now),
+            extra_seeds=LINE_SEEDS,
         )
     except Exception as e:
         logger.error(f"Chat error for user {user_id}: {e}")

@@ -175,9 +175,9 @@ LINE Official Account Manager → 友だちを増やす → 友だち追加ガ�
 | `/profile` | プロフィール確認 |
 | `/profile 名前=○○ 性別=○○ 年代=○○` | プロフィール設定 |
 | `/style` | スタイル一覧 |
-| `/style 1` | ライト雑談 (gpt-4o-mini) |
+| `/style 1` | ライト雑談 (gpt-5.4-mini) |
 | `/style 2` | ゆったり会話 (o4-mini) |
-| `/style 3` | じっくり深掘り (o4-mini-high) |
+| `/style 3` | じっくり深掘り (o4-mini) |
 
 ---
 

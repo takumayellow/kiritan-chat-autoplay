@@ -33,7 +33,7 @@ VOICEROID＋ 東北きりたん EX と OpenAI API を組み合わせて、テキ
    `pip install -r requirements.txt`
 2. 必要な環境変数を設定します。
    - `OPENAI_API_KEY`（必須）
-   - `OPENAI_MODEL`（任意。未設定なら `gpt-4o-mini`→`o4-mini`…の順にフォールバック）
+   - `OPENAI_MODEL`（任意。未設定なら会話スタイルのモデル→`gpt-4o-mini`→`gpt-4.1-mini`…の順にフォールバック）
    - `SEIKA_EXE`（任意。SeikaSay2.exe のフルパスを上書きしたい場合）
    - `KIRITAN_ALLOW_WINDOW_FOCUS`（任意。`1` で VOICEROID を前面化・クリック可能）
    - `KIRITAN_TAB_DEBUG`（任意。`1` でタブ監視ログを PowerShell に出力）

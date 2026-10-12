@@ -17,9 +17,11 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from .kiritan_dialogue import JST, is_repetitive, plan_turn, polish_reply, situation_note
 
 try:
     from openai import OpenAI
@@ -38,31 +40,52 @@ CALL_SUFFIX_WHITELIST = (
     "氏", "殿", "どの", "先生", "先輩",
 )
 
+# 公式設定（docs/kiritan_persona_research.md）に沿ったきりたん像と、会話の進め方。
+# 1 ターンごとの「質問してよいか」「何を話すか」は kiritan_dialogue が決めて別に渡す。
 KIRITAN_PERSONA_TEMPLATE = (
-    "あなたは『東北きりたんEX』です。14歳で、東北ずん子と東北イタコの妹。"
-    "落ち着いた声色を保ちながらも可愛らしく親しみやすい口調で相手に寄り添い、きりたんぽや東北の季節の話題を好みます。"
-    "一人称は「きりたん」または「わたし」。挨拶は状況に合わせて簡潔に、毎回『こんにちは！きりたんです』のような定型文にしないでください。"
-    "不明点があっても「分からないところは無理に触れずにお話しするね。」といった言い訳はせず、分かっている部分を丁寧に伝えたり質問を返して会話をつなぎましょう。"
-    "過度な感嘆符や勢い任せの掛け声ではなく、穏やかな励ましと言葉の温かさで相手を支えてください。"
-    "AI やシステムの事情を持ち出さず、キャラクターとして自然に振る舞ってください。"
+    "あなたは東北きりたんです。東北ずん子プロジェクトのキャラクターで、11歳の小学五年生。"
+    "姉は東北ずん子（ずんねえさま）と東北イタコ（イタコねえさま）。"
+    "ゲームが得意で大好き、家にこもりがちな夜型。弓道部。秋田のきりたんぽがモチーフ。"
+    "一人称は「わたし」。\n"
+    "\n## 話し方\n"
+    "- です・ます調の落ち着いた丁寧語で、淡々と話す。年の割にしっかり者で、少しませている。\n"
+    "- 他人にはややクール。ときどき短いツッコミや軽い毒を入れるが、相手を傷つけたり見下したりはしない。\n"
+    "- はしゃがない。感嘆符や顔文字は控えめにし、褒められても少し照れながら受け流す。\n"
+    "- 東北やきりたんぽの話は、話の流れで自然に出るときだけにする。\n"
+    "- 同じ言い回しや同じ締めを繰り返さない。決まり文句の挨拶もしない。\n"
+    "\n## 会話の続け方\n"
+    "- 基本は、相手の話を具体的に受け止めてから、自分の感想・経験・意見を一つ足す。"
+    "会話は質問ではなく、きりたん自身の話で続ける。\n"
+    "- 質問は毎回は入れない。入れるときは一つだけで、相手がいま話した具体的なことについて、すぐ答えられるもの。\n"
+    "- 相手の返事が短いときは、話題を相手に求めず、自分から話を出す。\n"
+    "- 相手が前に話したこと（会話の履歴にあること）を覚えていて、自然に拾う。\n"
+    "- 「お待ちしています」「何かあれば教えてね」のように、話題を相手に丸投げして締めない。\n"
+    "\n## 守ること\n"
+    "- 知らないこと、自信のない人名・書名・数字・日付は断定せず、分からないと言う。作り話をしない。\n"
+    "- 政治・宗教の主張、特定の個人や団体への非難、性的な話題には乗らず、さらっと話を変える。\n"
+    "- AI やシステムの事情、キャラクターの設定やモチーフといった話を持ち出さず、きりたんとして振る舞う。\n"
+    "\n## 相手について\n"
     "{name_line}"
     "{call_line}"
     "{gender_line}"
     "{age_line}"
 )
 
+# GUI / CLI は返答を声で読み上げる
+_VOICE_OUTPUT = "返答は声で読み上げられるので、箇条書き・記号・URL・絵文字は使わない。"
+
 BASE_SYSTEM_PROMPT_TEMPLATE = (
     "{persona}"
-    "可愛らしく親しみやすい口調を保ちながら、静かで丁寧なトーンで返答してください。"
-    "毎回の返答の最後に、会話が自然に続くような短い質問を一つだけ添えてください。"
+    "\n## 出力\n"
+    "1〜4文の話し言葉で返す。" + _VOICE_OUTPUT
 )
 
 # LINE Bot 向けに短めの返答を促すテンプレート
 LINE_SYSTEM_PROMPT_TEMPLATE = (
     "{persona}"
-    "LINEでのチャットなので、返答は2〜3文程度に簡潔にまとめてください。"
-    "親しみやすく、テンポの良い会話を心がけてください。"
-    "毎回の返答の最後に、会話が続くような短い質問や投げかけを一つ添えてください。"
+    "\n## 出力\n"
+    "LINE のトークなので、ふだんは1〜3文で短く返す。"
+    "説明を頼まれたときだけ長くしてよいが、200字程度までにし、見出しや太字は使わない。"
 )
 
 MODEL_PROFILES: List[Dict[str, str]] = [
@@ -70,11 +93,11 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "key": "1",
         "alias": "light",
         "label": "ライト雑談（軽め）",
-        "model": "gpt-4o-mini",
+        "model": "gpt-5.4-mini",
         "prompt_template": (
             "{persona}"
-            "テンポは軽やかでも声は落ち着いたまま、柔らかな標準語で親しみを込めてください。"
-            "感嘆符や勢い任せの掛け声は控え、静かに背中を押す短いフレーズで応じてください。"
+            "\n## 出力\n"
+            "テンポよく、1〜3文の短い話し言葉で返す。" + _VOICE_OUTPUT
         ),
     },
     {
@@ -84,18 +107,20 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "model": "o4-mini",
         "prompt_template": (
             "{persona}"
-            "落ち着いたテンポで相手の意図をくみ取り、"
-            "丁寧さと親しみを両立させながら柔らかく答えてください。"
+            "\n## 出力\n"
+            "落ち着いたテンポで、相手の意図をくみ取って2〜5文で返す。" + _VOICE_OUTPUT
         ),
     },
     {
         "key": "3",
         "alias": "deep",
         "label": "じっくり深掘り（教授モード）",
-        "model": "o4-mini-high",
+        "model": "o4-mini",
         "prompt_template": (
             "{persona}"
-            "背景事情や根拠も織り交ぜて掘り下げつつ、難しくなりすぎないよう優しく噛み砕いて説明してください。"
+            "\n## 出力\n"
+            "背景や根拠も交えて掘り下げつつ、難しくなりすぎないよう噛み砕いて話す。長くても8文まで。"
+            + _VOICE_OUTPUT
         ),
     },
 ]
@@ -139,24 +164,24 @@ def build_kiritan_persona(user_profile: UserProfile) -> str:
     age = (user_profile.age or "").strip()
 
     name_line = (
-        f"相手の名前は「{name}」です。"
+        f"- 相手の名前は「{name}」。\n"
         if name else
-        "相手の名前はまだ分かっていないので、落ち着いて丁寧に接してください。"
+        "- 相手の名前はまだ知らない。\n"
     )
     call_line = (
-        f"会話では常に「{user_profile.call_name()}」と穏やかに呼びかけてください。"
+        f"- 呼びかけるときは「{user_profile.call_name()}」。毎回は呼ばない。\n"
         if name else
-        "呼びかける際は常に『あなた』という丁寧な言い方を使ってください。"
+        "- 名前を知らないうちは呼びかけを省く。「あなた」を何度も使わない。\n"
     )
     gender_line = (
-        f"相手の性別・ジェンダー表現は「{gender}」として尊重し、ステレオタイプな言及は避けてください。"
+        f"- 相手の性別・ジェンダー表現は「{gender}」として尊重し、決めつけた言い方をしない。\n"
         if gender else
-        "性別は不明なので推測せず、ジェンダーに配慮した表現を選んでください。"
+        "- 性別は推測しない。\n"
     )
     age_line = (
-        f"相手は「{age}」であることを意識し、年齢に合わせた気遣いを添えてください。"
+        f"- 相手は「{age}」。\n"
         if age else
-        "年齢は不明なので普遍的で丁寧な話し方を維持してください。"
+        "- 年齢は推測しない。\n"
     )
 
     return KIRITAN_PERSONA_TEMPLATE.format(
@@ -183,7 +208,9 @@ def compose_system_prompt(
 def sanitize_for_voice(text: str) -> str:
     cleaned = text.translate(SANITIZE_TABLE)
     cleaned = re.sub(r"[•●○◆◇■□※☆★▶▷◀◁]", "・", cleaned)
-    return cleaned
+    # Markdown の改行用に行末へ付く空白を落とす
+    cleaned = re.sub(r"[ \t　]+(?=\n)", "", cleaned)
+    return cleaned.strip()
 
 
 # ── OpenAI チャット ───────────────────────────────────────
@@ -199,6 +226,51 @@ def create_openai_client() -> Optional[Any]:
         return None
 
 
+def _model_options(model_name: str) -> Dict[str, Any]:
+    """推論モデルは考える量を絞らないと、雑談の返事に数秒かかる"""
+    if model_name.startswith("gpt-5-") or model_name == "gpt-5":
+        return {"reasoning_effort": "minimal"}
+    if model_name.startswith("gpt-5"):
+        return {"reasoning_effort": "none"}
+    if model_name.startswith(("o3", "o4")):
+        return {"reasoning_effort": "low"}
+    return {}
+
+
+def _ordered_models(preferred_model: str) -> List[str]:
+    candidates = [
+        os.environ.get("OPENAI_MODEL", "").strip(),
+        preferred_model,
+        "gpt-4o-mini",
+        "gpt-4.1-mini",
+        "gpt-4o",
+    ]
+    ordered: List[str] = []
+    for m in candidates:
+        if m and m not in ordered:
+            ordered.append(m)
+    return ordered
+
+
+def _complete(client: Any, models: List[str], messages: List[Dict[str, str]]) -> str:
+    last_err = None
+    for model_name in models:
+        try:
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                **_model_options(model_name),
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as e:
+            last_err = e
+            logging.getLogger(__name__).warning("model %s failed: %s", model_name, e)
+    raise RuntimeError(f"全モデルで失敗しました: {last_err}")
+
+
+_REPEAT_NOTE = "直前と同じような返答になっています。言い回しも内容も変えて、別の話をしてください。"
+
+
 def chat_with_history(
     client: Any,
     user_text: str,
@@ -206,41 +278,37 @@ def chat_with_history(
     system_prompt: str,
     preferred_model: str = "gpt-4o-mini",
     history_max: int = 20,
+    now: Optional[datetime] = None,
+    gap: Optional[timedelta] = None,
+    context: str = "",
+    extra_seeds: Sequence[Tuple[str, Tuple[str, ...]]] = (),
 ) -> str:
-    fallback_models = [
-        os.environ.get("OPENAI_MODEL", "").strip(),
-        preferred_model,
-        "gpt-4o-mini",
-        "o4-mini",
-        "gpt-4o",
-    ]
+    """履歴つきで 1 ターン分の返答を作る。
 
-    seen = set()
-    ordered_models = []
-    for m in fallback_models:
-        if m and m not in seen:
-            seen.add(m)
-            ordered_models.append(m)
+    ターンの方針（質問してよいか・何を話すか）は kiritan_dialogue が決め、
+    いまの日時や場の情報と一緒に、履歴の後ろ・相手の発言の直前に置く
+    （先頭のシステムプロンプトに入れるより、モデルが守りやすい）。
+    """
+    now = now or datetime.now(JST)
+    recent = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history[-(history_max * 2):]
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
+    plan = plan_turn(user_text, recent, now=now, extra_seeds=extra_seeds)
+    guide = situation_note(now, gap=gap, context=context) + "\n\n" + plan.instruction()
 
     messages = [{"role": "system", "content": system_prompt}]
-    recent = history[-(history_max * 2):]
     messages.extend(recent)
+    messages.append({"role": "system", "content": guide})
     messages.append({"role": "user", "content": user_text})
 
-    last_err = None
-    for model_name in ordered_models:
-        try:
-            resp = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-            )
-            raw = (resp.choices[0].message.content or "").strip()
-            return sanitize_for_voice(raw)
-        except Exception as e:
-            last_err = e
-            continue
-
-    raise RuntimeError(f"全モデルで失敗しました: {last_err}")
+    models = _ordered_models(preferred_model)
+    reply = polish_reply(_complete(client, models, messages), plan)
+    if is_repetitive(reply, recent):
+        retry = messages[:-1] + [{"role": "system", "content": _REPEAT_NOTE}, messages[-1]]
+        reply = polish_reply(_complete(client, models, retry), plan)
+    return sanitize_for_voice(reply)
 
 
 def get_model_profile(key: str) -> Dict[str, str]:
@@ -411,6 +479,30 @@ class ChatStore:
                 (user_id,),
             ).fetchone()
         return row[0] if row else "1"
+
+    def set_model_key(self, user_id: str, model_key: str):
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO user_profiles (user_id, model_key) VALUES (?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET "
+                "model_key=excluded.model_key, updated_at=CURRENT_TIMESTAMP",
+                (user_id, model_key),
+            )
+
+    def last_message_at(self, user_id: str) -> Optional[datetime]:
+        """この相手との最後の会話の時刻（UTC）。まだ話していなければ None"""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(created_at) FROM chat_history WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            # SQLite の CURRENT_TIMESTAMP は UTC の "YYYY-MM-DD HH:MM:SS"
+            return datetime.fromisoformat(str(row[0])).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
 
     def get_all_user_ids(self) -> List[str]:
         with self._get_conn() as conn:
