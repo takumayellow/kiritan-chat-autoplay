@@ -10,6 +10,7 @@ on:
       - Dockerfile
       - Procfile
       - render.yaml
+      - tests/**
       - .github/workflows/linebot_ci.yml
   pull_request:
     branches: [main, master]
@@ -20,6 +21,7 @@ on:
       - Dockerfile
       - Procfile
       - render.yaml
+      - tests/**
       - .github/workflows/linebot_ci.yml
 
 jobs:
@@ -36,7 +38,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r line_bot/requirements.txt
+        run: pip install -r line_bot/requirements.txt pytest
+
+      - name: Unit tests
+        run: python -m pytest -q tests
 
       - name: Import check
         env:
