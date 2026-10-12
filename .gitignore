@@ -21,6 +21,7 @@ logs/runtime/
 conversation_log.txt
 linebot_chat.sqlite
 logs/profile_history.sqlite
+logs/profile_history.jsonl
 # 会話の書き出し（ChatStore.refresh_exports）
 logs/chat_history.jsonl
 logs/line_conversations_snapshot.json
