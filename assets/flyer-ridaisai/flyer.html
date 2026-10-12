@@ -4,13 +4,12 @@
 <meta charset="UTF-8">
 <title>きりたんチャット 理大祭 2026 版</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@700&family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap');
 
   @page { size: A4; margin: 0; }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* A4 は 793.7 x 1122.5 px. 1123px にすると PDF が 2 ページにあふれる */
   html, body {
     width: 794px;
     height: 1122px;
@@ -18,39 +17,37 @@
 
   body {
     font-family: 'Zen Kaku Gothic New', 'BIZ UDGothic', 'Meiryo', sans-serif;
-    /* 前の紙 (紫・緑・ピンク) と見分けが付くよう, 理大祭版は黄色〜オレンジにする */
-    background: linear-gradient(165deg, #fff8dc 0%, #ffedc2 45%, #ffe1b0 100%);
-    color: #2b2440;
+    /* 理大祭 (11 月下旬) に合わせ, 生成りの地に紅葉と銀杏の色を差す */
+    background: linear-gradient(172deg, #fdf7ec 0%, #f9ecd6 55%, #f3dcbc 100%);
+    color: #3b2a1f;
     overflow: hidden;
     position: relative;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  body::before {
-    content: '';
+  .leaves {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(circle at 12% 18%, rgba(255, 196, 0, 0.28), transparent 38%),
-      radial-gradient(circle at 90% 62%, rgba(255, 128, 64, 0.18), transparent 40%);
     z-index: 0;
+    pointer-events: none;
   }
 
   .ribbon {
     position: relative;
     z-index: 2;
-    background: #2b2440;
-    color: #ffd23f;
+    background: #5a2a1b;
+    color: #f6c453;
     text-align: center;
     font-weight: 900;
     font-size: 20px;
     letter-spacing: 0.12em;
     padding: 9px 0 8px;
+    border-bottom: 3px solid #d4a017;
   }
 
   .ribbon .date {
-    color: #fff;
+    color: #fdf7ec;
     font-weight: 700;
     font-size: 16px;
     letter-spacing: 0.06em;
@@ -63,20 +60,21 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 28px 44px 0;
+    padding: 24px 44px 0;
   }
 
   h1 {
-    font-size: 50px;
-    font-weight: 900;
+    font-family: 'Kaisei Decol', 'Zen Kaku Gothic New', serif;
+    font-size: 54px;
+    font-weight: 700;
     letter-spacing: 0.08em;
-    color: #2b2440;
-    text-shadow: 3px 3px 0 #ffc21a;
+    color: #5a2a1b;
+    text-shadow: 3px 3px 0 #f2c27a;
   }
 
   .sub {
     font-size: 17px;
-    color: #6b5a3a;
+    color: #7a5b43;
     letter-spacing: 0.06em;
     margin-top: 2px;
   }
@@ -84,27 +82,27 @@
   .top {
     display: flex;
     align-items: center;
-    gap: 28px;
-    margin-top: 22px;
+    gap: 30px;
+    margin-top: 18px;
   }
 
   .qr {
     background: #fff;
     border-radius: 18px;
     padding: 14px;
-    box-shadow: 0 6px 20px rgba(160, 100, 0, 0.18);
+    box-shadow: 0 6px 20px rgba(120, 60, 20, 0.18);
     border: 4px solid #06c755;
   }
 
   .qr img {
     display: block;
-    width: 228px;
-    height: 228px;
+    width: 226px;
+    height: 226px;
     image-rendering: pixelated;
   }
 
   .steps {
-    max-width: 330px;
+    max-width: 340px;
   }
 
   .steps .lead {
@@ -137,32 +135,34 @@
     width: 27px;
     height: 27px;
     border-radius: 50%;
-    background: #2b2440;
-    color: #ffd23f;
+    background: #a23a1e;
+    color: #fdf7ec;
     font-weight: 900;
     font-size: 15px;
     text-align: center;
     line-height: 27px;
   }
 
-  .steps b { color: #c2410c; }
+  .steps b { color: #a23a1e; }
 
   .line-id {
     font-size: 13px;
-    color: #6b5a3a;
+    color: #7a5b43;
     margin-top: 4px;
   }
 
   .section-title {
-    margin: 30px 0 14px;
-    font-size: 20px;
-    font-weight: 900;
-    letter-spacing: 0.06em;
+    margin: 24px 0 14px;
+    font-family: 'Kaisei Decol', 'Zen Kaku Gothic New', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #5a2a1b;
   }
 
   .section-title span {
-    background: linear-gradient(transparent 60%, #ffc21a 60%);
-    padding: 0 6px;
+    background: linear-gradient(transparent 62%, #f2c27a 62%);
+    padding: 0 8px;
   }
 
   .grid {
@@ -173,10 +173,10 @@
   }
 
   .card {
-    background: rgba(255, 255, 255, 0.86);
+    background: rgba(255, 252, 245, 0.92);
     border-radius: 14px;
     padding: 14px 13px 13px;
-    border: 2px solid #ffd98a;
+    border: 2px solid #e8c9a0;
     position: relative;
   }
 
@@ -194,15 +194,15 @@
 
   .card p {
     font-size: 11.5px;
-    color: #57503f;
+    color: #5e4a3a;
     line-height: 1.45;
   }
 
-  .new {
+  .badge {
     position: absolute;
     top: -9px;
     right: 10px;
-    background: #e11d48;
+    background: #b91c1c;
     color: #fff;
     font-size: 11px;
     font-weight: 900;
@@ -211,52 +211,52 @@
     padding: 2px 9px;
   }
 
-  .itc {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    width: 100%;
-    margin-top: 28px;
-    background: #2b2440;
-    color: #fff;
-    border-radius: 18px;
-    padding: 16px 22px;
+  .badge.renewal { background: #c27c0e; }
+
+  .bottom {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 280px;
+    z-index: 1;
   }
 
-  .itc .qr-small {
-    background: #fff;
-    border-radius: 10px;
-    padding: 6px;
-    flex: none;
+  .bubble {
+    position: absolute;
+    left: 44px;
+    top: 22px;
+    width: 470px;
+    background: #fffaf0;
+    border: 3px solid #a23a1e;
+    border-radius: 22px;
+    padding: 18px 22px;
+    font-size: 17px;
+    line-height: 1.6;
+    color: #3b2a1f;
   }
 
-  .itc .qr-small img {
-    display: block;
-    width: 112px;
-    height: 112px;
-    image-rendering: pixelated;
+  .bubble::after {
+    content: '';
+    position: absolute;
+    right: -22px;
+    top: 46px;
+    border: 11px solid transparent;
+    border-left: 14px solid #a23a1e;
   }
 
-  .itc h3 {
-    font-size: 20px;
-    font-weight: 900;
-    color: #ffd23f;
-    line-height: 1.35;
-  }
-
-  .itc p {
-    font-size: 13.5px;
-    line-height: 1.55;
-    margin-top: 5px;
-    color: #f1ecff;
-  }
+  .bubble b { color: #a23a1e; }
 
   .join {
-    margin-top: 28px;
+    position: absolute;
+    left: 44px;
+    top: 168px;
+    width: 470px;
     text-align: center;
-    font-size: 21px;
+    white-space: nowrap;
+    font-size: 20px;
     font-weight: 900;
-    color: #c2410c;
+    color: #a23a1e;
     line-height: 1.4;
   }
 
@@ -264,29 +264,50 @@
     display: block;
     font-size: 13px;
     font-weight: 400;
-    color: #6b5a3a;
+    color: #7a5b43;
   }
 
   .credit {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #8a7a58;
-    text-align: center;
+    position: absolute;
+    left: 44px;
+    bottom: 16px;
+    z-index: 1;
+    font-size: 11.5px;
+    color: #8a6f58;
   }
 
   .kiritan {
     position: absolute;
-    right: 6px;
-    bottom: -6px;
-    height: 168px;
+    right: 52px;
+    bottom: 0;
+    height: 300px;
     z-index: 2;
     pointer-events: none;
   }
 </style>
 </head>
 <body>
+  <!-- 紅葉と銀杏. 縁にだけ散らし, 文字と QR には重ねない -->
+  <svg class="leaves" viewBox="0 0 794 1122" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <path id="maple" d="M50 4 L58 28 L76 16 L71 39 L96 36 L79 54 L90 62 L63 66 L67 86 L53 75 L51 98 L49 98 L47 75 L33 86 L37 66 L10 62 L21 54 L4 36 L29 39 L24 16 L42 28 Z"/>
+      <path id="ginkgo" d="M49 96 L49 62 C 20 58, 4 34, 12 10 C 26 18, 38 22, 46 30 L50 22 L54 30 C 62 22, 74 18, 88 10 C 96 34, 80 58, 51 62 L51 96 Z"/>
+    </defs>
+    <g opacity="0.85">
+      <use href="#maple" fill="#c2410c" transform="translate(22 66) rotate(-18 25 25) scale(0.5)"/>
+      <use href="#ginkgo" fill="#e0a80d" transform="translate(84 112) rotate(24 17 17) scale(0.34)"/>
+      <use href="#maple" fill="#b91c1c" transform="translate(690 58) rotate(22 30 30) scale(0.6)"/>
+      <use href="#ginkgo" fill="#eab308" transform="translate(650 124) rotate(-30 15 15) scale(0.3)"/>
+      <use href="#maple" fill="#d97706" transform="translate(742 150) rotate(48 18 18) scale(0.36)"/>
+      <use href="#maple" fill="#c2410c" transform="translate(10 560) rotate(30 20 20) scale(0.4)"/>
+      <use href="#ginkgo" fill="#e0a80d" transform="translate(752 520) rotate(-12 16 16) scale(0.32)"/>
+      <use href="#maple" fill="#b91c1c" transform="translate(4 846) rotate(-26 18 18) scale(0.36)"/>
+      <use href="#ginkgo" fill="#eab308" transform="translate(546 1040) rotate(40 15 15) scale(0.3)"/>
+      <use href="#maple" fill="#d97706" transform="translate(540 868) rotate(12 20 20) scale(0.4)"/>
+    </g>
+  </svg>
+
   <div class="ribbon">理大祭 2026 版<span class="date">11/20 (金)・21 (土)</span></div>
-  <img class="kiritan" src="../kiritan_stand.png" alt="">
 
   <div class="content">
     <h1>きりたんチャット</h1>
@@ -299,7 +320,7 @@
         <ol>
           <li>QR を読んで <b>友だち追加</b></li>
           <li>メッセージを送ると、<br>東北きりたんがお返事するよ</li>
-          <li>メニューの <b>［ゲーム］</b> で下の 6 作品、<br><b>［ITC 講座］</b> で体験講座がひらける</li>
+          <li>メニューの <b>［ゲーム］</b> で下の 6 作品、<br><b>［ITC 講座］</b> で 8 つの講座を体験できる</li>
         </ol>
         <div class="line-id">LINE ID: @490fgrij</div>
       </div>
@@ -308,55 +329,56 @@
     <div class="section-title"><span>あそべるもの</span></div>
     <div class="grid">
       <div class="card">
-        <span class="new">NEW</span>
+        <span class="badge">NEW</span>
         <div class="emoji">🎓</div>
         <h2>ITC オープンキャンパス 2026</h2>
-        <p>ITC の活動を大学の講座のように履修。小テストに合格すると修了バッジ</p>
+        <p>プログラミング・3DCG・DTM・ボカロなど 8 講座を体験。小テストに合格すると修了バッジ</p>
       </div>
       <div class="card">
-        <span class="new">NEW</span>
+        <span class="badge">NEW</span>
         <div class="emoji">🏫</div>
         <h2>葛飾キャンパスデイズ</h2>
         <p>葛飾キャンパスを 3D で再現。建物の中まで歩いて探索</p>
       </div>
       <div class="card">
-        <span class="new">NEW</span>
+        <span class="badge">NEW</span>
         <div class="emoji">💬</div>
         <h2>おじちゃっと</h2>
         <p>LINE そっくりの画面で、おじさん構文のキャラとおしゃべり</p>
       </div>
       <div class="card">
-        <div class="emoji">🎵</div>
+        <span class="badge renewal">リニューアル</span>
+        <div class="emoji">🎹</div>
         <h2>SynCadence Rhythm</h2>
-        <p>ピアノの名曲を叩くリズムゲーム。スマホで遊べる</p>
+        <p>一から作り直した音楽ゲーム。ピアノの名曲 12 曲を、楽譜から作った譜面で叩く</p>
       </div>
       <div class="card">
-        <span class="new">NEW</span>
+        <span class="badge">NEW</span>
         <div class="emoji">🏮</div>
         <h2>LANTERNA パチンコ</h2>
-        <p>オリジナルのパチンコ。お金は賭けません</p>
+        <p>オリジナルのパチンコ。<br>お金は賭けません</p>
       </div>
       <div class="card">
-        <span class="new">NEW</span>
+        <span class="badge">NEW</span>
         <div class="emoji">🧊</div>
         <h2>Cube Trainer</h2>
         <p>ルービックキューブの次の一手を 1 手ずつ案内</p>
       </div>
     </div>
+  </div>
 
-    <div class="itc">
-      <div class="qr-small"><img src="itc_qr.png" alt="ITC オープンキャンパス 2026 の QR コード"></div>
-      <div>
-        <h3>LINE を使わずに、いますぐ<br>ITC オープンキャンパス 2026</h3>
-        <p>この QR から直接ひらけます。開くとすぐに始まり、<br>プログラミング・3DCG・DTM・ボカロなど 8 つの講座を体験できます。</p>
-      </div>
+  <div class="bottom">
+    <div class="bubble">
+      どれも <b>ブラウザでそのまま</b> 遊べます。<br>
+      気になるものから、LINE のメニューで<br>ひらいてみてくださいね。
     </div>
-
     <div class="join">
       ITC に入部して、Prog 班でゲームを作ろう！
       <small>プログラミングでゲーム開発に挑戦しよう</small>
     </div>
-    <div class="credit">制作: ITC Prog 班 / イエロー　·　Powered by きりたんチャット</div>
   </div>
+
+  <div class="credit">制作: ITC Prog 班 / イエロー　·　イラスト: 東北きりたん公式イラスト</div>
+  <img class="kiritan" src="kiritan_autumn.png" alt="">
 </body>
 </html>
