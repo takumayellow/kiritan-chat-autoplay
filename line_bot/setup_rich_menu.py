@@ -29,12 +29,12 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 API_BASE = "https://api.line.me/v2/bot"
 
 # プロダクトリンク集サイト（GitHub Pages）
-PRODUCTS_URL = "https://takumayellow.github.io/kiritan-chat-autoplay/products/"
+PRODUCTS_URL = "https://takumayellow.github.io/kiritan-chat-autoplay/products/?openExternalBrowser=1"
 
 # YouTube チャンネル（仮URL - 実際のチャンネルURLに差し替えてください）
 YOUTUBE_URL = os.environ.get(
     "KIRITAN_YOUTUBE_URL",
-    "https://www.youtube.com/@takumayellow",
+    "https://www.youtube.com/@takumamori7092",
 )
 
 # リッチメニュー画像パス
@@ -50,7 +50,7 @@ RICH_MENU_BODY = {
     "chatBarText": "メニューを開く",
     "areas": [
         {
-            "bounds": {"x": 0, "y": 0, "width": 833, "height": 421},
+            "bounds": {"x": 0, "y": 0, "width": 1250, "height": 843},
             "action": {
                 "type": "uri",
                 "label": "YouTube",
@@ -58,43 +58,11 @@ RICH_MENU_BODY = {
             },
         },
         {
-            "bounds": {"x": 833, "y": 0, "width": 834, "height": 421},
+            "bounds": {"x": 1250, "y": 0, "width": 1250, "height": 843},
             "action": {
                 "type": "uri",
                 "label": "ゲーム",
                 "uri": PRODUCTS_URL,
-            },
-        },
-        {
-            "bounds": {"x": 1667, "y": 0, "width": 833, "height": 421},
-            "action": {
-                "type": "message",
-                "label": "ヘルプ",
-                "text": "/help",
-            },
-        },
-        {
-            "bounds": {"x": 0, "y": 421, "width": 833, "height": 422},
-            "action": {
-                "type": "message",
-                "label": "プロフィール設定",
-                "text": "/profile",
-            },
-        },
-        {
-            "bounds": {"x": 833, "y": 421, "width": 834, "height": 422},
-            "action": {
-                "type": "message",
-                "label": "会話スタイル",
-                "text": "/style",
-            },
-        },
-        {
-            "bounds": {"x": 1667, "y": 421, "width": 833, "height": 422},
-            "action": {
-                "type": "message",
-                "label": "リセット",
-                "text": "/reset",
             },
         },
     ],
@@ -204,22 +172,16 @@ def _generate_placeholder_image(output_path: Path):
     labels = [
         ("YouTube", "#FF0000"),
         ("ゲーム", "#7289DA"),
-        ("ヘルプ", "#43B581"),
-        ("プロフィール", "#FAA61A"),
-        ("スタイル", "#F47FFF"),
-        ("リセット", "#99AAB5"),
     ]
 
-    col_width = width // 3
-    row_height = height // 2
+    col_width = width // 2
 
     for i, (label, color) in enumerate(labels):
-        col = i % 3
-        row = i // 3
+        col = i
         x0 = col * col_width + 4
-        y0 = row * row_height + 4
+        y0 = 4
         x1 = (col + 1) * col_width - 4
-        y1 = (row + 1) * row_height - 4
+        y1 = height - 4
 
         draw.rounded_rectangle([x0, y0, x1, y1], radius=20, fill=color)
 

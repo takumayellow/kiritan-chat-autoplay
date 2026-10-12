@@ -10,10 +10,14 @@ kiritan_core.py
 """
 
 import json
+import logging
 import os
 import re
 import sqlite3
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -250,15 +254,32 @@ def get_model_profile(key: str) -> Dict[str, str]:
 class ChatStore:
     """ユーザーごとの会話履歴を SQLite で管理"""
 
-    def __init__(self, db_path: str = "linebot_chat.sqlite"):
+    def __init__(self, db_path: str = "linebot_chat.sqlite", log_dir: str = "logs"):
         self.db_path = db_path
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._init_db()
 
+        self._log_dir = Path(log_dir)
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._jsonl_path = self._log_dir / "chat_history.jsonl"
+        self._snapshot_users_dir = self._log_dir / "line_conversations_by_user"
+        self._snapshot_users_dir.mkdir(parents=True, exist_ok=True)
+        self._logger = logging.getLogger(__name__)
+        self._export_lock = threading.Lock()
+
+    @contextmanager
     def _get_conn(self):
+        """1 回の操作ぶんの接続。抜けるときにコミットし、ファイルの DB なら閉じる"""
         if self.db_path == ":memory:":
-            return self._conn
-        return sqlite3.connect(self.db_path)
+            with self._conn:
+                yield self._conn
+            return
+        conn = sqlite3.connect(self.db_path)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
         conn = self._conn
@@ -281,8 +302,23 @@ class ChatStore:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS line_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                message_text TEXT DEFAULT '',
+                reply_text TEXT DEFAULT '',
+                payload_json TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chat_user ON chat_history(user_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_line_events_user ON line_events(user_id)"
         )
         conn.commit()
 
@@ -301,10 +337,50 @@ class ChatStore:
                 "INSERT INTO chat_history (user_id, role, content) VALUES (?, ?, ?)",
                 (user_id, role, content),
             )
+        self._append_jsonl(user_id, role, content)
+        self.refresh_exports(user_id)
+
+    def log_event(
+        self,
+        user_id: str,
+        event_type: str,
+        direction: str,
+        message_text: str = "",
+        reply_text: str = "",
+        payload: Optional[Dict[str, Any]] = None,
+    ):
+        payload_json = ""
+        if payload is not None:
+            try:
+                payload_json = json.dumps(payload, ensure_ascii=False)
+            except TypeError:
+                payload_json = json.dumps(str(payload), ensure_ascii=False)
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO line_events "
+                "(user_id, event_type, direction, message_text, reply_text, payload_json) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, event_type, direction, message_text, reply_text, payload_json),
+            )
+        self.refresh_exports(user_id)
+
+    def _append_jsonl(self, user_id: str, role: str, content: str):
+        record = {
+            "user_id": user_id,
+            "role": role,
+            "content": content,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            with open(self._jsonl_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError as e:
+            self._logger.warning("JSONL log write failed: %s", e)
 
     def clear_history(self, user_id: str):
         with self._get_conn() as conn:
             conn.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
+        self.refresh_exports(user_id)
 
     def get_profile(self, user_id: str) -> UserProfile:
         with self._get_conn() as conn:
@@ -326,6 +402,7 @@ class ChatStore:
                 "updated_at=CURRENT_TIMESTAMP",
                 (user_id, profile.name, profile.gender, profile.age),
             )
+        self.refresh_exports(user_id)
 
     def get_model_key(self, user_id: str) -> str:
         with self._get_conn() as conn:
@@ -334,3 +411,142 @@ class ChatStore:
                 (user_id,),
             ).fetchone()
         return row[0] if row else "1"
+
+    def get_all_user_ids(self) -> List[str]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT user_id, MAX(created_at) AS last_at FROM ("
+                "SELECT user_id, created_at FROM chat_history "
+                "UNION ALL "
+                "SELECT user_id, created_at FROM line_events"
+                ") GROUP BY user_id ORDER BY last_at DESC, user_id ASC"
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def export_conversation_snapshot(
+        self,
+        user_id: Optional[str] = None,
+        message_limit: int = 200,
+        event_limit: int = 200,
+    ) -> Dict[str, Any]:
+        user_ids = [user_id] if user_id else self.get_all_user_ids()
+        exported_users: List[Dict[str, Any]] = []
+        with self._get_conn() as conn:
+            for current_user_id in user_ids:
+                profile_row = conn.execute(
+                    "SELECT name, gender, age, model_key, updated_at "
+                    "FROM user_profiles WHERE user_id = ?",
+                    (current_user_id,),
+                ).fetchone()
+                message_rows = conn.execute(
+                    "SELECT id, role, content, created_at FROM chat_history "
+                    "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                    (current_user_id, message_limit),
+                ).fetchall()
+                message_total = conn.execute(
+                    "SELECT COUNT(*) FROM chat_history WHERE user_id = ?",
+                    (current_user_id,),
+                ).fetchone()[0]
+                event_rows = conn.execute(
+                    "SELECT id, event_type, direction, message_text, reply_text, payload_json, created_at "
+                    "FROM line_events WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                    (current_user_id, event_limit),
+                ).fetchall()
+                event_total = conn.execute(
+                    "SELECT COUNT(*) FROM line_events WHERE user_id = ?",
+                    (current_user_id,),
+                ).fetchone()[0]
+
+                messages = [
+                    {
+                        "id": row[0],
+                        "role": row[1],
+                        "content": row[2],
+                        "created_at": row[3],
+                    }
+                    for row in reversed(message_rows)
+                ]
+                events = []
+                for row in reversed(event_rows):
+                    payload = None
+                    if row[5]:
+                        try:
+                            payload = json.loads(row[5])
+                        except json.JSONDecodeError:
+                            payload = row[5]
+                    events.append(
+                        {
+                            "id": row[0],
+                            "event_type": row[1],
+                            "direction": row[2],
+                            "message_text": row[3],
+                            "reply_text": row[4],
+                            "payload": payload,
+                            "created_at": row[6],
+                        }
+                    )
+
+                profile = {
+                    "name": profile_row[0] if profile_row else "",
+                    "gender": profile_row[1] if profile_row else "",
+                    "age": profile_row[2] if profile_row else "",
+                    "model_key": profile_row[3] if profile_row else "1",
+                    "updated_at": profile_row[4] if profile_row else None,
+                }
+                last_message_at = messages[-1]["created_at"] if messages else None
+                last_event_at = events[-1]["created_at"] if events else None
+                exported_users.append(
+                    {
+                        "user_id": current_user_id,
+                        "profile": profile,
+                        "message_count": message_total,
+                        "event_count": event_total,
+                        "last_message_at": last_message_at,
+                        "last_event_at": last_event_at,
+                        "messages": messages,
+                        "events": events,
+                    }
+                )
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "user_count": len(exported_users),
+            "users": exported_users,
+        }
+
+    def refresh_exports(
+        self,
+        user_id: Optional[str] = None,
+        message_limit: int = 1000,
+        event_limit: int = 1000,
+    ):
+        """logs/line_conversations_by_user/<user_id>.json を書き直す。
+
+        user_id を渡すとその利用者の 1 ファイルだけ、省くと全員分を書き直す。
+        """
+        snapshot = self.export_conversation_snapshot(
+            user_id=user_id,
+            message_limit=message_limit,
+            event_limit=event_limit,
+        )
+        with self._export_lock:
+            for user in snapshot["users"]:
+                if not _SAFE_FILE_ID.fullmatch(user["user_id"]):
+                    self._logger.warning("Skipped exporting an unexpected user_id")
+                    continue
+                path = self._snapshot_users_dir / f"{user['user_id']}.json"
+                try:
+                    _write_atomic(path, json.dumps(user, ensure_ascii=False, indent=2))
+                except OSError as e:
+                    self._logger.warning("Conversation snapshot export failed: %s", e)
+
+
+# LINE の userId（U + 32 桁の 16 進）など、そのままファイル名にしてよい ID
+_SAFE_FILE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _write_atomic(path: Path, text: str):
+    """書きかけのファイルを読ませないよう、一時ファイルに書いてから置き換える"""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
