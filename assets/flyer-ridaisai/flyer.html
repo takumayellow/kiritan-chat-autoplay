@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>きりたんチャット 理大祭 2026 版</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&display=swap');
+
+  @page { size: A4; margin: 0; }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* A4 は 793.7 x 1122.5 px. 1123px にすると PDF が 2 ページにあふれる */
+  html, body {
+    width: 794px;
+    height: 1122px;
+  }
+
+  body {
+    font-family: 'Zen Kaku Gothic New', 'BIZ UDGothic', 'Meiryo', sans-serif;
+    /* 前の紙 (紫・緑・ピンク) と見分けが付くよう, 理大祭版は黄色〜オレンジにする */
+    background: linear-gradient(165deg, #fff8dc 0%, #ffedc2 45%, #ffe1b0 100%);
+    color: #2b2440;
+    overflow: hidden;
+    position: relative;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(255, 196, 0, 0.28), transparent 38%),
+      radial-gradient(circle at 90% 62%, rgba(255, 128, 64, 0.18), transparent 40%);
+    z-index: 0;
+  }
+
+  .ribbon {
+    position: relative;
+    z-index: 2;
+    background: #2b2440;
+    color: #ffd23f;
+    text-align: center;
+    font-weight: 900;
+    font-size: 20px;
+    letter-spacing: 0.12em;
+    padding: 9px 0 8px;
+  }
+
+  .ribbon .date {
+    color: #fff;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.06em;
+    margin-left: 14px;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 44px 0;
+  }
+
+  h1 {
+    font-size: 50px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    color: #2b2440;
+    text-shadow: 3px 3px 0 #ffc21a;
+  }
+
+  .sub {
+    font-size: 17px;
+    color: #6b5a3a;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    margin-top: 22px;
+  }
+
+  .qr {
+    background: #fff;
+    border-radius: 18px;
+    padding: 14px;
+    box-shadow: 0 6px 20px rgba(160, 100, 0, 0.18);
+    border: 4px solid #06c755;
+  }
+
+  .qr img {
+    display: block;
+    width: 228px;
+    height: 228px;
+    image-rendering: pixelated;
+  }
+
+  .steps {
+    max-width: 330px;
+  }
+
+  .steps .lead {
+    font-size: 23px;
+    font-weight: 900;
+    color: #06a548;
+    line-height: 1.35;
+    margin-bottom: 12px;
+  }
+
+  .steps ol {
+    list-style: none;
+    counter-reset: step;
+  }
+
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 38px;
+    font-size: 16px;
+    line-height: 1.5;
+    margin-bottom: 9px;
+  }
+
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 27px;
+    height: 27px;
+    border-radius: 50%;
+    background: #2b2440;
+    color: #ffd23f;
+    font-weight: 900;
+    font-size: 15px;
+    text-align: center;
+    line-height: 27px;
+  }
+
+  .steps b { color: #c2410c; }
+
+  .line-id {
+    font-size: 13px;
+    color: #6b5a3a;
+    margin-top: 4px;
+  }
+
+  .section-title {
+    margin: 30px 0 14px;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+  }
+
+  .section-title span {
+    background: linear-gradient(transparent 60%, #ffc21a 60%);
+    padding: 0 6px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    width: 100%;
+  }
+
+  .card {
+    background: rgba(255, 255, 255, 0.86);
+    border-radius: 14px;
+    padding: 14px 13px 13px;
+    border: 2px solid #ffd98a;
+    position: relative;
+  }
+
+  .card .emoji {
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .card h2 {
+    font-size: 15px;
+    font-weight: 900;
+    margin: 6px 0 3px;
+    line-height: 1.3;
+  }
+
+  .card p {
+    font-size: 11.5px;
+    color: #57503f;
+    line-height: 1.45;
+  }
+
+  .new {
+    position: absolute;
+    top: -9px;
+    right: 10px;
+    background: #e11d48;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+
+  .itc {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    margin-top: 28px;
+    background: #2b2440;
+    color: #fff;
+    border-radius: 18px;
+    padding: 16px 22px;
+  }
+
+  .itc .qr-small {
+    background: #fff;
+    border-radius: 10px;
+    padding: 6px;
+    flex: none;
+  }
+
+  .itc .qr-small img {
+    display: block;
+    width: 112px;
+    height: 112px;
+    image-rendering: pixelated;
+  }
+
+  .itc h3 {
+    font-size: 20px;
+    font-weight: 900;
+    color: #ffd23f;
+    line-height: 1.35;
+  }
+
+  .itc p {
+    font-size: 13.5px;
+    line-height: 1.55;
+    margin-top: 5px;
+    color: #f1ecff;
+  }
+
+  .join {
+    margin-top: 28px;
+    text-align: center;
+    font-size: 21px;
+    font-weight: 900;
+    color: #c2410c;
+    line-height: 1.4;
+  }
+
+  .join small {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: #6b5a3a;
+  }
+
+  .credit {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #8a7a58;
+    text-align: center;
+  }
+
+  .kiritan {
+    position: absolute;
+    right: 6px;
+    bottom: -6px;
+    height: 168px;
+    z-index: 2;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="ribbon">理大祭 2026 版<span class="date">11/20 (金)・21 (土)</span></div>
+  <img class="kiritan" src="../kiritan_stand.png" alt="">
+
+  <div class="content">
+    <h1>きりたんチャット</h1>
+    <div class="sub">LINE 公式アカウント</div>
+
+    <div class="top">
+      <div class="qr"><img src="line_qr.png" alt="LINE 友だち追加の QR コード"></div>
+      <div class="steps">
+        <div class="lead">友だち追加して<br>きりたんとおしゃべり！</div>
+        <ol>
+          <li>QR を読んで <b>友だち追加</b></li>
+          <li>メッセージを送ると、<br>東北きりたんがお返事するよ</li>
+          <li>メニューの <b>［ゲーム］</b> で下の 6 作品、<br><b>［ITC 講座］</b> で体験講座がひらける</li>
+        </ol>
+        <div class="line-id">LINE ID: @490fgrij</div>
+      </div>
+    </div>
+
+    <div class="section-title"><span>あそべるもの</span></div>
+    <div class="grid">
+      <div class="card">
+        <span class="new">NEW</span>
+        <div class="emoji">🎓</div>
+        <h2>ITC オープンキャンパス 2026</h2>
+        <p>ITC の活動を大学の講座のように履修。小テストに合格すると修了バッジ</p>
+      </div>
+      <div class="card">
+        <span class="new">NEW</span>
+        <div class="emoji">🏫</div>
+        <h2>葛飾キャンパスデイズ</h2>
+        <p>葛飾キャンパスを 3D で再現。建物の中まで歩いて探索</p>
+      </div>
+      <div class="card">
+        <span class="new">NEW</span>
+        <div class="emoji">💬</div>
+        <h2>おじちゃっと</h2>
+        <p>LINE そっくりの画面で、おじさん構文のキャラとおしゃべり</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🎵</div>
+        <h2>SynCadence Rhythm</h2>
+        <p>ピアノの名曲を叩くリズムゲーム。スマホで遊べる</p>
+      </div>
+      <div class="card">
+        <span class="new">NEW</span>
+        <div class="emoji">🏮</div>
+        <h2>LANTERNA パチンコ</h2>
+        <p>オリジナルのパチンコ。お金は賭けません</p>
+      </div>
+      <div class="card">
+        <span class="new">NEW</span>
+        <div class="emoji">🧊</div>
+        <h2>Cube Trainer</h2>
+        <p>ルービックキューブの次の一手を 1 手ずつ案内</p>
+      </div>
+    </div>
+
+    <div class="itc">
+      <div class="qr-small"><img src="itc_qr.png" alt="ITC オープンキャンパス 2026 の QR コード"></div>
+      <div>
+        <h3>LINE を使わずに、いますぐ<br>ITC オープンキャンパス 2026</h3>
+        <p>この QR から直接ひらけます。開くとすぐに始まり、<br>プログラミング・3DCG・DTM・ボカロなど 8 つの講座を体験できます。</p>
+      </div>
+    </div>
+
+    <div class="join">
+      ITC に入部して、Prog 班でゲームを作ろう！
+      <small>プログラミングでゲーム開発に挑戦しよう</small>
+    </div>
+    <div class="credit">制作: ITC Prog 班 / イエロー　·　Powered by きりたんチャット</div>
+  </div>
+</body>
+</html>
