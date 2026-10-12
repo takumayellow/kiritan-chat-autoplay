@@ -14,6 +14,7 @@ linebot_server.py
   5. LINE Developers で Webhook URL を設定
 """
 
+import hmac
 import os
 import sys
 import logging
@@ -26,6 +27,7 @@ except ImportError:
     pass
 
 from flask import Flask, request, abort
+from flask import jsonify
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
@@ -228,6 +230,13 @@ def _handle_message_fallback(event: dict):
     if not user_id or not text or not reply_token:
         return
     logger.info(f"Fallback message from {user_id}: {text[:100]}")
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="message",
+        direction="incoming",
+        message_text=text,
+        payload=event,
+    )
 
     if text.startswith("/"):
         reply_text = handle_command(user_id, text)
@@ -243,19 +252,41 @@ def _handle_message_fallback(event: dict):
                 messages=[TextMessage(text=reply_text)],
             )
         )
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="message",
+        direction="outgoing",
+        message_text=text,
+        reply_text=reply_text,
+        payload={"mode": "fallback_push", "reply_token": reply_token},
+    )
     logger.info(f"Fallback push sent to {user_id}")
 
 
 def _handle_follow_fallback(event: dict):
     """フォローイベントのフォールバック"""
+    user_id = event.get("source", {}).get("userId", "")
     reply_token = event.get("replyToken", "")
     if not reply_token:
         return
+    if user_id:
+        chat_store.log_event(
+            user_id=user_id,
+            event_type="follow",
+            direction="incoming",
+            payload=event,
+        )
     welcome = (
         "はじめまして、東北きりたんです。\n"
         "わたしとおしゃべりしましょう！\n\n"
         "メッセージを送ってくれたら、お返事するね。\n"
-        "/help でコマンド一覧も見れるよ。"
+        "下のメニューからゲームも遊べるよ！\n\n"
+        "ITCに入部してProg班でゲームを作ろう！\n\n"
+        "便利なコマンド:\n"
+        "  /profile - 名前や性別を教えてね\n"
+        "  /style - 会話スタイルを変更\n"
+        "  /reset - 会話履歴をリセット\n"
+        "  /help - コマンド一覧"
     )
     with ApiClient(configuration) as api_client:
         api = MessagingApi(api_client)
@@ -265,18 +296,38 @@ def _handle_follow_fallback(event: dict):
                 messages=[TextMessage(text=welcome)],
             )
         )
+    if user_id:
+        chat_store.log_event(
+            user_id=user_id,
+            event_type="follow",
+            direction="outgoing",
+            reply_text=welcome,
+            payload={"mode": "fallback_reply", "reply_token": reply_token},
+        )
 
 
 @handler.add(FollowEvent)
 def handle_follow(event: FollowEvent):
     user_id = event.source.user_id
     logger.info(f"New follower: {user_id}")
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="follow",
+        direction="incoming",
+        payload=event.to_dict(),
+    )
 
     welcome = (
         "はじめまして、東北きりたんです。\n"
         "わたしとおしゃべりしましょう！\n\n"
         "メッセージを送ってくれたら、お返事するね。\n"
-        "/help でコマンド一覧も見れるよ。"
+        "下のメニューからゲームも遊べるよ！\n\n"
+        "ITCに入部してProg班でゲームを作ろう！\n\n"
+        "便利なコマンド:\n"
+        "  /profile - 名前や性別を教えてね\n"
+        "  /style - 会話スタイルを変更\n"
+        "  /reset - 会話履歴をリセット\n"
+        "  /help - コマンド一覧"
     )
 
     with ApiClient(configuration) as api_client:
@@ -287,6 +338,13 @@ def handle_follow(event: FollowEvent):
                 messages=[TextMessage(text=welcome)],
             )
         )
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="follow",
+        direction="outgoing",
+        reply_text=welcome,
+        payload={"mode": "reply", "reply_token": event.reply_token},
+    )
 
 
 @handler.add(MessageEvent, message=TextMessageContent)
@@ -294,6 +352,13 @@ def handle_message(event: MessageEvent):
     user_id = event.source.user_id
     text = event.message.text.strip()
     logger.info(f"Message from {user_id}: {text[:100]}")
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="message",
+        direction="incoming",
+        message_text=text,
+        payload=event.to_dict(),
+    )
 
     if text.startswith("/"):
         reply_text = handle_command(user_id, text)
@@ -308,6 +373,14 @@ def handle_message(event: MessageEvent):
                 messages=[TextMessage(text=reply_text)],
             )
         )
+    chat_store.log_event(
+        user_id=user_id,
+        event_type="message",
+        direction="outgoing",
+        message_text=text,
+        reply_text=reply_text,
+        payload={"mode": "reply", "reply_token": event.reply_token},
+    )
     logger.info(f"Reply sent to {user_id}")
 
 
@@ -315,6 +388,37 @@ def handle_message(event: MessageEvent):
 @app.route("/", methods=["GET"])
 def health():
     return "きりたんチャット LINE Bot is running."
+
+
+@app.route("/debug/conversations.json", methods=["GET"])
+def debug_conversations():
+    # 全利用者の会話を返すので、この PC から KIRITAN_DEBUG_TOKEN を X-Debug-Token で示したときだけ応える。
+    # ngrok は localhost へ転送するため接続元のアドレスでは外と区別できず、ngrok が付ける
+    # X-Forwarded-For の有無で見分ける。
+    expected = os.environ.get("KIRITAN_DEBUG_TOKEN", "")
+    given = request.headers.get("X-Debug-Token", "")
+    if (
+        "X-Forwarded-For" in request.headers
+        or not expected
+        or not hmac.compare_digest(given.encode(), expected.encode())
+    ):
+        abort(404)
+    user_id = request.args.get("user_id", "").strip() or None
+    try:
+        message_limit = max(1, min(int(request.args.get("message_limit", "200")), 1000))
+    except ValueError:
+        message_limit = 200
+    try:
+        event_limit = max(1, min(int(request.args.get("event_limit", "200")), 1000))
+    except ValueError:
+        event_limit = 200
+
+    snapshot = chat_store.export_conversation_snapshot(
+        user_id=user_id,
+        message_limit=message_limit,
+        event_limit=event_limit,
+    )
+    return jsonify(snapshot)
 
 
 # ── エントリポイント ──────────────────────────────────────
