@@ -16,6 +16,7 @@ from core.kiritan_dialogue import (
     has_question,
     is_filler,
     is_repetitive,
+    overused_phrases,
     pick_topic_seed,
     plan_turn,
     polish_reply,
@@ -226,3 +227,70 @@ def test_plan_ack_deepens_current_topic():
 def test_plan_ack_without_history_offers_topic():
     plan = plan_turn("うん", [], now=NOW)
     assert plan.move == MOVE_OFFER_TOPIC
+
+
+def _turns(*pairs):
+    history = []
+    for user, reply in pairs:
+        history += [{"role": "user", "content": user}, {"role": "assistant", "content": reply}]
+    return history
+
+
+def test_overused_phrases_finds_repeated_expression():
+    history = _turns(
+        ("聞こえる？", "聞こえています。夜は静かで落ち着きます。"),
+        ("なにしてるの", "ゲームをしています。静かな部屋だと落ち着きますね。"),
+    )
+    found = overused_phrases(history, "そっか")
+    assert any(p.startswith("落ち着") for p in found)
+
+
+def test_overused_phrases_ignores_topic_words():
+    history = _turns(
+        ("秋田行ったことある？", "秋田の冬は長いです。"),
+        ("寒そう", "秋田の雪はかなり積もります。"),
+    )
+    assert overused_phrases(history, "なるほど") == ()
+
+
+def test_overused_phrases_ignores_context_words():
+    history = _turns(
+        ("こんばんは", "夜なので眠いです。"),
+        ("うん", "夜なのでゲームをしています。"),
+    )
+    assert overused_phrases(history, "そっか", context="いまは夜。") == ()
+
+
+def test_overused_phrases_keeps_other_words_when_context_has_date():
+    history = _turns(
+        ("こんばんは", "今日は静かで落ち着きます。"),
+        ("うん", "ゲームの後は静かで落ち着きます。"),
+    )
+    found = overused_phrases(history, "そっか", context="いまは 2026年10月13日（火）21時00分、夜。")
+    assert any(p.startswith("静かで") for p in found)
+
+
+def test_overused_phrases_prefers_stem_used_more_often():
+    history = _turns(
+        ("a", "部屋だと落ち着きます。"),
+        ("b", "夜は落ち着きます。"),
+        ("c", "ゲームをすると落ち着いてきます。"),
+        ("d", "雨の音で落ち着いています。"),
+    )
+    assert "落ち着" in overused_phrases(history, "うん")
+
+
+def test_overused_phrases_needs_two_replies():
+    history = _turns(("やっほー", "静かで落ち着きます。静かで落ち着きます。"))
+    assert overused_phrases(history, "うん") == ()
+
+
+def test_plan_tells_model_to_avoid_overused_phrases():
+    history = _turns(
+        ("聞こえる？", "聞こえています。夜は静かで落ち着きます。"),
+        ("なにしてるの", "ゲームをしています。静かな部屋だと落ち着きますね。"),
+    )
+    plan = plan_turn("そっか", history, now=NOW)
+    assert plan.avoid_phrases
+    assert "続けて使っている" in plan.instruction()
+    assert "続けて使っている" not in plan_turn("そっか", [], now=NOW).instruction()

@@ -77,6 +77,26 @@ def test_repetitive_reply_is_regenerated_once():
     assert any("同じような返答" in m["content"] for m in client.calls[1]["messages"] if m["role"] == "system")
 
 
+def test_overused_phrase_is_regenerated_once():
+    history = [
+        {"role": "user", "content": "聞こえる？"},
+        {"role": "assistant", "content": "聞こえています。夜は静かで落ち着きます。"},
+        {"role": "user", "content": "なにしてるの"},
+        {"role": "assistant", "content": "ゲームをしています。静かな部屋だと落ち着きますね。"},
+    ]
+    client = FakeClient(["机を片づけると落ち着きます。", "机を片づけていました。ついでに攻略メモも整理しました。"])
+    reply = _chat(client, "そっか", history)
+    assert reply == "机を片づけていました。ついでに攻略メモも整理しました。"
+    assert len(client.calls) == 2
+    assert any("何度も使っています" in m["content"] for m in client.calls[1]["messages"] if m["role"] == "system")
+
+
+def test_no_regeneration_without_overused_phrase():
+    client = FakeClient(["机を片づけていました。"])
+    _chat(client, "そっか", [{"role": "user", "content": "やあ"}, {"role": "assistant", "content": "どうも。"}])
+    assert len(client.calls) == 1
+
+
 def test_falls_back_to_next_model():
     client = FakeClient(["ゲームの話ならいくらでもできます。"], fail_models={"o4-mini"})
     core.chat_with_history(client, "ゲーム好き？", [], "SYSTEM", preferred_model="o4-mini", now=NOW)

@@ -208,6 +208,7 @@ class TurnPlan:
     allow_question: bool
     topic_seed: Optional[str] = None
     suggest_question: bool = False  # 相手の話を受けるターンで、しばらく質問していないとき
+    avoid_phrases: Tuple[str, ...] = ()  # 最近の返答で続けて使っている言い回し（口癖）
 
     def instruction(self) -> str:
         lines = ["【今回の返答の方針】", _MOVE_TEXT[self.move].format(seed=self.topic_seed or "自分の最近のこと")]
@@ -225,6 +226,9 @@ class TurnPlan:
             )
         else:
             lines.append("今回は質問しない。疑問文を使わず、感想や自分の話で終える。")
+        if self.avoid_phrases:
+            quoted = "".join(f"「{p}」" for p in self.avoid_phrases)
+            lines.append(f"最近の返答で{quoted}を続けて使っている。今回は使わず、別の言い方や別の話にする。")
         lines.append(
             "「お待ちしています」「何かあれば教えてね」「お話を楽しみにしています」のように"
             "話題を相手に丸投げする締めは使わない。"
@@ -250,11 +254,62 @@ _MOVE_TEXT = {
 }
 
 
+_KANJI = "一-鿿々"
+_KANA_RUN = re.compile(f"[{_KANJI}ぁ-ゟ゠-ヿー]+")
+# 漢字とかなが混ざっていても、言い回しというより普通の言葉なので口癖として扱わない
+_COMMON_WORDS = ("思い", "思う", "言い", "言う", "感じ", "気が", "少し", "自分", "好き", "分か", "話し", "一番", "今日", "本当")
+
+
+def _phrase_grams(text: str, shortest: int = 3, longest: int = 6) -> set:
+    """漢字で始まり、かなを含む 3〜6 字の断片（「落ち着き」「静かな」「悪くない」の形）"""
+    grams = set()
+    for run in _KANA_RUN.findall(text):
+        for n in range(shortest, longest + 1):
+            for i in range(len(run) - n + 1):
+                g = run[i:i + n]
+                if re.match(f"[{_KANJI}]", g) and re.search("[ぁ-ゟ]", g):
+                    grams.add(g)
+    return grams
+
+
+def overused_phrases(
+    history: Sequence[Dict[str, str]],
+    user_text: str = "",
+    context: str = "",
+    lookback: int = 4,
+    limit: int = 3,
+) -> Tuple[str, ...]:
+    """直近の自分の返答のうち 2 回以上で使った言い回し。
+
+    先頭の漢字の語が相手の発言や場の情報に出てくるものは、口癖ではなく今の話題の言葉なので除く。
+    """
+    recent = [m.get("content", "") for m in history if m.get("role") == "assistant"][-lookback:]
+    topic = user_text + context + "".join(
+        m.get("content", "") for m in list(history)[-lookback * 2:] if m.get("role") == "user"
+    )
+    counts: Dict[str, int] = {}
+    for reply in recent:
+        for g in _phrase_grams(reply):
+            counts[g] = counts.get(g, 0) + 1
+    found = [
+        g for g, c in counts.items()
+        if c >= 2
+        and not any(w in g for w in _COMMON_WORDS)
+        and re.match(f"[{_KANJI}]+", g).group() not in topic
+    ]
+    # 同じ回数なら長いほうを残す。短いほうが多く使われていれば、活用の違いも含められる短いほうを残す
+    found = [g for g in found if not any(g != o and g in o and counts[o] >= counts[g] for o in found)]
+    found = [g for g in found if not any(g != o and o in g for o in found)]
+    found.sort(key=lambda g: (-counts[g], -len(g), g))
+    return tuple(found[:limit])
+
+
 def plan_turn(
     user_text: str,
     history: Sequence[Dict[str, str]],
     now: Optional[datetime] = None,
     extra_seeds: Sequence[Tuple[str, Tuple[str, ...]]] = (),
+    context: str = "",
 ) -> TurnPlan:
     now = now or datetime.now(JST)
     move = classify_input(user_text)
@@ -273,7 +328,13 @@ def plan_turn(
     seed = None
     if move in (MOVE_OFFER_TOPIC, MOVE_ACK, MOVE_GREET):
         seed = pick_topic_seed(history, now, extra_seeds)
-    return TurnPlan(move=move, allow_question=allow_question, topic_seed=seed, suggest_question=suggest_question)
+    return TurnPlan(
+        move=move,
+        allow_question=allow_question,
+        topic_seed=seed,
+        suggest_question=suggest_question,
+        avoid_phrases=overused_phrases(history, user_text, context),
+    )
 
 
 # ── 生成後の整え ──────────────────────────────────────────
