@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>きりたんのお部屋 プロフィール背景 (秋)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@700&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* LINE のプロフィール背景は 1080x878. 下中央にアイコン, 右上にボタンが重なるので, そこには何も置かない */
+  html, body { width: 1080px; height: 878px; }
+
+  body {
+    font-family: 'Zen Kaku Gothic New', 'BIZ UDGothic', 'Meiryo', sans-serif;
+    background: linear-gradient(170deg, #fdf7ec 0%, #f9ecd6 50%, #f0d2a8 100%);
+    color: #3b2a1f;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .leaves { position: absolute; inset: 0; }
+
+  .kiritan {
+    position: absolute;
+    left: 110px;
+    top: 46px;
+    height: 800px;
+    filter: drop-shadow(0 8px 14px rgba(90, 42, 27, 0.22));
+  }
+
+  .title {
+    position: absolute;
+    left: 520px;
+    top: 236px;
+    width: 470px;
+    text-align: center;
+  }
+
+  .title .season {
+    display: inline-block;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: #fdf7ec;
+    background: #a23a1e;
+    border-radius: 999px;
+    padding: 6px 22px 6px 30px;
+  }
+
+  .title h1 {
+    font-family: 'Kaisei Decol', 'Zen Kaku Gothic New', serif;
+    font-size: 66px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #5a2a1b;
+    text-shadow: 3px 3px 0 #f2c27a;
+    margin-top: 22px;
+  }
+
+  .title p {
+    font-size: 25px;
+    font-weight: 500;
+    color: #7a5b43;
+    letter-spacing: 0.08em;
+    margin-top: 14px;
+  }
+</style>
+</head>
+<body>
+  <svg class="leaves" viewBox="0 0 1080 878" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <path id="maple" d="M50 4 L58 28 L76 16 L71 39 L96 36 L79 54 L90 62 L63 66 L67 86 L53 75 L51 98 L49 98 L47 75 L33 86 L37 66 L10 62 L21 54 L4 36 L29 39 L24 16 L42 28 Z"/>
+      <path id="ginkgo" d="M49 96 L49 62 C 20 58, 4 34, 12 10 C 26 18, 38 22, 46 30 L50 22 L54 30 C 62 22, 74 18, 88 10 C 96 34, 80 58, 51 62 L51 96 Z"/>
+    </defs>
+    <g opacity="0.88">
+      <use href="#maple" fill="#c2410c" transform="translate(28 40) rotate(-18 50 50) scale(1.1)"/>
+      <use href="#ginkgo" fill="#e0a80d" transform="translate(150 150) rotate(24 50 50) scale(0.6)"/>
+      <use href="#maple" fill="#d97706" transform="translate(40 520) rotate(30 50 50) scale(0.7)"/>
+      <use href="#ginkgo" fill="#eab308" transform="translate(70 720) rotate(-20 50 50) scale(0.62)"/>
+      <use href="#maple" fill="#b91c1c" transform="translate(560 120) rotate(14 50 50) scale(0.62)"/>
+      <use href="#ginkgo" fill="#e0a80d" transform="translate(960 300) rotate(-34 50 50) scale(0.62)"/>
+      <use href="#maple" fill="#c2410c" transform="translate(640 610) rotate(-26 50 50) scale(0.5)"/>
+      <use href="#maple" fill="#d97706" transform="translate(960 640) rotate(40 50 50) scale(0.8)"/>
+      <use href="#ginkgo" fill="#eab308" transform="translate(820 760) rotate(18 50 50) scale(0.5)"/>
+    </g>
+  </svg>
+
+  <img class="kiritan" src="../flyer-ridaisai/kiritan_autumn.png" alt="">
+
+  <div class="title">
+    <span class="season">秋</span>
+    <h1>きりたんの<br>お部屋</h1>
+    <p>AI のきりたんとおしゃべり</p>
+  </div>
+</body>
+</html>

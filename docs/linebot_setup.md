@@ -7,7 +7,7 @@
 |---|---|
 | アカウント名 | きりたんトーク |
 | アイコン | `assets/line_icon.png` (640x640) |
-| 背景画像 | `assets/line_background.png` (1080x878) |
+| 背景画像 | `assets/line-autumn/background.png` (1080x878、秋版) |
 | ステータスメッセージ | 東北きりたんとおしゃべりできるAIチャット |
 
 ### あいさつメッセージ
@@ -136,6 +136,9 @@ web: python run_linebot.py
 
 LINE Official Account Manager → ホーム → リッチメニュー で作成。
 
+いま既定になっているのは「YouTube / ゲーム / ITC 講座」の 3 分割（幅 833 / 834 / 833）で、画像は秋版の `assets/line-autumn/rich_menu.jpg`。
+画像は `python assets/line-autumn/render.py` で HTML から書き出す。差し替えるときは、いまの既定メニューと同じタップ範囲で新しいメニューを作り、画像（1MB 以下）を載せてから既定にする。
+
 ### 推奨レイアウト（3分割）
 ```
 ┌──────────┬──────────┬──────────┐
@@ -186,6 +189,8 @@ LINE Official Account Manager → 友だちを増やす → 友だち追加ガ�
 | ファイル | 用途 | サイズ |
 |---|---|---|
 | `assets/line_icon.png` | プロフィールアイコン | 640x640 |
-| `assets/line_background.png` | プロフィール背景 | 1080x878 |
+| `assets/line-autumn/background.png` | プロフィール背景（秋版） | 1080x878 |
+| `assets/line-autumn/rich_menu.jpg` | リッチメニュー（秋版） | 2500x843 |
+| `assets/line_background.png` | プロフィール背景（旧版） | 1080x878 |
 | `assets/kiritan_small.png` | アイコン原画 | - |
 | `assets/kiritan_stand.png` | 立ち絵原画 | - |
