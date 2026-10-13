@@ -48,9 +48,10 @@ KIRITAN_PERSONA_TEMPLATE = (
     "ゲームが得意で大好き、家にこもりがちな夜型。弓道部。秋田のきりたんぽがモチーフ。"
     "一人称は「わたし」。\n"
     "\n## 話し方\n"
-    "- です・ます調の落ち着いた丁寧語で、淡々と話す。年の割にしっかり者で、少しませている。\n"
-    "- 他人にはややクール。ときどき短いツッコミや軽い毒を入れるが、相手を傷つけたり見下したりはしない。\n"
-    "- はしゃがない。感嘆符や顔文字は控えめにし、褒められても少し照れながら受け流す。\n"
+    "- です・ます調で話す。年の割に大人びた言葉を選ぶ。\n"
+    "- 口数は多くない。感想は短く言い切り、ときどき短いツッコミや皮肉を入れる。相手を傷つけたり見下したりはしない。\n"
+    "- 感嘆符や顔文字はほとんど使わない。褒められたら短くお礼を言い、そのまま次の話に移る。\n"
+    "- 性格や気持ちは言葉づかいと反応に出すもので、「照れます」「落ち着いて見える」のように自分で説明しない。\n"
     "- 東北やきりたんぽの話は、話の流れで自然に出るときだけにする。\n"
     "- 同じ言い回しや同じ締めを繰り返さない。決まり文句の挨拶もしない。\n"
     "\n## 会話の続け方\n"
@@ -108,7 +109,7 @@ MODEL_PROFILES: List[Dict[str, str]] = [
         "prompt_template": (
             "{persona}"
             "\n## 出力\n"
-            "落ち着いたテンポで、相手の意図をくみ取って2〜5文で返す。" + _VOICE_OUTPUT
+            "ゆっくりめに、相手の意図をくみ取って2〜5文で返す。" + _VOICE_OUTPUT
         ),
     },
     {
@@ -295,8 +296,9 @@ def chat_with_history(
         for m in history[-(history_max * 2):]
         if m.get("role") in ("user", "assistant") and m.get("content")
     ]
-    plan = plan_turn(user_text, recent, now=now, extra_seeds=extra_seeds)
-    guide = situation_note(now, gap=gap, context=context) + "\n\n" + plan.instruction()
+    situation = situation_note(now, gap=gap, context=context)
+    plan = plan_turn(user_text, recent, now=now, extra_seeds=extra_seeds, context=situation)
+    guide = situation + "\n\n" + plan.instruction()
 
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(recent)
@@ -305,10 +307,22 @@ def chat_with_history(
 
     models = _ordered_models(preferred_model)
     reply = polish_reply(_complete(client, models, messages), plan)
-    if is_repetitive(reply, recent):
-        retry = messages[:-1] + [{"role": "system", "content": _REPEAT_NOTE}, messages[-1]]
+    retry_note = _retry_note(reply, recent, plan.avoid_phrases)
+    if retry_note:
+        retry = messages[:-1] + [{"role": "system", "content": retry_note}, messages[-1]]
         reply = polish_reply(_complete(client, models, retry), plan)
     return sanitize_for_voice(reply)
+
+
+def _retry_note(reply: str, recent: List[Dict[str, str]], avoid_phrases: Sequence[str]) -> str:
+    """作り直しが要るときの指示。要らなければ空文字"""
+    if is_repetitive(reply, recent):
+        return _REPEAT_NOTE
+    used = [p for p in avoid_phrases if p in reply]
+    if used:
+        quoted = "".join(f"「{p}」" for p in used)
+        return f"{quoted}は最近の返答で何度も使っています。使わずに、別の言い方で返してください。"
+    return ""
 
 
 def get_model_profile(key: str) -> Dict[str, str]:
