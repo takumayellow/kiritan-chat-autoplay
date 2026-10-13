@@ -236,13 +236,27 @@
     color: #3b2a1f;
   }
 
+  /* しっぽ: 枠線の色の三角に、地の色の小さい三角を重ねて、枠線が切れずに続くようにする */
+  .bubble::before,
   .bubble::after {
     content: '';
     position: absolute;
-    right: -22px;
-    top: 46px;
-    border: 11px solid transparent;
-    border-left: 14px solid #a23a1e;
+    border-style: solid;
+    border-color: transparent;
+  }
+
+  .bubble::before {
+    right: -30px;
+    top: 16px;
+    border-width: 15px 0 15px 30px;
+    border-left-color: #a23a1e;
+  }
+
+  .bubble::after {
+    right: -24px;
+    top: 19px;
+    border-width: 12px 0 12px 24px;
+    border-left-color: #fffaf0;
   }
 
   .bubble b { color: #a23a1e; }
@@ -303,7 +317,7 @@
       <use href="#ginkgo" fill="#e0a80d" transform="translate(752 520) rotate(-12 16 16) scale(0.32)"/>
       <use href="#maple" fill="#b91c1c" transform="translate(4 846) rotate(-26 18 18) scale(0.36)"/>
       <use href="#ginkgo" fill="#eab308" transform="translate(546 1040) rotate(40 15 15) scale(0.3)"/>
-      <use href="#maple" fill="#d97706" transform="translate(540 868) rotate(12 20 20) scale(0.4)"/>
+      <use href="#maple" fill="#d97706" transform="translate(546 948) rotate(12 20 20) scale(0.4)"/>
     </g>
   </svg>
 
