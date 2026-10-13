@@ -8,7 +8,8 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* LINE のプロフィール背景は 1080x878. 下中央にアイコン, 右上にボタンが重なるので, そこには何も置かない */
+  /* LINE のプロフィール背景は 1080x878. プロフィールページでは上下が切れて 1080x562 ほど (y 159〜719) しか見えないので,
+     顔と文字はその帯に入れる. トークのポップアップでは下中央にアイコン, 右上にボタンが重なるので, そこには何も置かない */
   html, body { width: 1080px; height: 878px; }
 
   body {
@@ -23,16 +24,16 @@
 
   .kiritan {
     position: absolute;
-    left: 110px;
-    top: 46px;
-    height: 800px;
+    left: 96px;
+    top: 168px;
+    height: 1100px;
     filter: drop-shadow(0 8px 14px rgba(90, 42, 27, 0.22));
   }
 
   .title {
     position: absolute;
-    left: 520px;
-    top: 236px;
+    left: 560px;
+    top: 292px;
     width: 470px;
     text-align: center;
   }
@@ -75,10 +76,10 @@
     </defs>
     <g opacity="0.88">
       <use href="#maple" fill="#c2410c" transform="translate(28 40) rotate(-18 50 50) scale(1.1)"/>
-      <use href="#ginkgo" fill="#e0a80d" transform="translate(150 150) rotate(24 50 50) scale(0.6)"/>
+      <use href="#ginkgo" fill="#e0a80d" transform="translate(110 230) rotate(24 50 50) scale(0.6)"/>
       <use href="#maple" fill="#d97706" transform="translate(40 520) rotate(30 50 50) scale(0.7)"/>
       <use href="#ginkgo" fill="#eab308" transform="translate(70 720) rotate(-20 50 50) scale(0.62)"/>
-      <use href="#maple" fill="#b91c1c" transform="translate(560 120) rotate(14 50 50) scale(0.62)"/>
+      <use href="#maple" fill="#b91c1c" transform="translate(600 180) rotate(14 50 50) scale(0.62)"/>
       <use href="#ginkgo" fill="#e0a80d" transform="translate(960 300) rotate(-34 50 50) scale(0.62)"/>
       <use href="#maple" fill="#c2410c" transform="translate(640 610) rotate(-26 50 50) scale(0.5)"/>
       <use href="#maple" fill="#d97706" transform="translate(960 640) rotate(40 50 50) scale(0.8)"/>
