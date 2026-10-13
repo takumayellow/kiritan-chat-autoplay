@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>きりたんのお部屋 リッチメニュー (秋)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* 2500x843 を, LINE に設定してあるタップ範囲の 3 枠 (幅 833 / 834 / 833) に合わせて分ける */
+  html, body { width: 2500px; height: 843px; }
+
+  body {
+    font-family: 'Zen Kaku Gothic New', 'BIZ UDGothic', 'Meiryo', sans-serif;
+    background: #f3dcbc;
+    display: grid;
+    grid-template-columns: 833px 834px 833px;
+    overflow: hidden;
+  }
+
+  .cell { padding: 14px 10px; }
+  .cell:first-child { padding-left: 14px; }
+  .cell:last-child { padding-right: 14px; }
+
+  .card {
+    position: relative;
+    height: 100%;
+    border-radius: 34px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 70px;
+    color: #fdf7ec;
+    box-shadow: inset 0 0 0 6px rgba(253, 247, 236, 0.35);
+  }
+
+  .youtube { background: linear-gradient(135deg, #c2410c 0%, #a23a1e 55%, #7f1d1d 100%); }
+  .game    { background: linear-gradient(135deg, #e0a80d 0%, #c97a12 55%, #9a5410 100%); }
+  .itc     { background: linear-gradient(135deg, #7a4a2c 0%, #5a2a1b 55%, #3f1d12 100%); }
+
+  .card svg.icon { width: 240px; height: 240px; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.25)); }
+
+  .label {
+    font-size: 130px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-shadow: 0 6px 12px rgba(0, 0, 0, 0.28);
+    line-height: 1;
+  }
+
+  .leaf { position: absolute; opacity: 0.32; }
+</style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <path id="maple" d="M50 4 L58 28 L76 16 L71 39 L96 36 L79 54 L90 62 L63 66 L67 86 L53 75 L51 98 L49 98 L47 75 L33 86 L37 66 L10 62 L21 54 L4 36 L29 39 L24 16 L42 28 Z"/>
+      <path id="ginkgo" d="M49 96 L49 62 C 20 58, 4 34, 12 10 C 26 18, 38 22, 46 30 L50 22 L54 30 C 62 22, 74 18, 88 10 C 96 34, 80 58, 51 62 L51 96 Z"/>
+    </defs>
+  </svg>
+
+  <div class="cell">
+    <div class="card youtube">
+      <svg class="leaf" style="right:-30px;top:-30px;width:300px;height:300px;transform:rotate(24deg)" viewBox="0 0 100 100"><use href="#maple" fill="#fde68a"/></svg>
+      <svg class="leaf" style="left:30px;bottom:30px;width:150px;height:150px;transform:rotate(-30deg)" viewBox="0 0 100 100"><use href="#ginkgo" fill="#fde68a"/></svg>
+      <svg class="icon" viewBox="0 0 100 100"><path d="M30 18 L84 50 L30 82 Z" fill="#fdf7ec"/></svg>
+      <div class="label">YouTube</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="card game">
+      <svg class="leaf" style="right:-20px;top:-40px;width:280px;height:280px;transform:rotate(-16deg)" viewBox="0 0 100 100"><use href="#ginkgo" fill="#fef3c7"/></svg>
+      <svg class="leaf" style="left:30px;bottom:30px;width:170px;height:170px;transform:rotate(36deg)" viewBox="0 0 100 100"><use href="#maple" fill="#fef3c7"/></svg>
+      <svg class="icon" viewBox="0 0 100 100">
+        <rect x="6" y="26" width="88" height="50" rx="12" fill="#fdf7ec"/>
+        <rect x="24" y="38" width="5" height="22" rx="1" fill="#9a5410"/>
+        <rect x="15.5" y="46.5" width="22" height="5" rx="1" fill="#9a5410"/>
+        <circle cx="70" cy="44" r="6" fill="#9a5410"/>
+        <circle cx="80" cy="56" r="6" fill="#9a5410"/>
+      </svg>
+      <div class="label">ゲーム</div>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="card itc">
+      <svg class="leaf" style="right:-30px;top:-30px;width:300px;height:300px;transform:rotate(-20deg)" viewBox="0 0 100 100"><use href="#maple" fill="#f59e0b"/></svg>
+      <svg class="leaf" style="left:30px;bottom:30px;width:150px;height:150px;transform:rotate(28deg)" viewBox="0 0 100 100"><use href="#ginkgo" fill="#f59e0b"/></svg>
+      <svg class="icon" viewBox="0 0 100 100">
+        <path d="M50 18 L96 38 L50 58 L4 38 Z" fill="#fdf7ec"/>
+        <path d="M24 48 L24 70 C 24 80, 76 80, 76 70 L76 48 L50 60 Z" fill="#fdf7ec"/>
+        <rect x="88" y="40" width="4" height="30" fill="#fdf7ec"/>
+      </svg>
+      <div class="label">ITC 講座</div>
+    </div>
+  </div>
+</body>
+</html>
